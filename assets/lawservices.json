@@ -1,0 +1,538 @@
+{
+    "categories": [
+  {
+    "name": "Popular Services",
+    "color": "#FF4500",
+    "emoji": "🔥",
+    "services": [
+      { "name": "Personal Injury", "description": "Injury Claims", "emoji": "🏥", "isHot": true },
+      { "name": "Car Accidents", "description": "Auto Accidents", "emoji": "🚗", "isHot": true },
+      { "name": "Divorce", "description": "Marriage Dissolution", "emoji": "💔", "isHot": true },
+      { "name": "Criminal Defense", "description": "Criminal Cases", "emoji": "⚖️", "isHot": true },
+      { "name": "DUI Defense", "description": "Drunk Driving", "emoji": "🚗", "isHot": true },
+      { "name": "Business Formation", "description": "Start a Business", "emoji": "🚀", "isHot": true },
+      { "name": "Contract Law", "description": "Business Contracts", "emoji": "📋", "isHot": true },
+      { "name": "Immigration Law", "description": "Immigration Matters", "emoji": "🌍", "isHot": true },
+      { "name": "Visa Applications", "description": "Work & Travel Visas", "emoji": "📝", "isHot": true },
+      { "name": "Employment Law", "description": "Workplace Law", "emoji": "👷", "isHot": true },
+      { "name": "Discrimination", "description": "Workplace Discrimination", "emoji": "🚫", "isHot": true },
+      { "name": "Real Estate Transactions", "description": "Property Sales", "emoji": "🏘️", "isHot": true },
+      { "name": "Property Law", "description": "Property Matters", "emoji": "🏠", "isHot": true },
+      { "name": "Estate Planning", "description": "Estate Management", "emoji": "📜", "isHot": true },
+      { "name": "Medical Malpractice", "description": "Medical Errors", "emoji": "⚕️", "isHot": true },
+      { "name": "Patent Law", "description": "Patent Protection", "emoji": "📋", "isHot": true },
+      { "name": "Trademark Law", "description": "Brand Protection", "emoji": "™️", "isHot": true },
+      { "name": "Copyright Law", "description": "Copyright Issues", "emoji": "©️", "isHot": true },
+      { "name": "AML Compliance Advisory", "description": "Guidance on Anti-Money Laundering compliance", "emoji": "📘", "isHot": true },
+      { "name": "Customer Due Diligence (CDD)", "description": "KYC & risk assessment procedures", "emoji": "🕵️", "isHot": true },
+      { "name": "Suspicious Transaction Reporting", "description": "Assistance in filing STRs", "emoji": "📄", "isHot": true },
+      { "name": "Bank Account Freeze", "description": "Coordinate with banks to freeze suspect accounts", "emoji": "⛔", "isHot": true }
+    ]
+  },
+      {
+        "name": "Property",
+        "color": "#2E4A6B",
+        "emoji": "🏠",
+        "services": [
+          { "name": "Property Law", "description": "Buy/Sell Property", "emoji": "🏠", "isHot": true },
+          { "name": "Real Estate Transactions", "description": "Property Sales", "emoji": "🏘️", "isHot": true },
+          { "name": "Landlord-Tenant Disputes", "description": "Rental Issues", "emoji": "🏢", "isHot": false },
+          { "name": "Property Development", "description": "Development Law", "emoji": "🏗️", "isHot": false },
+          { "name": "Zoning & Land Use", "description": "Land Use Planning", "emoji": "🗺️", "isHot": false },
+          { "name": "Property Tax Appeals", "description": "Tax Issues", "emoji": "📊", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Criminal",
+        "color": "#2E4A6B",
+        "emoji": "⚖️",
+        "services": [
+          { "name": "Criminal Defense", "description": "Criminal Cases", "emoji": "⚖️", "isHot": true },
+          { "name": "DUI Defense", "description": "Drunk Driving", "emoji": "🚗", "isHot": true },
+          { "name": "Traffic Violations", "description": "Traffic Tickets", "emoji": "🚦", "isHot": false },
+          { "name": "White Collar Crime", "description": "Financial Crimes", "emoji": "💼", "isHot": false },
+          { "name": "Drug Crimes", "description": "Drug Offenses", "emoji": "💊", "isHot": false },
+          { "name": "Assault & Battery", "description": "Violence Cases", "emoji": "👊", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Tax",
+        "color": "#2E4A6B",
+        "emoji": "💰",
+        "services": [
+          { "name": "Tax Law", "description": "Tax Returns", "emoji": "💰", "isHot": true },
+          { "name": "Tax Planning", "description": "Tax Strategy", "emoji": "📈", "isHot": false },
+          { "name": "Tax Disputes", "description": "IRS Issues", "emoji": "⚔️", "isHot": false },
+          { "name": "IRS Audits", "description": "Audit Defense", "emoji": "🔍", "isHot": false },
+          { "name": "Tax Appeals", "description": "Appeal Process", "emoji": "📋", "isHot": false },
+          { "name": "Business Taxes", "description": "Corporate Tax", "emoji": "🏢", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Family",
+        "color": "#2E4A6B",
+        "emoji": "👨‍👩‍👧‍👦",
+        "services": [
+          { "name": "Family Law", "description": "Family Matters", "emoji": "👨‍👩‍👧‍👦", "isHot": true },
+          { "name": "Divorce", "description": "Marriage Dissolution", "emoji": "💔", "isHot": true },
+          { "name": "Child Custody", "description": "Custody Rights", "emoji": "👶", "isHot": true },
+          { "name": "Child Support", "description": "Child Support", "emoji": "💵", "isHot": false },
+          { "name": "Alimony", "description": "Spousal Support", "emoji": "💳", "isHot": false },
+          { "name": "Adoption", "description": "Adoption Process", "emoji": "🤱", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Business",
+        "color": "#2E4A6B",
+        "emoji": "💼",
+        "services": [
+          { "name": "Business Formation", "description": "Start a Business", "emoji": "🚀", "isHot": true },
+          { "name": "Contract Law", "description": "Business Contracts", "emoji": "📋", "isHot": true },
+          { "name": "Corporate Governance", "description": "Board Management", "emoji": "🏛️", "isHot": false },
+          { "name": "Mergers & Acquisitions", "description": "Business Sales", "emoji": "🤝", "isHot": false },
+          { "name": "Securities Law", "description": "Investment Law", "emoji": "📊", "isHot": false },
+          { "name": "Commercial Litigation", "description": "Business Disputes", "emoji": "⚖️", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Personal Injury",
+        "color": "#2E4A6B",
+        "emoji": "🏥",
+        "services": [
+          { "name": "Personal Injury", "description": "Injury Claims", "emoji": "🏥", "isHot": true },
+          { "name": "Car Accidents", "description": "Auto Accidents", "emoji": "🚗", "isHot": true },
+          { "name": "Motorcycle Accidents", "description": "Bike Accidents", "emoji": "🏍️", "isHot": false },
+          { "name": "Truck Accidents", "description": "Truck Crashes", "emoji": "🚛", "isHot": false },
+          { "name": "Slip & Fall", "description": "Premises Liability", "emoji": "⚠️", "isHot": false },
+          { "name": "Medical Malpractice", "description": "Medical Errors", "emoji": "⚕️", "isHot": true },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Immigration",
+        "color": "#2E4A6B",
+        "emoji": "🌍",
+        "services": [
+          { "name": "Immigration Law", "description": "Immigration Matters", "emoji": "🌍", "isHot": true },
+          { "name": "Visa Applications", "description": "Work & Travel Visas", "emoji": "📝", "isHot": true },
+          { "name": "Green Card", "description": "Permanent Residency", "emoji": "🟢", "isHot": false },
+          { "name": "Citizenship", "description": "Naturalization", "emoji": "🇺🇸", "isHot": false },
+          { "name": "Deportation Defense", "description": "Removal Proceedings", "emoji": "🛡️", "isHot": false },
+          { "name": "Asylum", "description": "Refugee Status", "emoji": "🏠", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Divorce",
+        "color": "#2E4A6B",
+        "emoji": "💔",
+        "services": [
+          { "name": "Divorce", "description": "Marriage Dissolution", "emoji": "💔", "isHot": true },
+          { "name": "Child Custody", "description": "Custody Rights", "emoji": "👶", "isHot": true },
+          { "name": "Child Support", "description": "Child Support", "emoji": "💵", "isHot": false },
+          { "name": "Alimony", "description": "Spousal Support", "emoji": "💳", "isHot": false },
+          { "name": "Prenuptial Agreements", "description": "Pre-marriage Contract", "emoji": "💍", "isHot": false },
+          { "name": "Domestic Partnerships", "description": "Partnership Law", "emoji": "👫", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+  {
+        "name": "Employment",
+        "color": "#2E4A6B",
+        "emoji": "👷",
+        "services": [
+          { "name": "Employment Law", "description": "Workplace Law", "emoji": "👷", "isHot": true },
+          { "name": "Discrimination", "description": "Workplace Discrimination", "emoji": "🚫", "isHot": true },
+          { "name": "Harassment", "description": "Workplace Harassment", "emoji": "⚠️", "isHot": false },
+          { "name": "Wrongful Termination", "description": "Unlawful Firing", "emoji": "💼", "isHot": false },
+          { "name": "Wage & Hour", "description": "Pay Issues", "emoji": "⏰", "isHot": false },
+          { "name": "Workplace Safety", "description": "Safety Violations", "emoji": "🦺", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Real Estate",
+        "color": "#2E4A6B",
+        "emoji": "🏘️",
+        "services": [
+          { "name": "Real Estate Transactions", "description": "Property Sales", "emoji": "🏘️", "isHot": true },
+          { "name": "Property Law", "description": "Property Matters", "emoji": "🏠", "isHot": true },
+          { "name": "Commercial Leasing", "description": "Business Leases", "emoji": "🏢", "isHot": false },
+          { "name": "Residential Leasing", "description": "Rental Properties", "emoji": "🏠", "isHot": false },
+          { "name": "Property Management", "description": "Property Oversight", "emoji": "🔑", "isHot": false },
+          { "name": "Real Estate Litigation", "description": "Property Disputes", "emoji": "⚖️", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Contract",
+        "color": "#2E4A6B",
+        "emoji": "📋",
+        "services": [
+          { "name": "Contract Law", "description": "Contract Matters", "emoji": "📋", "isHot": true },
+          { "name": "Business Contracts", "description": "Business Agreements", "emoji": "💼", "isHot": false },
+          { "name": "Employment Contracts", "description": "Work Agreements", "emoji": "👔", "isHot": false },
+          { "name": "Service Agreements", "description": "Service Contracts", "emoji": "🤝", "isHot": false },
+          { "name": "Contract Disputes", "description": "Contract Conflicts", "emoji": "⚔️", "isHot": false },
+          { "name": "Contract Review", "description": "Contract Analysis", "emoji": "🔍", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Civil Rights",
+        "color": "#2E4A6B",
+        "emoji": "🗽",
+        "services": [
+          { "name": "Civil Rights Law", "description": "Rights Protection", "emoji": "🗽", "isHot": false },
+          { "name": "Discrimination Cases", "description": "Discrimination Defense", "emoji": "🚫", "isHot": true },
+          { "name": "Constitutional Law", "description": "Constitutional Issues", "emoji": "📜", "isHot": false },
+          { "name": "Voting Rights", "description": "Electoral Rights", "emoji": "🗳️", "isHot": false },
+          { "name": "Religious Freedom", "description": "Religious Rights", "emoji": "⛪", "isHot": false },
+          { "name": "Free Speech", "description": "Speech Protection", "emoji": "🗣️", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Environmental",
+        "color": "#2E4A6B",
+        "emoji": "🌱",
+        "services": [
+          { "name": "Environmental Law", "description": "Environmental Issues", "emoji": "🌱", "isHot": false },
+          { "name": "Environmental Compliance", "description": "Regulatory Compliance", "emoji": "📋", "isHot": false },
+          { "name": "Pollution Control", "description": "Pollution Issues", "emoji": "🌍", "isHot": false },
+          { "name": "Environmental Impact", "description": "Impact Assessment", "emoji": "📊", "isHot": false },
+          { "name": "Waste Management", "description": "Waste Issues", "emoji": "♻️", "isHot": false },
+          { "name": "Clean Energy Law", "description": "Energy Law", "emoji": "⚡", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Bankruptcy",
+        "color": "#2E4A6B",
+        "emoji": "📉",
+        "services": [
+          { "name": "Bankruptcy Law", "description": "Bankruptcy Proceedings", "emoji": "📉", "isHot": false },
+          { "name": "Chapter 7 Bankruptcy", "description": "Liquidation", "emoji": "📉", "isHot": false },
+          { "name": "Chapter 13 Bankruptcy", "description": "Reorganization", "emoji": "📉", "isHot": false },
+          { "name": "Business Bankruptcy", "description": "Corporate Bankruptcy", "emoji": "🏢", "isHot": false },
+          { "name": "Debt Relief", "description": "Debt Solutions", "emoji": "💵", "isHot": false },
+          { "name": "Asset Protection", "description": "Asset Preservation", "emoji": "🔒", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Estate Planning",
+        "color": "#2E4A6B",
+        "emoji": "📜",
+        "services": [
+          { "name": "Estate Planning", "description": "Estate Management", "emoji": "📜", "isHot": true },
+          { "name": "Wills & Trusts", "description": "Will Preparation", "emoji": "📜", "isHot": false },
+          { "name": "Probate Law", "description": "Probate Proceedings", "emoji": "⚖️", "isHot": false },
+          { "name": "Elder Law", "description": "Senior Legal Issues", "emoji": "👴", "isHot": false },
+          { "name": "Asset Protection", "description": "Asset Security", "emoji": "🔒", "isHot": false },
+          { "name": "Estate Administration", "description": "Estate Management", "emoji": "📜", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Intellectual Property",
+        "color": "#2E4A6B",
+        "emoji": "💡",
+        "services": [
+          { "name": "Patent Law", "description": "Patent Protection", "emoji": "📋", "isHot": true },
+          { "name": "Trademark Law", "description": "Brand Protection", "emoji": "™️", "isHot": true },
+          { "name": "Copyright Law", "description": "Copyright Issues", "emoji": "©️", "isHot": true },
+          { "name": "Trade Secrets", "description": "Secret Protection", "emoji": "🔒", "isHot": false },
+          { "name": "IP Litigation", "description": "IP Disputes", "emoji": "⚖️", "isHot": false },
+          { "name": "Licensing Agreements", "description": "License Contracts", "emoji": "📋", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+  {
+        "name": "DUI",
+        "color": "#2E4A6B",
+        "emoji": "🚗",
+        "services": [
+          { "name": "DUI Defense", "description": "Drunk Driving Defense", "emoji": "🚗", "isHot": true },
+          { "name": "Traffic Violations", "description": "Traffic Tickets", "emoji": "🚦", "isHot": false },
+          { "name": "License Suspension", "description": "License Issues", "emoji": "📄", "isHot": false },
+          { "name": "Field Sobriety Tests", "description": "Sobriety Testing", "emoji": "🔍", "isHot": false },
+          { "name": "Breathalyzer Tests", "description": "BAC Testing", "emoji": "🍷", "isHot": false },
+          { "name": "DUI Appeals", "description": "Appeal Process", "emoji": "📋", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Workers Comp",
+        "color": "#2E4A6B",
+        "emoji": "👷‍♂️",
+        "services": [
+          { "name": "Workers Compensation", "description": "Workplace Injuries", "emoji": "👷‍♂️", "isHot": true },
+          { "name": "Workplace Injuries", "description": "Injury Claims", "emoji": "🤕", "isHot": false },
+          { "name": "Disability Claims", "description": "Disability Benefits", "emoji": "♿", "isHot": false },
+          { "name": "Occupational Diseases", "description": "Work-related Illness", "emoji": "🦠", "isHot": false },
+          { "name": "Workers Rights", "description": "Employee Rights", "emoji": "⚖️", "isHot": false },
+          { "name": "Compensation Appeals", "description": "Appeal Process", "emoji": "📋", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Medical Malpractice",
+        "color": "#2E4A6B",
+        "emoji": "⚕️",
+        "services": [
+          { "name": "Medical Malpractice", "description": "Medical Errors", "emoji": "⚕️", "isHot": true },
+          { "name": "Hospital Negligence", "description": "Hospital Mistakes", "emoji": "🏥", "isHot": false },
+          { "name": "Surgical Errors", "description": "Surgery Mistakes", "emoji": "🔪", "isHot": false },
+          { "name": "Misdiagnosis", "description": "Wrong Diagnosis", "emoji": "❌", "isHot": false },
+          { "name": "Birth Injuries", "description": "Delivery Complications", "emoji": "👶", "isHot": false },
+          { "name": "Nursing Home Abuse", "description": "Elder Care Issues", "emoji": "🏡", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Securities",
+        "color": "#2E4A6B",
+        "emoji": "📊",
+        "services": [
+          { "name": "Securities Law", "description": "Investment Law", "emoji": "📊", "isHot": false },
+          { "name": "Investment Fraud", "description": "Fraud Cases", "emoji": "⚠️", "isHot": false },
+          { "name": "Stock Market Law", "description": "Market Regulations", "emoji": "📈", "isHot": false },
+          { "name": "SEC Compliance", "description": "Regulatory Compliance", "emoji": "✅", "isHot": false },
+          { "name": "Corporate Finance", "description": "Financial Law", "emoji": "🏦", "isHot": false },
+          { "name": "Investment Disputes", "description": "Financial Disputes", "emoji": "⚖️", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Patent",
+        "color": "#2E4A6B",
+        "emoji": "📋",
+        "services": [
+          { "name": "Patent Applications", "description": "Patent Filing", "emoji": "📋", "isHot": true },
+          { "name": "Patent Prosecution", "description": "Patent Process", "emoji": "⚖️", "isHot": false },
+          { "name": "Patent Litigation", "description": "Patent Disputes", "emoji": "⚔️", "isHot": false },
+          { "name": "Patent Strategy", "description": "IP Strategy", "emoji": "💡", "isHot": false },
+          { "name": "Prior Art Search", "description": "Research Services", "emoji": "🔍", "isHot": false },
+          { "name": "Patent Portfolio Management", "description": "Portfolio Services", "emoji": "📂", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Trademark",
+        "color": "#2E4A6B",
+        "emoji": "™️",
+        "services": [
+          { "name": "Trademark Registration", "description": "Brand Registration", "emoji": "™️", "isHot": true },
+          { "name": "Trademark Protection", "description": "Brand Protection", "emoji": "🛡️", "isHot": false },
+          { "name": "Trademark Disputes", "description": "Brand Conflicts", "emoji": "⚔️", "isHot": false },
+          { "name": "Brand Protection", "description": "Brand Defense", "emoji": "💼", "isHot": false },
+          { "name": "Trademark Licensing", "description": "Brand Licensing", "emoji": "📜", "isHot": false },
+          { "name": "Domain Name Disputes", "description": "Domain Issues", "emoji": "🌐", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Copyright",
+        "color": "#2E4A6B",
+        "emoji": "©️",
+        "services": [
+          { "name": "Copyright Registration", "description": "Copyright Filing", "emoji": "©️", "isHot": true },
+          { "name": "Copyright Infringement", "description": "Copyright Violations", "emoji": "⚠️", "isHot": false },
+          { "name": "Digital Rights", "description": "Online Rights", "emoji": "💻", "isHot": false },
+          { "name": "Entertainment Law", "description": "Media Rights", "emoji": "🎬", "isHot": false },
+          { "name": "Publishing Rights", "description": "Publication Law", "emoji": "📚", "isHot": false },
+          { "name": "Fair Use Defense", "description": "Fair Use Issues", "emoji": "⚖️", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Corporate",
+        "color": "#2E4A6B",
+        "emoji": "🏢",
+        "services": [
+          { "name": "Corporate Law", "description": "Business Law", "emoji": "🏢", "isHot": false },
+          { "name": "Business Formation", "description": "Company Setup", "emoji": "🚀", "isHot": true },
+          { "name": "Corporate Governance", "description": "Board Management", "emoji": "🏛️", "isHot": false },
+          { "name": "Compliance", "description": "Legal Compliance", "emoji": "✅", "isHot": false },
+          { "name": "Corporate Transactions", "description": "Business Deals", "emoji": "💼", "isHot": false },
+          { "name": "Board Advisory", "description": "Board Consultation", "emoji": "👔", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Insurance",
+        "color": "#2E4A6B",
+        "emoji": "🛡️",
+        "services": [
+          { "name": "Insurance Law", "description": "Insurance Claims", "emoji": "🛡️", "isHot": false },
+          { "name": "Insurance Claims", "description": "Claim Processing", "emoji": "📄", "isHot": false },
+          { "name": "Bad Faith Insurance", "description": "Insurance Disputes", "emoji": "⚠️", "isHot": false },
+          { "name": "Insurance Coverage", "description": "Coverage Analysis", "emoji": "📑", "isHot": false },
+          { "name": "Insurance Disputes", "description": "Claim Disputes", "emoji": "⚖️", "isHot": false },
+          { "name": "Policy Analysis", "description": "Policy Review", "emoji": "🔍", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },  {
+        "name": "Healthcare",
+        "color": "#2E4A6B",
+        "emoji": "⚕️",
+        "services": [
+          { "name": "Healthcare Law", "description": "Medical Law", "emoji": "⚕️", "isHot": false },
+          { "name": "Medical Compliance", "description": "Regulatory Compliance", "emoji": "📋", "isHot": false },
+          { "name": "HIPAA Compliance", "description": "Privacy Law", "emoji": "🔒", "isHot": false },
+          { "name": "Healthcare Transactions", "description": "Medical Business", "emoji": "💼", "isHot": false },
+          { "name": "Medical Licensing", "description": "Professional Licensing", "emoji": "📜", "isHot": false },
+          { "name": "Healthcare Litigation", "description": "Medical Disputes", "emoji": "⚖️", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Construction",
+        "color": "#2E4A6B",
+        "emoji": "🏗️",
+        "services": [
+          { "name": "Construction Law", "description": "Building Law", "emoji": "🏗️", "isHot": false },
+          { "name": "Construction Contracts", "description": "Building Agreements", "emoji": "📋", "isHot": false },
+          { "name": "Construction Disputes", "description": "Building Conflicts", "emoji": "⚔️", "isHot": false },
+          { "name": "Mechanic Liens", "description": "Lien Law", "emoji": "📝", "isHot": false },
+          { "name": "Construction Defects", "description": "Defect Claims", "emoji": "⚠️", "isHot": false },
+          { "name": "Building Code Compliance", "description": "Code Violations", "emoji": "✅", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Entertainment",
+        "color": "#2E4A6B",
+        "emoji": "🎬",
+        "services": [
+          { "name": "Entertainment Law", "description": "Media Law", "emoji": "🎬", "isHot": false },
+          { "name": "Media Law", "description": "Broadcasting Law", "emoji": "📺", "isHot": false },
+          { "name": "Sports Law", "description": "Athletic Law", "emoji": "⚽", "isHot": false },
+          { "name": "Contract Negotiations", "description": "Talent Contracts", "emoji": "🤝", "isHot": false },
+          { "name": "Intellectual Property", "description": "Content Rights", "emoji": "💡", "isHot": true },
+          { "name": "Talent Representation", "description": "Artist Management", "emoji": "🎤", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Sports",
+        "color": "#2E4A6B",
+        "emoji": "⚽",
+        "services": [
+          { "name": "Sports Law", "description": "Athletic Law", "emoji": "⚽", "isHot": false },
+          { "name": "Athlete Representation", "description": "Player Representation", "emoji": "🤾", "isHot": false },
+          { "name": "Sports Contracts", "description": "Player Agreements", "emoji": "📝", "isHot": false },
+          { "name": "Sports Litigation", "description": "Athletic Disputes", "emoji": "⚖️", "isHot": false },
+          { "name": "League Compliance", "description": "Regulatory Compliance", "emoji": "✅", "isHot": false },
+          { "name": "Endorsement Deals", "description": "Sponsorship Agreements", "emoji": "💵", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Education",
+        "color": "#2E4A6B",
+        "emoji": "🎓",
+        "services": [
+          { "name": "Education Law", "description": "School Law", "emoji": "🎓", "isHot": false },
+          { "name": "School District Law", "description": "District Legal Issues", "emoji": "🏫", "isHot": false },
+          { "name": "Student Rights", "description": "Student Advocacy", "emoji": "👩‍🎓", "isHot": false },
+          { "name": "Special Education", "description": "Special Needs Law", "emoji": "♿", "isHot": false },
+          { "name": "Title IX", "description": "Gender Discrimination", "emoji": "🚫", "isHot": false },
+          { "name": "Academic Freedom", "description": "Academic Rights", "emoji": "📖", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Technology",
+        "color": "#2E4A6B",
+        "emoji": "💻",
+        "services": [
+          { "name": "Technology Law", "description": "Tech Legal Issues", "emoji": "💻", "isHot": false },
+          { "name": "Software Licensing", "description": "Software Agreements", "emoji": "📜", "isHot": false },
+          { "name": "Data Privacy", "description": "Privacy Protection", "emoji": "🔒", "isHot": false },
+          { "name": "Cybersecurity", "description": "Digital Security", "emoji": "🛡️", "isHot": false },
+          { "name": "E-commerce Law", "description": "Online Business", "emoji": "🛒", "isHot": false },
+          { "name": "Tech Contracts", "description": "Technology Agreements", "emoji": "📋", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Aviation",
+        "color": "#2E4A6B",
+        "emoji": "✈️",
+        "services": [
+          { "name": "Aviation Law", "description": "Flight Law", "emoji": "✈️", "isHot": false },
+          { "name": "Aircraft Registration", "description": "Aircraft Documentation", "emoji": "📄", "isHot": false },
+          { "name": "Airline Operations", "description": "Carrier Law", "emoji": "🛫", "isHot": false },
+          { "name": "Aviation Accidents", "description": "Flight Accidents", "emoji": "💥", "isHot": false },
+          { "name": "Airport Law", "description": "Airport Operations", "emoji": "🏢", "isHot": false },
+          { "name": "Aviation Insurance", "description": "Flight Insurance", "emoji": "🛡️", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Maritime",
+        "color": "#2E4A6B",
+        "emoji": "🚢",
+        "services": [
+          { "name": "Maritime Law", "description": "Shipping Law", "emoji": "🚢", "isHot": false },
+          { "name": "Admiralty Law", "description": "Marine Law", "emoji": "⚓", "isHot": false },
+          { "name": "Shipping Disputes", "description": "Marine Conflicts", "emoji": "⚔️", "isHot": false },
+          { "name": "Cargo Claims", "description": "Freight Disputes", "emoji": "📦", "isHot": false },
+          { "name": "Marine Insurance", "description": "Shipping Insurance", "emoji": "🛡️", "isHot": false },
+          { "name": "Port Operations", "description": "Harbor Law", "emoji": "🏭", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Military",
+        "color": "#2E4A6B",
+        "emoji": "🪖",
+        "services": [
+          { "name": "Military Law", "description": "Armed Forces Law", "emoji": "🪖", "isHot": false },
+          { "name": "Court Martial", "description": "Military Trials", "emoji": "⚖️", "isHot": false },
+          { "name": "Veterans Benefits", "description": "Veteran Rights", "emoji": "🎖️", "isHot": false },
+          { "name": "Military Contracts", "description": "Defense Contracts", "emoji": "📋", "isHot": false },
+          { "name": "Discharge Issues", "description": "Military Separation", "emoji": "🚪", "isHot": false },
+          { "name": "Military Appeals", "description": "Appeal Process", "emoji": "📜", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "Government",
+        "color": "#2E4A6B",
+        "emoji": "🏛️",
+        "services": [
+          { "name": "Government Law", "description": "Public Sector Law", "emoji": "🏛️", "isHot": false },
+          { "name": "Administrative Law", "description": "Government Procedures", "emoji": "📋", "isHot": false },
+          { "name": "Public Policy", "description": "Policy Development", "emoji": "📜", "isHot": false },
+          { "name": "Government Contracts", "description": "Public Contracts", "emoji": "📝", "isHot": false },
+          { "name": "Regulatory Compliance", "description": "Government Rules", "emoji": "✅", "isHot": false },
+          { "name": "Public Records", "description": "Freedom of Information", "emoji": "📂", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      },
+      {
+        "name": "AMLA / NSRC",
+        "color": "#8B0000",
+        "emoji": "⚖️",
+        "services": [
+          { "name": "AML Compliance Advisory", "description": "Guidance on Anti-Money Laundering compliance", "emoji": "📘", "isHot": true },
+          { "name": "Customer Due Diligence (CDD)", "description": "KYC & risk assessment procedures", "emoji": "🕵️", "isHot": true },
+          { "name": "Suspicious Transaction Reporting", "description": "Assistance in filing STRs", "emoji": "📄", "isHot": true },
+          { "name": "Bank Account Freeze", "description": "Coordinate with banks to freeze suspect accounts", "emoji": "⛔", "isHot": true },
+          { "name": "Fund Tracing", "description": "Assist in tracing and recovering lost funds", "emoji": "💰", "isHot": false },
+          { "name": "Training & Awareness", "description": "Workshops on AMLA compliance & scam prevention", "emoji": "🎓", "isHot": false },
+          { "name": "Other Service", "description": "Need help with something else?", "emoji": "❓", "isHot": false }
+        ]
+      }
+  
+    ]
+  }
+  
