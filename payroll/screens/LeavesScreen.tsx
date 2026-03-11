@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, StatusBar } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, StyleSheet, StatusBar, ActivityIndicator, Text, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Header, FilterTabs, LeaveList } from '../components/leaves';
 import { BottomNavBar } from '../components/BottomNavBar';
-import { getLeavesByStatus } from '../data/mockLeaves';
-import { LeaveStatus } from '../types/leave.types';
+import leaveService, { LeaveApplication } from '../api/services/leaveService';
+import { STATUSES, LEAVE_FILTERS } from '../constants/statuses';
 
 interface LeavesScreenProps {
   navigation?: any;
@@ -13,54 +13,119 @@ interface LeavesScreenProps {
 
 export const LeavesScreen: React.FC<LeavesScreenProps> = ({ navigation: navProp }) => {
   const navigation = navProp || useNavigation();
-  const [activeTab, setActiveTab] = useState<LeaveStatus>('requested');
+  const [activeTab, setActiveTab] = useState<string>('ALL');
+  const [leaves, setLeaves] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  // Get leaves based on active tab
-  const leaves = getLeavesByStatus(activeTab);
+  const fetchLeaves = useCallback(async () => {
+    try {
+      setLoading(true);
+      const status = activeTab === 'ALL' ? undefined : activeTab;
+      const result = await leaveService.getPendingApprovals({ page: 1, pageSize: 50 });
+      // Map to the shape expected by LeaveList component
+      const mapped = (result.items || [])
+        .filter(item => activeTab === 'ALL' || item.status === activeTab)
+        .map(mapLeaveToLegacy);
+      setLeaves(mapped);
+    } catch (err: any) {
+      console.error('Failed to load leaves:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [activeTab]);
 
-  const handleApprove = (leaveId: string) => {
-    console.log('Approve leave:', leaveId);
-    // TODO: Add your approve logic here
-    // Example: Call API to approve leave
+  useEffect(() => {
+    fetchLeaves();
+  }, [fetchLeaves]);
+
+  const mapLeaveToLegacy = (item: LeaveApplication) => ({
+    id: item.id,
+    name: item.employeeName,
+    dateRange: `${formatDateShort(item.startDate)} - ${formatDateShort(item.endDate)}`,
+    type: item.leaveTypeDescription || 'Leave Application',
+    daysAgo: formatTimeAgo(item.createdAt),
+    status: mapStatusToLegacy(item.status),
+    _raw: item,
+  });
+
+  const formatDateShort = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+    } catch { return dateStr; }
+  };
+
+  const formatTimeAgo = (dateStr: string) => {
+    try {
+      const diff = Date.now() - new Date(dateStr).getTime();
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      if (days === 0) return 'Today';
+      if (days === 1) return '1 day ago';
+      return `${days} days ago`;
+    } catch { return ''; }
+  };
+
+  const mapStatusToLegacy = (status: string): string => {
+    switch (status) {
+      case STATUSES.PENDING: return 'requested';
+      case STATUSES.APPROVED: return 'active';
+      case STATUSES.REJECTED:
+      case STATUSES.CANCELLED:
+      case STATUSES.WITHDRAWN: return 'cancelled';
+      default: return 'requested';
+    }
+  };
+
+  const handleApprove = async (leaveId: string) => {
+    setActionLoading(leaveId);
+    try {
+      await leaveService.approveLeave(leaveId);
+      Alert.alert('Success', 'Leave approved');
+      fetchLeaves();
+    } catch (err: any) {
+      Alert.alert('Error', err.response?.data?.message || 'Failed to approve leave');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const handleReject = (leaveId: string) => {
-    console.log('Reject leave:', leaveId);
-    // TODO: Add your reject logic here
-    // Example: Call API to reject leave
-  };
-
-  const handleCancel = (leaveId: string) => {
-    console.log('Cancel active leave:', leaveId);
-    // TODO: Add your cancel logic here
-    // Example: Call API to cancel an active leave
+    Alert.prompt?.(
+      'Reject Leave',
+      'Enter rejection reason:',
+      async (reason: string) => {
+        if (!reason) return;
+        setActionLoading(leaveId);
+        try {
+          await leaveService.rejectLeave(leaveId, reason);
+          Alert.alert('Success', 'Leave rejected');
+          fetchLeaves();
+        } catch (err: any) {
+          Alert.alert('Error', err.response?.data?.message || 'Failed to reject leave');
+        } finally {
+          setActionLoading(null);
+        }
+      }
+    ) || Alert.alert('Reject', 'Rejection requires a reason input');
   };
 
   const handleRestore = (leaveId: string) => {
     console.log('Restore cancelled leave:', leaveId);
-    // TODO: Add your restore logic here
-    // Example: Call API to restore a cancelled leave
   };
 
   const handleViewDetails = (leave: any) => {
-    console.log('📱 [LeavesScreen] handleViewDetails called for leave:', leave.id);
-    console.log('📱 [LeavesScreen] Navigation object:', !!navigation);
-    console.log('📱 [LeavesScreen] Leave object:', leave);
-    
     try {
-      // Navigate to leave details screen with full leave object
-      navigation?.navigate('LeaveDetails', { leave });
-      console.log('✅ [LeavesScreen] Navigation called successfully');
+      navigation?.navigate('LeaveDetails', { leaveId: leave._raw?.id || leave.id, leave });
     } catch (error) {
-      console.error('❌ [LeavesScreen] Navigation error:', error);
+      console.error('Navigation error:', error);
     }
   };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
-      {/* Header with Safe Area - Manager Only: Leave Approval */}
+
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <Header
           title="Leave Approval"
@@ -68,26 +133,32 @@ export const LeavesScreen: React.FC<LeavesScreenProps> = ({ navigation: navProp 
           showBackButton={true}
         />
       </SafeAreaView>
-      
-      {/* Content Area */}
-      <View style={styles.content}>
-        {/* Filter Tabs Component */}
-        <FilterTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
-        {/* Leave List Component - Manager can approve/reject/restore */}
+      <View style={styles.content}>
+        <FilterTabs activeTab={activeTab as any} onTabChange={setActiveTab as any} />
+
         <View style={styles.listContainer}>
-          <LeaveList
-            leaves={leaves}
-            onPress={handleViewDetails}
-            onApprove={handleApprove}
-            onReject={handleReject}
-            onCancel={undefined}
-            onRestore={handleRestore}
-          />
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#4285F4" />
+            </View>
+          ) : leaves.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No leave applications found</Text>
+            </View>
+          ) : (
+            <LeaveList
+              leaves={leaves}
+              onPress={handleViewDetails}
+              onApprove={handleApprove}
+              onReject={handleReject}
+              onCancel={undefined}
+              onRestore={handleRestore}
+            />
+          )}
         </View>
       </View>
 
-      {/* Bottom Navigation Bar */}
       <BottomNavBar />
     </View>
   );
@@ -103,10 +174,24 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingBottom: 80, // Space for bottom nav bar
+    paddingBottom: 80,
   },
   listContainer: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#999',
   },
 });
 

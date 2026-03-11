@@ -1,9 +1,10 @@
 /**
  * Today's Attendance Screen
- * Shows today's attendance with filtering by Present, Late, and Absent
+ * Shows today's team attendance with filtering by Present, Late, and Absent
+ * Uses real API via attendanceService.getTeamToday()
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,21 +12,53 @@ import {
   ScrollView,
   StatusBar,
   TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { AttendanceCard } from '../components/AttendanceCard';
-import { mockTodayAttendance } from '../data/mockAttendance';
-import { AttendanceStatus } from '../types/attendance.types';
+import attendanceService, { TeamMemberAttendance, TeamTodayResponse } from '../api/services/attendanceService';
+
+type FilterStatus = 'Present' | 'Late' | 'Absent';
+
+/**
+ * Format an ISO date string to a readable time like "08:45 AM"
+ */
+const formatTime = (isoString: string | null): string => {
+  if (!isoString) return '--:--';
+  try {
+    const date = new Date(isoString);
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  } catch {
+    return '--:--';
+  }
+};
+
+/**
+ * Get location display text from coordinates
+ */
+const getLocationText = (latitude: number | null, longitude: number | null): string => {
+  if (latitude != null && longitude != null) {
+    return 'Mobile Check-in';
+  }
+  return 'No location';
+};
 
 export const TodaysAttendanceScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute();
-  
+
   // Get filter from navigation params or default to 'Present'
   const initialFilter = (route.params as any)?.filter || 'Present';
-  const [selectedFilter, setSelectedFilter] = useState<AttendanceStatus>(initialFilter);
+  const [selectedFilter, setSelectedFilter] = useState<FilterStatus>(initialFilter);
+  const [teamData, setTeamData] = useState<TeamTodayResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Update filter when route params change
   useEffect(() => {
@@ -34,24 +67,73 @@ export const TodaysAttendanceScreen: React.FC = () => {
     }
   }, [(route.params as any)?.filter]);
 
-  // Filter attendances based on selected status
-  const filteredAttendances = mockTodayAttendance.filter(
-    (att) => att.status === selectedFilter
-  );
+  const fetchTeamAttendance = useCallback(async (isRefresh = false) => {
+    try {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      const data = await attendanceService.getTeamToday();
+      setTeamData(data);
+    } catch (error) {
+      console.error('Failed to fetch team attendance:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
-  // Count for each status
-  const presentCount = mockTodayAttendance.filter((a) => a.status === 'Present').length;
-  const lateCount = mockTodayAttendance.filter((a) => a.status === 'Late').length;
-  const absentCount = mockTodayAttendance.filter((a) => a.status === 'Absent').length;
+  useEffect(() => {
+    fetchTeamAttendance();
+  }, [fetchTeamAttendance]);
 
-  const handleAttendancePress = (attendance: any) => {
+  const onRefresh = useCallback(() => {
+    fetchTeamAttendance(true);
+  }, [fetchTeamAttendance]);
+
+  // Derive employees list
+  const employees = teamData?.employees ?? [];
+
+  // Filter employees based on selected status
+  const filteredEmployees = employees.filter((emp) => {
+    if (selectedFilter === 'Present') return emp.status === 'checked-in';
+    if (selectedFilter === 'Absent') return emp.status === 'not-checked-in';
+    // 'Late' — backend doesn't differentiate, so no matches
+    return false;
+  });
+
+  // Counts
+  const presentCount = teamData?.checkedIn ?? 0;
+  const lateCount = 0; // Backend doesn't track late separately for team view
+  const absentCount = teamData?.notCheckedIn ?? 0;
+
+  const handleAttendancePress = (employee: TeamMemberAttendance) => {
+    const attendance = {
+      id: employee.employeeId,
+      name: employee.employeeName,
+      position: employee.position,
+      department: employee.department,
+      status: employee.status === 'checked-in' ? 'Present' : 'Absent',
+      checkIn: formatTime(employee.checkInTime),
+      checkOut: '--:--',
+      location: getLocationText(employee.latitude, employee.longitude),
+      latitude: employee.latitude,
+      longitude: employee.longitude,
+    };
     navigation.navigate('AttendanceDetails' as never, { attendance } as never);
+  };
+
+  const getFilterLabel = (filter: FilterStatus): string => {
+    if (filter === 'Present') return 'present';
+    if (filter === 'Late') return 'late';
+    return 'absent';
   };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
+
       {/* Header */}
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
@@ -65,125 +147,139 @@ export const TodaysAttendanceScreen: React.FC = () => {
         </View>
       </SafeAreaView>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Todays Attendance Title */}
-        <View style={styles.titleContainer}>
-          <Text style={styles.title}>Todays Attendance</Text>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4285F4" />
+          <Text style={styles.loadingText}>Loading attendance...</Text>
         </View>
+      ) : (
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={['#4285F4']}
+              tintColor="#4285F4"
+            />
+          }
+        >
+          {/* Todays Attendance Title */}
+          <View style={styles.titleContainer}>
+            <Text style={styles.title}>Todays Attendance</Text>
+          </View>
 
-        {/* Attendance Cards (Acting as Tabs) */}
-        <View style={styles.cardsContainer}>
-          <TouchableOpacity
-            style={[
-              styles.card,
-              selectedFilter === 'Present' && styles.cardActive,
-            ]}
-            onPress={() => setSelectedFilter('Present')}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.circle, { backgroundColor: '#4285F410' }]}>
-              <Text style={[styles.count, { color: '#4285F4' }]}>{presentCount}</Text>
-            </View>
-            <Text style={styles.label}>Presents</Text>
-          </TouchableOpacity>
+          {/* Attendance Cards (Acting as Tabs) */}
+          <View style={styles.cardsContainer}>
+            <TouchableOpacity
+              style={[
+                styles.card,
+                selectedFilter === 'Present' && styles.cardActive,
+              ]}
+              onPress={() => setSelectedFilter('Present')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.circle, { backgroundColor: '#4285F410' }]}>
+                <Text style={[styles.count, { color: '#4285F4' }]}>{presentCount}</Text>
+              </View>
+              <Text style={styles.label}>Presents</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[
-              styles.card,
-              selectedFilter === 'Late' && styles.cardActive,
-            ]}
-            onPress={() => setSelectedFilter('Late')}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.circle, { backgroundColor: '#FFB30010' }]}>
-              <Text style={[styles.count, { color: '#FFB300' }]}>{lateCount}</Text>
-            </View>
-            <Text style={styles.label}>Late</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.card,
+                selectedFilter === 'Late' && styles.cardActive,
+              ]}
+              onPress={() => setSelectedFilter('Late')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.circle, { backgroundColor: '#FFB30010' }]}>
+                <Text style={[styles.count, { color: '#FFB300' }]}>{lateCount}</Text>
+              </View>
+              <Text style={styles.label}>Late</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[
-              styles.card,
-              selectedFilter === 'Absent' && styles.cardActive,
-            ]}
-            onPress={() => setSelectedFilter('Absent')}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.circle, { backgroundColor: '#FF525210' }]}>
-              <Text style={[styles.count, { color: '#FF5252' }]}>{absentCount}</Text>
-            </View>
-            <Text style={styles.label}>Absent</Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              style={[
+                styles.card,
+                selectedFilter === 'Absent' && styles.cardActive,
+              ]}
+              onPress={() => setSelectedFilter('Absent')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.circle, { backgroundColor: '#FF525210' }]}>
+                <Text style={[styles.count, { color: '#FF5252' }]}>{absentCount}</Text>
+              </View>
+              <Text style={styles.label}>Absent</Text>
+            </TouchableOpacity>
+          </View>
 
-        {/* Attendance List */}
-        <View style={styles.listContainer}>
-          {filteredAttendances.length === 0 ? (
-            <View style={styles.emptyState}>
-              <MaterialCommunityIcons name="account-off-outline" size={64} color="#CCC" />
-              <Text style={styles.emptyStateText}>No {selectedFilter.toLowerCase()} attendances today</Text>
-            </View>
-          ) : (
-            filteredAttendances.map((attendance) => (
-              <TouchableOpacity
-                key={attendance.id}
-                style={styles.attendanceCard}
-                onPress={() => handleAttendancePress(attendance)}
-                activeOpacity={0.7}
-              >
-                {/* Avatar */}
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>
-                    {attendance.name.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-
-                {/* Details */}
-                <View style={styles.detailsContainer}>
-                  {/* Check-in */}
-                  <View style={styles.timeRow}>
-                    <Text style={styles.timeLabel}>Check-in</Text>
-                    <Text style={styles.checkInTime}>{attendance.checkIn}</Text>
-                  </View>
-
-                  {/* Check-out */}
-                  <View style={styles.timeRow}>
-                    <Text style={styles.timeLabel}>Check-out</Text>
-                    <Text style={styles.checkOutTime}>{attendance.checkOut}</Text>
-                  </View>
-
-                  {/* Location */}
-                  <View style={styles.locationRow}>
-                    <MaterialCommunityIcons name="map-marker" size={16} color="#FF9800" />
-                    <Text style={styles.locationText}>{attendance.location}</Text>
-                  </View>
-                </View>
-
-                {/* Status Badge */}
-                <View
-                  style={[
-                    styles.statusBadge,
-                    {
-                      backgroundColor:
-                        selectedFilter === 'Present'
-                          ? '#4285F4'
-                          : selectedFilter === 'Late'
-                          ? '#FFB300'
-                          : '#FF5252',
-                    },
-                  ]}
+          {/* Attendance List */}
+          <View style={styles.listContainer}>
+            {filteredEmployees.length === 0 ? (
+              <View style={styles.emptyState}>
+                <MaterialCommunityIcons name="account-off-outline" size={64} color="#CCC" />
+                <Text style={styles.emptyStateText}>No {getFilterLabel(selectedFilter)} attendances today</Text>
+              </View>
+            ) : (
+              filteredEmployees.map((employee) => (
+                <TouchableOpacity
+                  key={employee.employeeId}
+                  style={styles.attendanceCard}
+                  onPress={() => handleAttendancePress(employee)}
+                  activeOpacity={0.7}
                 >
-                  <Text style={styles.statusText}>{selectedFilter}</Text>
-                </View>
-              </TouchableOpacity>
-            ))
-          )}
-        </View>
-      </ScrollView>
+                  {/* Avatar */}
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>
+                      {employee.employeeName.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+
+                  {/* Details */}
+                  <View style={styles.detailsContainer}>
+                    {/* Employee Name */}
+                    <Text style={styles.employeeName}>{employee.employeeName}</Text>
+
+                    {/* Check-in */}
+                    <View style={styles.timeRow}>
+                      <Text style={styles.timeLabel}>Check-in</Text>
+                      <Text style={styles.checkInTime}>{formatTime(employee.checkInTime)}</Text>
+                    </View>
+
+                    {/* Location */}
+                    <View style={styles.locationRow}>
+                      <MaterialCommunityIcons name="map-marker" size={16} color="#FF9800" />
+                      <Text style={styles.locationText}>
+                        {getLocationText(employee.latitude, employee.longitude)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Status Badge */}
+                  <View
+                    style={[
+                      styles.statusBadge,
+                      {
+                        backgroundColor:
+                          selectedFilter === 'Present'
+                            ? '#4285F4'
+                            : selectedFilter === 'Late'
+                            ? '#FFB300'
+                            : '#FF5252',
+                      },
+                    ]}
+                  >
+                    <Text style={styles.statusText}>{selectedFilter}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
+          </View>
+        </ScrollView>
+      )}
     </View>
   );
 };
@@ -222,6 +318,16 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#999',
   },
   scrollView: {
     flex: 1,
@@ -304,6 +410,12 @@ const styles = StyleSheet.create({
   },
   detailsContainer: {
     flex: 1,
+  },
+  employeeName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 4,
   },
   timeRow: {
     marginBottom: 6,

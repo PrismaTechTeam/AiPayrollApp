@@ -1,9 +1,9 @@
 /**
  * Create Claim Screen
- * Employee submits new claim
+ * Employee submits new claim using real API
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,66 +14,63 @@ import {
   StatusBar,
   Alert,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-
-const CLAIM_TYPES = [
-  'Business Trip',
-  'Business Conference',
-  'Client Meeting',
-  'Training Workshop',
-  'Transportation',
-  'Accommodation',
-  'Meals & Entertainment',
-  'Equipment Purchase',
-  'Other',
-];
+import claimService, { ClaimType } from '../api/services/claimService';
 
 export const CreateClaimScreen: React.FC = () => {
   const navigation = useNavigation();
 
-  const [claimType, setClaimType] = useState('');
+  const [claimTypes, setClaimTypes] = useState<ClaimType[]>([]);
+  const [selectedType, setSelectedType] = useState<ClaimType | null>(null);
   const [showTypeDropdown, setShowTypeDropdown] = useState(false);
-  const [location, setLocation] = useState('');
   const [amount, setAmount] = useState('');
-  const [startDate, setStartDate] = useState(new Date());
-  const [endDate, setEndDate] = useState(new Date());
-  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
-  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [transDate, setTransDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [receiptNo, setReceiptNo] = useState('');
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadingTypes, setLoadingTypes] = useState(true);
+
+  useEffect(() => {
+    loadClaimTypes();
+  }, []);
+
+  const loadClaimTypes = async () => {
+    try {
+      const types = await claimService.getTypes();
+      setClaimTypes(types);
+    } catch (err: any) {
+      console.error('Failed to load claim types:', err);
+      Alert.alert('Error', 'Failed to load claim types');
+    } finally {
+      setLoadingTypes(false);
+    }
+  };
 
   const formatDate = (date: Date): string => {
-    const options: Intl.DateTimeFormatOptions = {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    };
-    return date.toLocaleDateString('en-US', options);
+    return date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
   const validateForm = (): boolean => {
-    if (!claimType.trim()) {
+    if (!selectedType) {
       Alert.alert('Validation Error', 'Please select a claim type');
-      return false;
-    }
-    if (!location.trim()) {
-      Alert.alert('Validation Error', 'Please enter a location');
       return false;
     }
     if (!amount.trim() || parseFloat(amount) <= 0) {
       Alert.alert('Validation Error', 'Please enter a valid amount');
       return false;
     }
-    if (endDate < startDate) {
-      Alert.alert('Validation Error', 'End date must be after start date');
+    if (selectedType.maxAmount && parseFloat(amount) > selectedType.maxAmount) {
+      Alert.alert('Validation Error', `Amount exceeds the maximum limit of $${selectedType.maxAmount.toFixed(2)}`);
       return false;
     }
-    if (!description.trim()) {
-      Alert.alert('Validation Error', 'Please enter a description');
+    if (!description.trim() || description.trim().length < 10) {
+      Alert.alert('Validation Error', 'Please enter a description (min 10 characters)');
       return false;
     }
     return true;
@@ -83,32 +80,38 @@ export const CreateClaimScreen: React.FC = () => {
     if (!validateForm()) return;
 
     setIsSubmitting(true);
+    try {
+      await claimService.createApplication({
+        claimTypeId: selectedType!.id,
+        transDate: transDate.toISOString(),
+        amount: parseFloat(amount),
+        description: description.trim(),
+        receiptNo: receiptNo.trim() || undefined,
+      });
 
-    // Simulate API call
-    setTimeout(() => {
-      setIsSubmitting(false);
       Alert.alert(
         'Success',
         'Claim submitted successfully!',
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack(),
-          },
-        ]
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
-    }, 1500);
+    } catch (error: any) {
+      const message = error.response?.data?.message
+        || error.response?.data?.errors?.[0]
+        || 'Failed to submit claim. Please try again.';
+      Alert.alert('Error', message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleSaveDraft = () => {
-    Alert.alert('Success', 'Claim saved as draft');
+    Alert.alert('Info', 'Draft saving is not yet available');
   };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
-      {/* Header */}
+
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -129,53 +132,50 @@ export const CreateClaimScreen: React.FC = () => {
           <Text style={styles.label}>
             Claim Type <Text style={styles.required}>*</Text>
           </Text>
-          <TouchableOpacity
-            style={styles.dropdown}
-            onPress={() => setShowTypeDropdown(!showTypeDropdown)}
-          >
-            <Text style={[styles.dropdownText, !claimType && styles.placeholder]}>
-              {claimType || 'Select claim type'}
-            </Text>
-            <MaterialCommunityIcons
-              name={showTypeDropdown ? 'chevron-up' : 'chevron-down'}
-              size={24}
-              color="#666"
-            />
-          </TouchableOpacity>
+          {loadingTypes ? (
+            <ActivityIndicator size="small" color="#4285F4" style={{ padding: 16 }} />
+          ) : (
+            <>
+              <TouchableOpacity
+                style={styles.dropdown}
+                onPress={() => setShowTypeDropdown(!showTypeDropdown)}
+              >
+                <Text style={[styles.dropdownText, !selectedType && styles.placeholder]}>
+                  {selectedType?.name || 'Select claim type'}
+                </Text>
+                <MaterialCommunityIcons
+                  name={showTypeDropdown ? 'chevron-up' : 'chevron-down'}
+                  size={24}
+                  color="#666"
+                />
+              </TouchableOpacity>
 
-          {showTypeDropdown && (
-            <View style={styles.dropdownMenu}>
-              {CLAIM_TYPES.map((type) => (
-                <TouchableOpacity
-                  key={type}
-                  style={styles.dropdownItem}
-                  onPress={() => {
-                    setClaimType(type);
-                    setShowTypeDropdown(false);
-                  }}
-                >
-                  <Text style={styles.dropdownItemText}>{type}</Text>
-                  {claimType === type && (
-                    <MaterialCommunityIcons name="check" size={20} color="#4285F4" />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
+              {showTypeDropdown && (
+                <View style={styles.dropdownMenu}>
+                  {claimTypes.map((type) => (
+                    <TouchableOpacity
+                      key={type.id}
+                      style={styles.dropdownItem}
+                      onPress={() => {
+                        setSelectedType(type);
+                        setShowTypeDropdown(false);
+                      }}
+                    >
+                      <View>
+                        <Text style={styles.dropdownItemText}>{type.name}</Text>
+                        {type.maxAmount && (
+                          <Text style={styles.dropdownItemHint}>Max: ${type.maxAmount.toFixed(2)}</Text>
+                        )}
+                      </View>
+                      {selectedType?.id === type.id && (
+                        <MaterialCommunityIcons name="check" size={20} color="#4285F4" />
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </>
           )}
-        </View>
-
-        {/* Location */}
-        <View style={styles.section}>
-          <Text style={styles.label}>
-            Location <Text style={styles.required}>*</Text>
-          </Text>
-          <TextInput
-            style={styles.input}
-            value={location}
-            onChangeText={setLocation}
-            placeholder="Enter location or address"
-            placeholderTextColor="#999"
-          />
         </View>
 
         {/* Amount */}
@@ -196,63 +196,43 @@ export const CreateClaimScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Date Range */}
-        <View style={styles.dateContainer}>
-          <View style={styles.dateField}>
-            <Text style={styles.label}>
-              Start Date <Text style={styles.required}>*</Text>
-            </Text>
-            <TouchableOpacity
-              style={styles.dateButton}
-              onPress={() => setShowStartDatePicker(true)}
-            >
-              <MaterialCommunityIcons name="calendar" size={20} color="#4285F4" />
-              <Text style={styles.dateText}>{formatDate(startDate)}</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.dateField}>
-            <Text style={styles.label}>
-              End Date <Text style={styles.required}>*</Text>
-            </Text>
-            <TouchableOpacity
-              style={styles.dateButton}
-              onPress={() => setShowEndDatePicker(true)}
-            >
-              <MaterialCommunityIcons name="calendar" size={20} color="#4285F4" />
-              <Text style={styles.dateText}>{formatDate(endDate)}</Text>
-            </TouchableOpacity>
-          </View>
+        {/* Transaction Date */}
+        <View style={styles.section}>
+          <Text style={styles.label}>
+            Transaction Date <Text style={styles.required}>*</Text>
+          </Text>
+          <TouchableOpacity
+            style={styles.dateButton}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <MaterialCommunityIcons name="calendar" size={20} color="#4285F4" />
+            <Text style={styles.dateText}>{formatDate(transDate)}</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Date Pickers */}
-        {showStartDatePicker && (
+        {showDatePicker && (
           <DateTimePicker
-            value={startDate}
+            value={transDate}
             mode="date"
             display={Platform.OS === 'ios' ? 'spinner' : 'default'}
             onChange={(event, selectedDate) => {
-              setShowStartDatePicker(Platform.OS === 'ios');
-              if (selectedDate) {
-                setStartDate(selectedDate);
-              }
+              setShowDatePicker(Platform.OS === 'ios');
+              if (selectedDate) setTransDate(selectedDate);
             }}
           />
         )}
 
-        {showEndDatePicker && (
-          <DateTimePicker
-            value={endDate}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={(event, selectedDate) => {
-              setShowEndDatePicker(Platform.OS === 'ios');
-              if (selectedDate) {
-                setEndDate(selectedDate);
-              }
-            }}
+        {/* Receipt Number */}
+        <View style={styles.section}>
+          <Text style={styles.label}>Receipt Number</Text>
+          <TextInput
+            style={styles.input}
+            value={receiptNo}
+            onChangeText={setReceiptNo}
+            placeholder="Enter receipt number (optional)"
+            placeholderTextColor="#999"
           />
-        )}
+        </View>
 
         {/* Description */}
         <View style={styles.section}>
@@ -279,7 +259,7 @@ export const CreateClaimScreen: React.FC = () => {
             <MaterialCommunityIcons name="camera-outline" size={24} color="#4285F4" />
             <Text style={styles.uploadButtonText}>Upload Receipt</Text>
           </TouchableOpacity>
-          <Text style={styles.hint}>Add photos or scanned copies of receipts</Text>
+          <Text style={styles.hint}>File upload will be available in a future update</Text>
         </View>
 
         {/* Buttons */}
@@ -315,205 +295,43 @@ export const CreateClaimScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  safeAreaTop: {
-    backgroundColor: '#FFFFFF',
-  },
+  container: { flex: 1, backgroundColor: '#F5F5F5' },
+  safeAreaTop: { backgroundColor: '#FFFFFF' },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1, borderBottomColor: '#F0F0F0',
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#000',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  label: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#000',
-    marginBottom: 8,
-  },
-  required: {
-    color: '#EA4335',
-  },
-  input: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 15,
-    color: '#000',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  textArea: {
-    height: 100,
-    paddingTop: 16,
-  },
-  dropdown: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  dropdownText: {
-    fontSize: 15,
-    color: '#000',
-  },
-  placeholder: {
-    color: '#999',
-  },
-  dropdownMenu: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    maxHeight: 300,
-  },
-  dropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  dropdownItemText: {
-    fontSize: 15,
-    color: '#000',
-  },
-  amountInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  currencySymbol: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#000',
-    marginRight: 8,
-  },
-  amountInput: {
-    flex: 1,
-    fontSize: 15,
-    color: '#000',
-    paddingVertical: 16,
-  },
-  dateContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 24,
-  },
-  dateField: {
-    flex: 1,
-  },
-  dateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  dateText: {
-    fontSize: 15,
-    color: '#000',
-    flex: 1,
-  },
-  hint: {
-    fontSize: 13,
-    color: '#999',
-    marginTop: 6,
-  },
-  uploadButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#E8F0FE',
-    borderRadius: 12,
-    padding: 16,
-    gap: 12,
-    borderWidth: 2,
-    borderColor: '#4285F4',
-    borderStyle: 'dashed',
-  },
-  uploadButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#4285F4',
-  },
-  buttonContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
-  },
-  draftButton: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#4285F4',
-  },
-  draftButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#4285F4',
-  },
-  submitButton: {
-    flex: 1,
-    backgroundColor: '#4285F4',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
-  },
-  submitButtonDisabled: {
-    opacity: 0.6,
-  },
-  submitButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
+  backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: '#000' },
+  scrollView: { flex: 1 },
+  scrollContent: { padding: 20 },
+  section: { marginBottom: 24 },
+  label: { fontSize: 15, fontWeight: '600', color: '#000', marginBottom: 8 },
+  required: { color: '#EA4335' },
+  input: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, fontSize: 15, color: '#000', borderWidth: 1, borderColor: '#E0E0E0' },
+  textArea: { height: 100, paddingTop: 16 },
+  dropdown: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#E0E0E0' },
+  dropdownText: { fontSize: 15, color: '#000' },
+  placeholder: { color: '#999' },
+  dropdownMenu: { backgroundColor: '#FFFFFF', borderRadius: 12, marginTop: 8, borderWidth: 1, borderColor: '#E0E0E0', maxHeight: 300 },
+  dropdownItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
+  dropdownItemText: { fontSize: 15, color: '#000' },
+  dropdownItemHint: { fontSize: 12, color: '#999', marginTop: 2 },
+  amountInputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 12, paddingHorizontal: 16, borderWidth: 1, borderColor: '#E0E0E0' },
+  currencySymbol: { fontSize: 18, fontWeight: '600', color: '#000', marginRight: 8 },
+  amountInput: { flex: 1, fontSize: 15, color: '#000', paddingVertical: 16 },
+  dateButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, gap: 12, borderWidth: 1, borderColor: '#E0E0E0' },
+  dateText: { fontSize: 15, color: '#000', flex: 1 },
+  hint: { fontSize: 13, color: '#999', marginTop: 6 },
+  uploadButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#E8F0FE', borderRadius: 12, padding: 16, gap: 12, borderWidth: 2, borderColor: '#4285F4', borderStyle: 'dashed' },
+  uploadButtonText: { fontSize: 15, fontWeight: '600', color: '#4285F4' },
+  buttonContainer: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  draftButton: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: '#4285F4' },
+  draftButtonText: { fontSize: 16, fontWeight: '600', color: '#4285F4' },
+  submitButton: { flex: 1, backgroundColor: '#4285F4', borderRadius: 12, padding: 16, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
+  submitButtonDisabled: { opacity: 0.6 },
+  submitButtonText: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
 });
 
 export default CreateClaimScreen;

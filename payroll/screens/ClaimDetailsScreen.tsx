@@ -1,6 +1,6 @@
 /**
  * Claim Details Screen
- * View detailed information about a claim
+ * View detailed information about a claim (uses real data from API)
  */
 
 import React from 'react';
@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { Claim } from '../components/claims';
+import { STATUS_COLORS, STATUS_LABELS, STATUSES } from '../constants/statuses';
 
 export const ClaimDetailsScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -31,28 +32,44 @@ export const ClaimDetailsScreen: React.FC = () => {
     );
   }
 
-  const getStatusColor = (status: string): string => {
+  const statusColors = STATUS_COLORS[claim.status as keyof typeof STATUS_COLORS];
+  const statusLabel = STATUS_LABELS[claim.status as keyof typeof STATUS_LABELS] || claim.status;
+
+  const getStatusIcon = (status: string): string => {
     switch (status) {
-      case 'Not Submitted':
-        return '#999';
-      case 'Reviewing':
-        return '#4285F4';
-      case 'Approved':
-        return '#34A853';
-      case 'Rejected':
-        return '#EA4335';
-      case 'Paid':
-        return '#FBBC04';
-      default:
-        return '#999';
+      case STATUSES.APPROVED: return 'check-circle';
+      case STATUSES.REJECTED: return 'close-circle';
+      case STATUSES.CANCELLED: return 'cancel';
+      case STATUSES.DRAFT: return 'pencil-outline';
+      default: return 'clock-outline';
     }
   };
 
+  const getStatusBannerColor = (status: string): string => {
+    switch (status) {
+      case STATUSES.DRAFT: return '#999';
+      case STATUSES.PENDING: return '#4285F4';
+      case STATUSES.APPROVED: return '#34A853';
+      case STATUSES.REJECTED: return '#EA4335';
+      case STATUSES.CANCELLED: return '#546E7A';
+      default: return '#999';
+    }
+  };
+
+  const formatDate = (dateStr?: string | null) => {
+    if (!dateStr) return '';
+    try {
+      return new Date(dateStr).toLocaleDateString('en-US', {
+        day: 'numeric', month: 'short', year: 'numeric',
+      });
+    } catch { return dateStr; }
+  };
+
   const handleEdit = () => {
-    if (claim.status === 'Not Submitted') {
+    if (claim.status === STATUSES.DRAFT) {
       Alert.alert('Edit Claim', 'Edit functionality coming soon');
     } else {
-      Alert.alert('Cannot Edit', 'You can only edit claims that have not been submitted');
+      Alert.alert('Cannot Edit', 'You can only edit draft claims');
     }
   };
 
@@ -67,7 +84,7 @@ export const ClaimDetailsScreen: React.FC = () => {
           style: 'destructive',
           onPress: () => {
             navigation.goBack();
-            Alert.alert('Success', 'Claim deleted successfully');
+            Alert.alert('Info', 'Claim deletion coming soon');
           },
         },
       ]
@@ -81,8 +98,7 @@ export const ClaimDetailsScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
-      {/* Header */}
+
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -101,21 +117,9 @@ export const ClaimDetailsScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
       >
         {/* Status Banner */}
-        <View style={[styles.statusBanner, { backgroundColor: getStatusColor(claim.status) }]}>
-          <MaterialCommunityIcons
-            name={
-              claim.status === 'Approved'
-                ? 'check-circle'
-                : claim.status === 'Rejected'
-                ? 'close-circle'
-                : claim.status === 'Paid'
-                ? 'cash-check'
-                : 'clock-outline'
-            }
-            size={24}
-            color="#FFFFFF"
-          />
-          <Text style={styles.statusBannerText}>{claim.status}</Text>
+        <View style={[styles.statusBanner, { backgroundColor: getStatusBannerColor(claim.status) }]}>
+          <MaterialCommunityIcons name={getStatusIcon(claim.status) as any} size={24} color="#FFFFFF" />
+          <Text style={styles.statusBannerText}>{statusLabel}</Text>
         </View>
 
         {/* Claim Type & Amount */}
@@ -130,69 +134,48 @@ export const ClaimDetailsScreen: React.FC = () => {
 
           <View style={styles.detailRow}>
             <View style={styles.iconLabel}>
-              <MaterialCommunityIcons name="map-marker" size={20} color="#666" />
-              <Text style={styles.detailLabel}>Location</Text>
+              <MaterialCommunityIcons name="calendar" size={20} color="#666" />
+              <Text style={styles.detailLabel}>Transaction Date</Text>
             </View>
-            <Text style={styles.detailValue}>{claim.location}</Text>
+            <Text style={styles.detailValue}>{formatDate(claim.transDate)}</Text>
           </View>
 
           <View style={styles.divider} />
 
-          <View style={styles.detailRow}>
-            <View style={styles.iconLabel}>
-              <MaterialCommunityIcons name="calendar-start" size={20} color="#666" />
-              <Text style={styles.detailLabel}>Start Date</Text>
-            </View>
-            <Text style={styles.detailValue}>{claim.startDate}</Text>
-          </View>
-
-          <View style={styles.divider} />
-
-          <View style={styles.detailRow}>
-            <View style={styles.iconLabel}>
-              <MaterialCommunityIcons name="calendar-end" size={20} color="#666" />
-              <Text style={styles.detailLabel}>End Date</Text>
-            </View>
-            <Text style={styles.detailValue}>{claim.endDate}</Text>
-          </View>
-
-          {claim.submittedDate && (
+          {claim.receiptNo && (
             <>
+              <View style={styles.detailRow}>
+                <View style={styles.iconLabel}>
+                  <MaterialCommunityIcons name="receipt" size={20} color="#666" />
+                  <Text style={styles.detailLabel}>Receipt No</Text>
+                </View>
+                <Text style={styles.detailValue}>{claim.receiptNo}</Text>
+              </View>
               <View style={styles.divider} />
+            </>
+          )}
+
+          {claim.createdAt && (
+            <>
               <View style={styles.detailRow}>
                 <View style={styles.iconLabel}>
                   <MaterialCommunityIcons name="calendar-check" size={20} color="#666" />
                   <Text style={styles.detailLabel}>Submitted Date</Text>
                 </View>
-                <Text style={styles.detailValue}>{claim.submittedDate}</Text>
+                <Text style={styles.detailValue}>{formatDate(claim.createdAt)}</Text>
               </View>
+              <View style={styles.divider} />
             </>
           )}
 
-          {claim.reviewedDate && (
-            <>
-              <View style={styles.divider} />
-              <View style={styles.detailRow}>
-                <View style={styles.iconLabel}>
-                  <MaterialCommunityIcons name="account-check" size={20} color="#666" />
-                  <Text style={styles.detailLabel}>Reviewed Date</Text>
-                </View>
-                <Text style={styles.detailValue}>{claim.reviewedDate}</Text>
+          {claim.approvedAt && (
+            <View style={styles.detailRow}>
+              <View style={styles.iconLabel}>
+                <MaterialCommunityIcons name="account-check" size={20} color="#666" />
+                <Text style={styles.detailLabel}>Reviewed Date</Text>
               </View>
-            </>
-          )}
-
-          {claim.reviewedBy && (
-            <>
-              <View style={styles.divider} />
-              <View style={styles.detailRow}>
-                <View style={styles.iconLabel}>
-                  <MaterialCommunityIcons name="account-tie" size={20} color="#666" />
-                  <Text style={styles.detailLabel}>Reviewed By</Text>
-                </View>
-                <Text style={styles.detailValue}>{claim.reviewedBy}</Text>
-              </View>
-            </>
+              <Text style={styles.detailValue}>{formatDate(claim.approvedAt)}</Text>
+            </View>
           )}
         </View>
 
@@ -205,7 +188,7 @@ export const ClaimDetailsScreen: React.FC = () => {
         )}
 
         {/* Rejection Reason */}
-        {claim.status === 'Rejected' && claim.rejectionReason && (
+        {claim.status === STATUSES.REJECTED && claim.rejectionReason && (
           <View style={[styles.card, styles.rejectionCard]}>
             <View style={styles.rejectionHeader}>
               <MaterialCommunityIcons name="alert-circle" size={24} color="#EA4335" />
@@ -215,23 +198,15 @@ export const ClaimDetailsScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Receipts */}
+        {/* Attachment */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Receipts</Text>
-          {claim.receipts && claim.receipts.length > 0 ? (
-            <View style={styles.receiptsList}>
-              {claim.receipts.map((receipt, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={styles.receiptItem}
-                  onPress={handleDownloadReceipt}
-                >
-                  <MaterialCommunityIcons name="file-document" size={24} color="#4285F4" />
-                  <Text style={styles.receiptName}>Receipt {index + 1}</Text>
-                  <MaterialCommunityIcons name="download" size={20} color="#666" />
-                </TouchableOpacity>
-              ))}
-            </View>
+          {claim.attachmentFileName ? (
+            <TouchableOpacity style={styles.receiptItem} onPress={handleDownloadReceipt}>
+              <MaterialCommunityIcons name="file-document" size={24} color="#4285F4" />
+              <Text style={styles.receiptName}>{claim.attachmentFileName}</Text>
+              <MaterialCommunityIcons name="download" size={20} color="#666" />
+            </TouchableOpacity>
           ) : (
             <View style={styles.emptyReceipts}>
               <MaterialCommunityIcons name="file-document-outline" size={48} color="#CCC" />
@@ -241,7 +216,7 @@ export const ClaimDetailsScreen: React.FC = () => {
         </View>
 
         {/* Action Buttons */}
-        {claim.status === 'Not Submitted' && (
+        {claim.status === STATUSES.DRAFT && (
           <View style={styles.actionButtons}>
             <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
               <MaterialCommunityIcons name="pencil" size={20} color="#4285F4" />
@@ -257,177 +232,48 @@ export const ClaimDetailsScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  safeAreaTop: {
-    backgroundColor: '#FFFFFF',
-  },
+  container: { flex: 1, backgroundColor: '#F5F5F5' },
+  safeAreaTop: { backgroundColor: '#FFFFFF' },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1, borderBottomColor: '#F0F0F0',
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#000',
-  },
-  deleteButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-  },
+  backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: '#000' },
+  deleteButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  scrollView: { flex: 1 },
+  scrollContent: { padding: 20 },
   statusBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 20,
-    gap: 12,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    padding: 16, borderRadius: 12, marginBottom: 20, gap: 12,
   },
-  statusBannerText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 16,
-  },
-  claimType: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#000',
-    marginBottom: 8,
-  },
-  amount: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#EA4335',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#000',
-    marginBottom: 16,
-  },
-  detailRow: {
-    paddingVertical: 12,
-  },
-  iconLabel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-    gap: 8,
-  },
-  detailLabel: {
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
-  },
-  detailValue: {
-    fontSize: 15,
-    color: '#000',
-    fontWeight: '600',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#F0F0F0',
-  },
-  description: {
-    fontSize: 15,
-    lineHeight: 24,
-    color: '#333',
-  },
-  rejectionCard: {
-    backgroundColor: '#FFEBEE',
-    borderWidth: 1,
-    borderColor: '#EA4335',
-  },
-  rejectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 12,
-  },
-  rejectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#EA4335',
-  },
-  rejectionReason: {
-    fontSize: 15,
-    lineHeight: 24,
-    color: '#333',
-  },
-  receiptsList: {
-    gap: 12,
-  },
-  receiptItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    backgroundColor: '#F9F9F9',
-    borderRadius: 8,
-    gap: 12,
-  },
-  receiptName: {
-    flex: 1,
-    fontSize: 15,
-    color: '#000',
-    fontWeight: '500',
-  },
-  emptyReceipts: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  emptyReceiptsText: {
-    fontSize: 14,
-    color: '#999',
-    marginTop: 12,
-  },
-  actionButtons: {
-    marginBottom: 16,
-  },
+  statusBannerText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+  card: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 20, marginBottom: 16 },
+  claimType: { fontSize: 24, fontWeight: '700', color: '#000', marginBottom: 8 },
+  amount: { fontSize: 32, fontWeight: '700', color: '#EA4335' },
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#000', marginBottom: 16 },
+  detailRow: { paddingVertical: 12 },
+  iconLabel: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 8 },
+  detailLabel: { fontSize: 14, color: '#666', fontWeight: '500' },
+  detailValue: { fontSize: 15, color: '#000', fontWeight: '600' },
+  divider: { height: 1, backgroundColor: '#F0F0F0' },
+  description: { fontSize: 15, lineHeight: 24, color: '#333' },
+  rejectionCard: { backgroundColor: '#FFEBEE', borderWidth: 1, borderColor: '#EA4335' },
+  rejectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
+  rejectionTitle: { fontSize: 18, fontWeight: '700', color: '#EA4335' },
+  rejectionReason: { fontSize: 15, lineHeight: 24, color: '#333' },
+  receiptItem: { flexDirection: 'row', alignItems: 'center', padding: 12, backgroundColor: '#F9F9F9', borderRadius: 8, gap: 12 },
+  receiptName: { flex: 1, fontSize: 15, color: '#000', fontWeight: '500' },
+  emptyReceipts: { alignItems: 'center', paddingVertical: 40 },
+  emptyReceiptsText: { fontSize: 14, color: '#999', marginTop: 12 },
+  actionButtons: { marginBottom: 16 },
   editButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    gap: 8,
-    borderWidth: 2,
-    borderColor: '#4285F4',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, gap: 8,
+    borderWidth: 2, borderColor: '#4285F4',
   },
-  editButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#4285F4',
-  },
+  editButtonText: { fontSize: 16, fontWeight: '600', color: '#4285F4' },
 });
 
 export default ClaimDetailsScreen;

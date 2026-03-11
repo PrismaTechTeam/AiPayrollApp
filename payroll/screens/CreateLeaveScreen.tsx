@@ -3,7 +3,7 @@
  * Form for employees to submit new leave applications
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,31 +14,66 @@ import {
   StatusBar,
   Alert,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import leaveService, { LeaveBalanceItem, LeaveBalance } from '../api/services/leaveService';
 
-const LEAVE_TYPES = [
-  'Annual Leave',
-  'Sick Leave',
-  'Casual Leave',
-  'Maternity Leave',
-  'Paternity Leave',
-  'Unpaid Leave',
-];
+interface LeaveTypeOption {
+  id: string;
+  code: string;
+  description: string;
+  color: string | null;
+  allowHalfDay: boolean;
+}
 
 export const CreateLeaveScreen: React.FC = () => {
   const navigation = useNavigation();
-  const [leaveType, setLeaveType] = useState('');
+  const [leaveTypes, setLeaveTypes] = useState<LeaveTypeOption[]>([]);
+  const [selectedType, setSelectedType] = useState<LeaveTypeOption | null>(null);
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
+  const [isHalfDayStart, setIsHalfDayStart] = useState(false);
+  const [isHalfDayEnd, setIsHalfDayEnd] = useState(false);
   const [additionalNote, setAdditionalNote] = useState('');
   const [showLeaveTypePicker, setShowLeaveTypePicker] = useState(false);
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadingTypes, setLoadingTypes] = useState(true);
+  const [balances, setBalances] = useState<LeaveBalanceItem[]>([]);
+
+  useEffect(() => {
+    loadLeaveData();
+  }, []);
+
+  const loadLeaveData = async () => {
+    try {
+      setLoadingTypes(true);
+      // Load balance which contains leave type info
+      const balanceData = await leaveService.getBalance();
+      if (balanceData.length > 0) {
+        const items = balanceData[0].balances || [];
+        setBalances(items);
+        const types: LeaveTypeOption[] = items.map(b => ({
+          id: b.leaveTypeId,
+          code: b.leaveTypeCode,
+          description: b.leaveTypeDescription,
+          color: b.color,
+          allowHalfDay: true,
+        }));
+        setLeaveTypes(types);
+      }
+    } catch (err: any) {
+      console.error('Failed to load leave types:', err);
+      Alert.alert('Error', 'Failed to load leave types. Please try again.');
+    } finally {
+      setLoadingTypes(false);
+    }
+  };
 
   const formatDate = (date: Date | null): string => {
     if (!date) return '';
@@ -48,11 +83,14 @@ export const CreateLeaveScreen: React.FC = () => {
     return `${day}/${month}/${year}`;
   };
 
+  const toDateOnly = (date: Date): string => {
+    return date.toISOString().split('T')[0];
+  };
+
   const handleStartDateChange = (event: any, selectedDate?: Date) => {
     setShowStartDatePicker(Platform.OS === 'ios');
     if (selectedDate) {
       setStartDate(selectedDate);
-      // If end date is before start date, reset it
       if (endDate && selectedDate > endDate) {
         setEndDate(null);
       }
@@ -67,7 +105,7 @@ export const CreateLeaveScreen: React.FC = () => {
   };
 
   const validateForm = (): boolean => {
-    if (!leaveType) {
+    if (!selectedType) {
       Alert.alert('Validation Error', 'Please select a leave type');
       return false;
     }
@@ -90,7 +128,15 @@ export const CreateLeaveScreen: React.FC = () => {
     if (!startDate || !endDate) return 0;
     const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-    return diffDays;
+    let days = diffDays;
+    if (isHalfDayStart) days -= 0.5;
+    if (isHalfDayEnd && startDate.getTime() !== endDate.getTime()) days -= 0.5;
+    return days;
+  };
+
+  const getBalanceForType = (): LeaveBalanceItem | undefined => {
+    if (!selectedType) return undefined;
+    return balances.find(b => b.leaveTypeId === selectedType.id);
   };
 
   const handleSubmit = async () => {
@@ -98,44 +144,36 @@ export const CreateLeaveScreen: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      // TODO: Replace with actual API call
-      const leaveRequest = {
-        leaveType,
-        startDate: startDate?.toISOString(),
-        endDate: endDate?.toISOString(),
-        additionalNote,
-        days: calculateLeaveDays(),
-        status: 'requested',
-        submittedAt: new Date().toISOString(),
-      };
-
-      console.log('Submitting leave request:', leaveRequest);
-
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await leaveService.createApplication({
+        leaveTypeId: selectedType!.id,
+        startDate: toDateOnly(startDate!),
+        endDate: toDateOnly(endDate!),
+        isHalfDayStart,
+        isHalfDayEnd,
+        reason: additionalNote,
+      });
 
       Alert.alert(
         'Success',
         'Your leave request has been submitted successfully!',
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack(),
-          },
-        ]
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
-    } catch (error) {
-      Alert.alert('Error', 'Failed to submit leave request. Please try again.');
+    } catch (error: any) {
+      const message = error.response?.data?.message
+        || error.response?.data?.errors?.[0]
+        || 'Failed to submit leave request. Please try again.';
+      Alert.alert('Error', message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const balance = getBalanceForType();
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      {/* Header */}
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -146,7 +184,6 @@ export const CreateLeaveScreen: React.FC = () => {
         </View>
       </SafeAreaView>
 
-      {/* Form Content */}
       <ScrollView
         style={styles.content}
         contentContainerStyle={styles.scrollContent}
@@ -155,37 +192,58 @@ export const CreateLeaveScreen: React.FC = () => {
         {/* Leave Type Dropdown */}
         <View style={styles.fieldContainer}>
           <Text style={styles.label}>Leave Type</Text>
-          <TouchableOpacity
-            style={styles.dropdown}
-            onPress={() => setShowLeaveTypePicker(!showLeaveTypePicker)}
-          >
-            <Text style={[styles.dropdownText, !leaveType && styles.placeholder]}>
-              {leaveType || 'Select Leave Type'}
-            </Text>
-            <MaterialCommunityIcons name="chevron-down" size={24} color="#666" />
-          </TouchableOpacity>
+          {loadingTypes ? (
+            <ActivityIndicator size="small" color="#4285F4" style={{ padding: 16 }} />
+          ) : (
+            <>
+              <TouchableOpacity
+                style={styles.dropdown}
+                onPress={() => setShowLeaveTypePicker(!showLeaveTypePicker)}
+              >
+                <Text style={[styles.dropdownText, !selectedType && styles.placeholder]}>
+                  {selectedType?.description || 'Select Leave Type'}
+                </Text>
+                <MaterialCommunityIcons name="chevron-down" size={24} color="#666" />
+              </TouchableOpacity>
 
-          {/* Leave Type Picker */}
-          {showLeaveTypePicker && (
-            <View style={styles.pickerContainer}>
-              {LEAVE_TYPES.map((type) => (
-                <TouchableOpacity
-                  key={type}
-                  style={styles.pickerItem}
-                  onPress={() => {
-                    setLeaveType(type);
-                    setShowLeaveTypePicker(false);
-                  }}
-                >
-                  <Text style={styles.pickerItemText}>{type}</Text>
-                  {leaveType === type && (
-                    <MaterialCommunityIcons name="check" size={20} color="#4285F4" />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
+              {showLeaveTypePicker && (
+                <View style={styles.pickerContainer}>
+                  {leaveTypes.map((type) => (
+                    <TouchableOpacity
+                      key={type.id}
+                      style={styles.pickerItem}
+                      onPress={() => {
+                        setSelectedType(type);
+                        setShowLeaveTypePicker(false);
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        {type.color && (
+                          <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: type.color }} />
+                        )}
+                        <Text style={styles.pickerItemText}>{type.description}</Text>
+                      </View>
+                      {selectedType?.id === type.id && (
+                        <MaterialCommunityIcons name="check" size={20} color="#4285F4" />
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </>
           )}
         </View>
+
+        {/* Balance Info */}
+        {balance && (
+          <View style={styles.summaryCard}>
+            <MaterialCommunityIcons name="information" size={20} color="#4285F4" />
+            <Text style={styles.summaryText}>
+              Balance: <Text style={styles.summaryDays}>{balance.balance}</Text> days
+              {' '}(Entitled: {balance.entitlement}, Used: {balance.used}, Pending: {balance.pending})
+            </Text>
+          </View>
+        )}
 
         {/* Start Date */}
         <View style={styles.fieldContainer}>
@@ -199,6 +257,19 @@ export const CreateLeaveScreen: React.FC = () => {
             </Text>
             <MaterialCommunityIcons name="calendar" size={24} color="#4285F4" />
           </TouchableOpacity>
+          {selectedType?.allowHalfDay && startDate && (
+            <TouchableOpacity
+              style={styles.halfDayToggle}
+              onPress={() => setIsHalfDayStart(!isHalfDayStart)}
+            >
+              <MaterialCommunityIcons
+                name={isHalfDayStart ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                size={20}
+                color="#4285F4"
+              />
+              <Text style={styles.halfDayText}>Half day</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* End Date */}
@@ -213,6 +284,19 @@ export const CreateLeaveScreen: React.FC = () => {
             </Text>
             <MaterialCommunityIcons name="calendar" size={24} color="#4285F4" />
           </TouchableOpacity>
+          {selectedType?.allowHalfDay && endDate && startDate && startDate.getTime() !== endDate.getTime() && (
+            <TouchableOpacity
+              style={styles.halfDayToggle}
+              onPress={() => setIsHalfDayEnd(!isHalfDayEnd)}
+            >
+              <MaterialCommunityIcons
+                name={isHalfDayEnd ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                size={20}
+                color="#4285F4"
+              />
+              <Text style={styles.halfDayText}>Half day</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Leave Days Summary */}
@@ -227,10 +311,10 @@ export const CreateLeaveScreen: React.FC = () => {
 
         {/* Additional Note */}
         <View style={styles.fieldContainer}>
-          <Text style={styles.label}>Additional Note</Text>
+          <Text style={styles.label}>Reason / Additional Note</Text>
           <TextInput
             style={styles.textArea}
-            placeholder="Enter any additional information..."
+            placeholder="Enter reason for leave..."
             placeholderTextColor="#999"
             multiline
             numberOfLines={4}
@@ -366,6 +450,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#000',
   },
+  halfDayToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 6,
+  },
+  halfDayText: {
+    fontSize: 14,
+    color: '#666',
+  },
   summaryCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -378,6 +472,7 @@ const styles = StyleSheet.create({
   summaryText: {
     fontSize: 14,
     color: '#666',
+    flex: 1,
   },
   summaryDays: {
     fontWeight: '700',

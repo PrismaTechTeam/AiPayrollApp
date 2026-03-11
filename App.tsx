@@ -1,23 +1,30 @@
-// ============================================================================
-// CRITICAL DEBUG: This MUST run first - before any imports
-// ============================================================================
-console.log('🔥🔥🔥 APP.TSX FILE LOADED 🔥🔥🔥');
-console.log('🔥🔥🔥 APP.TSX FILE LOADED 🔥🔥🔥');
-console.log('🔥🔥🔥 APP.TSX FILE LOADED 🔥🔥🔥');
-console.log('Time:', new Date().toISOString());
-
-import React, { useEffect } from 'react';
-import { View, Text } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, ActivityIndicator, Linking } from 'react-native';
 import Constants from 'expo-constants';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { PayrollAuthProvider } from './payroll/context/PayrollAuthContext';
+import { PayrollAuthProvider, usePayrollAuth } from './payroll/context/PayrollAuthContext';
 import { ThemeProvider } from './payroll/context/ThemeContext';
 import { LanguageProvider } from './payroll/context/LanguageContext';
+import {
+  addNotificationReceivedListener,
+  addNotificationResponseReceivedListener,
+  parseNotificationData,
+} from './payroll/services/pushNotificationHandler';
 
-console.log('✅ [App.tsx] Basic imports done');
+// Auth screens
+import LoginScreen from './payroll/screens/LoginScreen';
+import { RegisterScreen } from './payroll/screens/RegisterScreen';
+import { EmailVerificationScreen } from './payroll/screens/EmailVerificationScreen';
+import ForgotPasswordScreen from './payroll/screens/ForgotPasswordScreen';
 
+// Join tenant flow screens
+import { UserHomeScreen } from './payroll/screens/UserHomeScreen';
+import { JoinTenantScreen } from './payroll/screens/JoinTenantScreen';
+import { JoinRequestPendingScreen } from './payroll/screens/JoinRequestPendingScreen';
+
+// Main app screens
 import { PayrollHomeScreen } from './payroll/screens/PayrollHomeScreen';
 import { RequestsScreen } from './payroll/screens/RequestsScreen';
 import { RequestDetailsScreen } from './payroll/screens/RequestDetailsScreen';
@@ -34,7 +41,6 @@ import { TodaysAttendanceScreen } from './payroll/screens/TodaysAttendanceScreen
 import AttendanceCheckInScreen from './payroll/screens/AttendanceCheckInScreen';
 import EmployeeListScreen from './payroll/screens/EmployeeListScreen';
 import EmployeeMapScreen from './payroll/screens/EmployeeMapScreen';
-import LoginScreen from './payroll/screens/LoginScreen';
 import ProfileScreen from './payroll/screens/ProfileScreen';
 import { SettingsScreen } from './payroll/screens/SettingsScreen';
 import { HelpScreen } from './payroll/screens/HelpScreen';
@@ -50,35 +56,59 @@ import { CreateClaimScreen } from './payroll/screens/CreateClaimScreen';
 import { ClaimDetailsScreen } from './payroll/screens/ClaimDetailsScreen';
 import { ClaimsApprovalScreen } from './payroll/screens/ClaimsApprovalScreen';
 import { SearchScreen } from './payroll/screens/SearchScreen';
-import { usePayrollAuth } from './payroll/context/PayrollAuthContext';
-
-console.log('✅ [App.tsx] PayrollHomeScreen imported:', !!PayrollHomeScreen);
-console.log('✅ [App.tsx] RequestsScreen imported:', !!RequestsScreen);
-console.log('✅ [App.tsx] RequestDetailsScreen imported:', !!RequestDetailsScreen);
-console.log('✅ [App.tsx] LeavesScreen imported:', !!LeavesScreen);
-console.log('✅ [App.tsx] LeaveDetailsScreen imported:', !!LeaveDetailsScreen);
-console.log('✅ [App.tsx] PayslipScreen imported:', !!PayslipScreen);
-console.log('✅ [App.tsx] PayslipDetailsScreen imported:', !!PayslipDetailsScreen);
-console.log('✅ [App.tsx] AttendanceScreen imported:', !!AttendanceScreen);
-console.log('✅ [App.tsx] AttendanceScreen type:', typeof AttendanceScreen);
-console.log('✅ [App.tsx] AttendanceDetailsScreen imported:', !!AttendanceDetailsScreen);
-console.log('✅ [App.tsx] AttendanceDetailsScreen type:', typeof AttendanceDetailsScreen);
-console.log('✅ [App.tsx] LoginScreen imported:', !!LoginScreen);
-console.log('✅ [App.tsx] ProfileScreen imported:', !!ProfileScreen);
 
 const Stack = createNativeStackNavigator();
 
+// Deep linking configuration
+const linking = {
+  prefixes: ['payrollapp://'],
+  config: {
+    screens: {
+      EmailVerification: 'verify-email',
+      PayrollHome: 'home',
+    },
+  },
+};
+
 /**
  * Auth Wrapper Component
- * Handles conditional rendering based on auth state
+ * Routes users based on auth status:
+ * - unauthenticated → Login/Register
+ * - no_company → NoCompany/JoinCompany flow
+ * - pending_approval → JoinRequestPending
+ * - authenticated → Full app
  */
 function AuthenticatedApp() {
-  const { user, isLoading } = usePayrollAuth();
+  const { user, isLoading, authStatus } = usePayrollAuth();
+  const navigationRef = useRef<NavigationContainerRef<any>>(null);
+
+  // Set up push notification listeners
+  useEffect(() => {
+    // Handle notification received while app is in foreground
+    const receivedSub = addNotificationReceivedListener((notification) => {
+      console.log('[Push] Notification received in foreground:', notification.request.content.title);
+    });
+
+    // Handle notification tap (opens specific screen)
+    const responseSub = addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data;
+      const { screen, params } = parseNotificationData(data);
+      if (screen && navigationRef.current) {
+        navigationRef.current.navigate(screen, params);
+      }
+    });
+
+    return () => {
+      receivedSub.remove();
+      responseSub.remove();
+    };
+  }, []);
 
   if (isLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#4285F4' }}>
-        <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#FFFFFF' }}>
+        <ActivityIndicator size="large" color="#FFFFFF" />
+        <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#FFFFFF', marginTop: 16 }}>
           Loading...
         </Text>
       </View>
@@ -86,18 +116,36 @@ function AuthenticatedApp() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer linking={linking} ref={navigationRef}>
       <Stack.Navigator
-        initialRouteName={user ? 'PayrollHome' : 'Login'}
         screenOptions={{
           headerShown: false,
         }}
       >
-        {!user ? (
-          // Not logged in - show login screen
-          <Stack.Screen name="Login" component={LoginScreen} />
+        {authStatus === 'unauthenticated' ? (
+          // Auth screens
+          <>
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="Register" component={RegisterScreen} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+            <Stack.Screen name="EmailVerification" component={EmailVerificationScreen} />
+          </>
+        ) : authStatus === 'no_company' ? (
+          // User home — no tenant joined yet
+          <>
+            <Stack.Screen name="UserHome" component={UserHomeScreen} />
+            <Stack.Screen name="JoinTenant" component={JoinTenantScreen} />
+            <Stack.Screen name="JoinRequestPending" component={JoinRequestPendingScreen} />
+          </>
+        ) : authStatus === 'pending_approval' ? (
+          // Waiting for HR approval
+          <>
+            <Stack.Screen name="JoinRequestPending" component={JoinRequestPendingScreen} />
+            <Stack.Screen name="UserHome" component={UserHomeScreen} />
+            <Stack.Screen name="JoinTenant" component={JoinTenantScreen} />
+          </>
         ) : (
-          // Logged in - show app screens
+          // Full app — authenticated with linked employee
           <>
             <Stack.Screen name="PayrollHome" component={PayrollHomeScreen} />
             <Stack.Screen name="Requests" component={RequestsScreen} />
@@ -137,57 +185,13 @@ function AuthenticatedApp() {
   );
 }
 
-/**
- * NEW DIRECT ENTRY POINT
- * We have renamed src/app to src/app_backup to disable Expo Router.
- * This file is now the only one Expo looks at.
- */
 export default function App() {
   useEffect(() => {
-    // ============================================================================
-    // DEBUG: Log when App component mounts to verify it's loading
-    // ============================================================================
-    console.log('═══════════════════════════════════════════════════════════════');
-    console.log('✅ [App.tsx] APP COMPONENT MOUNTED');
-    console.log('═══════════════════════════════════════════════════════════════');
-    
-    try {
-      console.log('📱 [App.tsx] Current App Configuration:', {
-        slug: Constants.expoConfig?.slug,
-        name: Constants.expoConfig?.name,
-        scheme: Constants.expoConfig?.scheme,
-        owner: Constants.expoConfig?.owner,
-        iosBundleId: Constants.expoConfig?.ios?.bundleIdentifier,
-        androidPackage: Constants.expoConfig?.android?.package,
-      });
-      console.log('🔍 [App.tsx] App Ownership:', Constants.appOwnership);
-      console.log('🔍 [App.tsx] Execution Environment:', Constants.executionEnvironment);
-      console.log('🔍 [App.tsx] Is Device:', Constants.isDevice);
-    } catch (configError) {
-      console.error('❌ [App.tsx] Error reading config:', configError);
-    }
-    
-    console.log('═══════════════════════════════════════════════════════════════');
-    console.log('✅ [App.tsx] Rendering PayrollHomeScreen...');
-    console.log('═══════════════════════════════════════════════════════════════');
+    console.log('[App.tsx] App mounted', {
+      slug: Constants.expoConfig?.slug,
+      scheme: Constants.expoConfig?.scheme,
+    });
   }, []);
-
-  if (!PayrollHomeScreen) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'orange', padding: 20 }}>
-        <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 5, color: 'black' }}>
-          ⚠️ PayrollHomeScreen Not Found
-        </Text>
-        <Text style={{ fontSize: 14, color: 'black' }}>
-          Check console for import errors
-        </Text>
-      </View>
-    );
-  }
-
-  if (!AttendanceScreen) {
-    console.error('❌ [App.tsx] AttendanceScreen is not imported correctly!');
-  }
 
   return (
     <SafeAreaProvider>
@@ -201,6 +205,3 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
-
-console.log('✅ [App.tsx] App component created');
-console.log('🔥🔥🔥 APP.TSX COMPLETE 🔥🔥🔥');

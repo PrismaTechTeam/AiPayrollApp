@@ -5,18 +5,18 @@
 
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
-import { ClaimStatus } from './ClaimCard';
+import { CLAIM_FILTERS } from '../../constants/statuses';
 
 interface FilterTabsProps {
-  selectedFilter: ClaimStatus | 'All';
-  onFilterChange: (filter: ClaimStatus | 'All') => void;
-  filters: Array<ClaimStatus | 'All'>;
+  selectedFilter: string;
+  onFilterChange: (filter: string) => void;
+  filters?: Array<{ key: string; label: string }>;
 }
 
 export const FilterTabs: React.FC<FilterTabsProps> = ({
   selectedFilter,
   onFilterChange,
-  filters,
+  filters = CLAIM_FILTERS,
 }) => {
   return (
     <View style={styles.filterContainer}>
@@ -27,20 +27,20 @@ export const FilterTabs: React.FC<FilterTabsProps> = ({
       >
         {filters.map((filter) => (
           <TouchableOpacity
-            key={filter}
+            key={filter.key}
             style={[
               styles.filterButton,
-              selectedFilter === filter && styles.filterButtonActive,
+              selectedFilter === filter.key && styles.filterButtonActive,
             ]}
-            onPress={() => onFilterChange(filter)}
+            onPress={() => onFilterChange(filter.key)}
           >
             <Text
               style={[
                 styles.filterText,
-                selectedFilter === filter && styles.filterTextActive,
+                selectedFilter === filter.key && styles.filterTextActive,
               ]}
             >
-              {filter}
+              {filter.label}
             </Text>
           </TouchableOpacity>
         ))}

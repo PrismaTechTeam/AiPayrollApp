@@ -57,7 +57,7 @@ const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navPr
     if (params?.employees) {
       setEmployees(params.employees);
     } else {
-      loadMockEmployeeLocations();
+      setEmployees([]);
     }
     
     requestLocationPermission();
@@ -101,49 +101,6 @@ const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navPr
       );
       setLoading(false);
     }
-  };
-
-  const loadMockEmployeeLocations = () => {
-    // Mock employee data - In production, fetch from API
-    const mockEmployees: EmployeeLocation[] = [
-      {
-        id: '1',
-        name: 'John Doe',
-        latitude: 3.1390 + 0.005, // Slightly offset from center
-        longitude: 101.6869 + 0.002,
-        checkInTime: '08:45 AM',
-      },
-      {
-        id: '2',
-        name: 'Jane Smith',
-        latitude: 3.1390 - 0.003,
-        longitude: 101.6869 + 0.004,
-        checkInTime: '08:52 AM',
-      },
-      {
-        id: '3',
-        name: 'Mike Johnson',
-        latitude: 3.1390 + 0.002,
-        longitude: 101.6869 - 0.005,
-        checkInTime: '09:05 AM',
-      },
-      {
-        id: '4',
-        name: 'Sarah Williams',
-        latitude: 3.1390 - 0.006,
-        longitude: 101.6869 - 0.003,
-        checkInTime: '08:30 AM',
-      },
-      {
-        id: '5',
-        name: 'David Brown',
-        latitude: 3.1390 + 0.007,
-        longitude: 101.6869 + 0.006,
-        checkInTime: '09:15 AM',
-      },
-    ];
-
-    setEmployees(mockEmployees);
   };
 
   const handleMarkerPress = (employee: EmployeeLocation) => {

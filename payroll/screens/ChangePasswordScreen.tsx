@@ -19,6 +19,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
+import profileService from '../api/services/profileService';
 
 export const ChangePasswordScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -43,7 +44,7 @@ export const ChangePasswordScreen: React.FC = () => {
     return true;
   };
 
-  const handleChangePassword = () => {
+  const handleChangePassword = async () => {
     // Validation
     if (!currentPassword.trim()) {
       Alert.alert('Error', 'Please enter your current password');
@@ -76,20 +77,25 @@ export const ChangePasswordScreen: React.FC = () => {
 
     setIsLoading(true);
 
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      await profileService.changePassword({
+        currentPassword,
+        newPassword,
+      });
       Alert.alert(
         'Success',
         'Password changed successfully!',
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack(),
-          },
-        ]
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
-    }, 1000);
+    } catch (err: any) {
+      const errors = err?.response?.data?.errors;
+      const message = errors?.length
+        ? errors.join('\n')
+        : err?.response?.data?.message || 'Failed to change password';
+      Alert.alert('Error', message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

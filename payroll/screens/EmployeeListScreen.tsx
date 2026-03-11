@@ -3,7 +3,7 @@
  * Shows a list of employees for managers to select before viewing their location on map
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,120 +12,93 @@ import {
   StatusBar,
   ScrollView,
   ActivityIndicator,
+  RefreshControl,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
-
-interface Employee {
-  id: string;
-  name: string;
-  position: string;
-  department: string;
-  checkInTime: string;
-  status: 'checked-in' | 'not-checked-in';
-  latitude?: number;
-  longitude?: number;
-}
+import attendanceService, { TeamMemberAttendance, TeamTodayResponse } from '../api/services/attendanceService';
 
 interface EmployeeListScreenProps {
   navigation?: any;
 }
 
+const formatCheckInTime = (isoString: string | null): string => {
+  if (!isoString) return '---';
+  try {
+    const date = new Date(isoString);
+    let hours = date.getHours();
+    const minutes = date.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const minutesStr = minutes < 10 ? `0${minutes}` : `${minutes}`;
+    return `${hours}:${minutesStr} ${ampm}`;
+  } catch {
+    return '---';
+  }
+};
+
 const EmployeeListScreen: React.FC<EmployeeListScreenProps> = ({ navigation: navProp }) => {
   const navigation = navProp || useNavigation();
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [teamData, setTeamData] = useState<TeamTodayResponse | null>(null);
+  const [employees, setEmployees] = useState<TeamMemberAttendance[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    loadEmployees();
+  const fetchTeamData = useCallback(async () => {
+    try {
+      const data = await attendanceService.getTeamToday();
+      setTeamData(data);
+      setEmployees(data.employees ?? []);
+    } catch (error: any) {
+      Alert.alert('Error', error?.message || 'Failed to load employee data. Please try again.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
 
-  const loadEmployees = () => {
-    // Mock employee data - In production, fetch from API
-    const mockEmployees: Employee[] = [
-      {
-        id: '1',
-        name: 'John Doe',
-        position: 'Software Engineer',
-        department: 'Engineering',
-        checkInTime: '08:45 AM',
-        status: 'checked-in',
-        latitude: 3.1390 + 0.005,
-        longitude: 101.6869 + 0.002,
-      },
-      {
-        id: '2',
-        name: 'Jane Smith',
-        position: 'Product Manager',
-        department: 'Product',
-        checkInTime: '08:52 AM',
-        status: 'checked-in',
-        latitude: 3.1390 - 0.003,
-        longitude: 101.6869 + 0.004,
-      },
-      {
-        id: '3',
-        name: 'Mike Johnson',
-        position: 'UI/UX Designer',
-        department: 'Design',
-        checkInTime: '09:05 AM',
-        status: 'checked-in',
-        latitude: 3.1390 + 0.002,
-        longitude: 101.6869 - 0.005,
-      },
-      {
-        id: '4',
-        name: 'Sarah Williams',
-        position: 'HR Manager',
-        department: 'Human Resources',
-        checkInTime: '08:30 AM',
-        status: 'checked-in',
-        latitude: 3.1390 - 0.006,
-        longitude: 101.6869 - 0.003,
-      },
-      {
-        id: '5',
-        name: 'David Brown',
-        position: 'Marketing Specialist',
-        department: 'Marketing',
-        checkInTime: '09:15 AM',
-        status: 'checked-in',
-        latitude: 3.1390 + 0.007,
-        longitude: 101.6869 + 0.006,
-      },
-      {
-        id: '6',
-        name: 'Emily Davis',
-        position: 'Data Analyst',
-        department: 'Analytics',
-        checkInTime: '---',
-        status: 'not-checked-in',
-      },
-      {
-        id: '7',
-        name: 'Robert Wilson',
-        position: 'Sales Executive',
-        department: 'Sales',
-        checkInTime: '---',
-        status: 'not-checked-in',
-      },
-    ];
+  useEffect(() => {
+    fetchTeamData();
+  }, [fetchTeamData]);
 
-    setEmployees(mockEmployees);
-    setLoading(false);
-  };
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchTeamData();
+  }, [fetchTeamData]);
 
-  const handleEmployeePress = (employee: Employee) => {
+  const handleEmployeePress = (employee: TeamMemberAttendance) => {
     if (employee.status === 'not-checked-in') {
       // Show message if employee hasn't checked in
       return;
     }
 
     // Navigate to map with selected employee
-    navigation?.navigate('EmployeeMap', { 
-      selectedEmployee: employee,
-      employees: employees.filter(e => e.status === 'checked-in'),
+    navigation?.navigate('EmployeeMap', {
+      selectedEmployee: {
+        id: employee.employeeId,
+        name: employee.employeeName,
+        position: employee.position ?? '',
+        department: employee.department ?? '',
+        checkInTime: formatCheckInTime(employee.checkInTime),
+        status: employee.status,
+        latitude: employee.latitude,
+        longitude: employee.longitude,
+      },
+      employees: employees
+        .filter(e => e.status === 'checked-in')
+        .map(e => ({
+          id: e.employeeId,
+          name: e.employeeName,
+          position: e.position ?? '',
+          department: e.department ?? '',
+          checkInTime: formatCheckInTime(e.checkInTime),
+          status: e.status,
+          latitude: e.latitude,
+          longitude: e.longitude,
+        })),
     });
   };
 
@@ -146,13 +119,13 @@ const EmployeeListScreen: React.FC<EmployeeListScreenProps> = ({ navigation: nav
     );
   }
 
-  const checkedInCount = employees.filter(e => e.status === 'checked-in').length;
-  const notCheckedInCount = employees.filter(e => e.status === 'not-checked-in').length;
+  const checkedInCount = teamData?.checkedIn ?? 0;
+  const notCheckedInCount = teamData?.notCheckedIn ?? 0;
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
+
       {/* Header */}
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
@@ -186,12 +159,15 @@ const EmployeeListScreen: React.FC<EmployeeListScreenProps> = ({ navigation: nav
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#4285F4']} />
+        }
       >
         <Text style={styles.sectionTitle}>All Employees</Text>
-        
+
         {employees.map((employee) => (
           <TouchableOpacity
-            key={employee.id}
+            key={employee.employeeId}
             style={[
               styles.employeeCard,
               employee.status === 'not-checked-in' && styles.employeeCardDisabled,
@@ -205,7 +181,7 @@ const EmployeeListScreen: React.FC<EmployeeListScreenProps> = ({ navigation: nav
               employee.status === 'not-checked-in' && styles.avatarDisabled,
             ]}>
               <Text style={styles.avatarText}>
-                {employee.name.charAt(0).toUpperCase()}
+                {employee.employeeName.charAt(0).toUpperCase()}
               </Text>
             </View>
 
@@ -215,25 +191,25 @@ const EmployeeListScreen: React.FC<EmployeeListScreenProps> = ({ navigation: nav
                 styles.employeeName,
                 employee.status === 'not-checked-in' && styles.textDisabled,
               ]}>
-                {employee.name}
+                {employee.employeeName}
               </Text>
               <Text style={[
                 styles.employeePosition,
                 employee.status === 'not-checked-in' && styles.textDisabled,
               ]}>
-                {employee.position}
+                {employee.position ?? ''}
               </Text>
               <View style={styles.departmentRow}>
-                <MaterialCommunityIcons 
-                  name="office-building" 
-                  size={14} 
-                  color={employee.status === 'checked-in' ? '#999' : '#CCC'} 
+                <MaterialCommunityIcons
+                  name="office-building"
+                  size={14}
+                  color={employee.status === 'checked-in' ? '#999' : '#CCC'}
                 />
                 <Text style={[
                   styles.employeeDepartment,
                   employee.status === 'not-checked-in' && styles.textDisabled,
                 ]}>
-                  {employee.department}
+                  {employee.department ?? ''}
                 </Text>
               </View>
             </View>
@@ -259,7 +235,7 @@ const EmployeeListScreen: React.FC<EmployeeListScreenProps> = ({ navigation: nav
               {employee.status === 'checked-in' && (
                 <View style={styles.timeRow}>
                   <MaterialCommunityIcons name="clock-outline" size={14} color="#666" />
-                  <Text style={styles.checkInTime}>{employee.checkInTime}</Text>
+                  <Text style={styles.checkInTime}>{formatCheckInTime(employee.checkInTime)}</Text>
                 </View>
               )}
             </View>

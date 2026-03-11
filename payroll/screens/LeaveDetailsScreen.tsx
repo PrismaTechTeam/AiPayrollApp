@@ -3,7 +3,7 @@
  * Displays detailed information about a specific leave application
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -12,16 +12,19 @@ import {
   TouchableOpacity,
   StatusBar,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { BottomNavBar } from '../components/BottomNavBar';
-import { Leave } from '../types/leave.types';
+import leaveService, { LeaveApplication } from '../api/services/leaveService';
+import { STATUSES, STATUS_COLORS, STATUS_LABELS } from '../constants/statuses';
 
 type LeaveDetailsRouteParams = {
   LeaveDetails: {
-    leave: Leave;
+    leaveId?: string;
+    leave?: any;
   };
 };
 
@@ -30,50 +33,77 @@ type LeaveDetailsRouteProp = RouteProp<LeaveDetailsRouteParams, 'LeaveDetails'>;
 export const LeaveDetailsScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<LeaveDetailsRouteProp>();
-  const { leave } = route.params;
+  const { leaveId, leave: legacyLeave } = route.params;
 
-  // Calculate leave days from date range (mock calculation)
-  const leaveDays = 5; // In real app, calculate from dateRange
-  const leaveAvailable = 10; // Mock data
+  const [leaveDetail, setLeaveDetail] = useState<LeaveApplication | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
 
-  const getStatusColor = (status?: string) => {
-    switch (status) {
-      case 'requested':
-        return '#FF9800'; // Orange
-      case 'active':
-        return '#4CAF50'; // Green
-      case 'cancelled':
-        return '#F44336'; // Red
-      default:
-        return '#9E9E9E'; // Gray
+  useEffect(() => {
+    loadLeaveDetail();
+  }, []);
+
+  const loadLeaveDetail = async () => {
+    const id = leaveId || legacyLeave?._raw?.id || legacyLeave?.id;
+    if (!id) {
+      setLoading(false);
+      return;
+    }
+    try {
+      setLoading(true);
+      const data = await leaveService.getApplicationById(id);
+      setLeaveDetail(data);
+    } catch (err: any) {
+      console.error('Failed to load leave detail:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getStatusLabel = (status?: string) => {
-    switch (status) {
-      case 'requested':
-        return 'Pending';
-      case 'active':
-        return 'Approved';
-      case 'cancelled':
-        return 'Cancelled';
-      default:
-        return 'Unknown';
-    }
+  const getStatusColor = (status: string) => {
+    const colors = STATUS_COLORS[status as keyof typeof STATUS_COLORS];
+    if (colors) return colors.text;
+    return '#9E9E9E';
   };
 
-  const handleCancel = () => {
+  const getStatusBgColor = (status: string) => {
+    const colors = STATUS_COLORS[status as keyof typeof STATUS_COLORS];
+    if (colors) return colors.bg;
+    return '#F5F5F5';
+  };
+
+  const getStatusLabel = (status: string) => {
+    return STATUS_LABELS[status as keyof typeof STATUS_LABELS] || status;
+  };
+
+  const formatDate = (dateStr: string) => {
+    try {
+      return new Date(dateStr).toLocaleDateString('en-US', {
+        day: 'numeric', month: 'short', year: 'numeric',
+      });
+    } catch { return dateStr; }
+  };
+
+  const handleReject = () => {
     Alert.alert(
-      'Cancel Leave',
+      'Reject Leave',
       'Are you sure you want to reject this leave request?',
       [
         { text: 'No', style: 'cancel' },
         {
           text: 'Yes',
           style: 'destructive',
-          onPress: () => {
-            console.log('Leave rejected:', leave.id);
-            navigation.goBack();
+          onPress: async () => {
+            setActionLoading(true);
+            try {
+              await leaveService.rejectLeave(leaveDetail!.id, 'Rejected by manager');
+              Alert.alert('Success', 'Leave rejected');
+              navigation.goBack();
+            } catch (err: any) {
+              Alert.alert('Error', err.response?.data?.message || 'Failed to reject leave');
+            } finally {
+              setActionLoading(false);
+            }
           },
         },
       ]
@@ -88,20 +118,95 @@ export const LeaveDetailsScreen: React.FC = () => {
         { text: 'No', style: 'cancel' },
         {
           text: 'Yes',
-          onPress: () => {
-            console.log('Leave approved:', leave.id);
-            navigation.goBack();
+          onPress: async () => {
+            setActionLoading(true);
+            try {
+              await leaveService.approveLeave(leaveDetail!.id);
+              Alert.alert('Success', 'Leave approved');
+              navigation.goBack();
+            } catch (err: any) {
+              Alert.alert('Error', err.response?.data?.message || 'Failed to approve leave');
+            } finally {
+              setActionLoading(false);
+            }
           },
         },
       ]
     );
   };
 
+  const handleWithdraw = () => {
+    Alert.alert(
+      'Withdraw Leave',
+      'Are you sure you want to withdraw this leave application?',
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Yes',
+          style: 'destructive',
+          onPress: async () => {
+            setActionLoading(true);
+            try {
+              await leaveService.withdrawApplication(leaveDetail!.id, 'Withdrawn by employee');
+              Alert.alert('Success', 'Leave withdrawn');
+              navigation.goBack();
+            } catch (err: any) {
+              Alert.alert('Error', err.response?.data?.message || 'Failed to withdraw leave');
+            } finally {
+              setActionLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+              <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Leave Details</Text>
+            <View style={{ width: 40 }} />
+          </View>
+        </SafeAreaView>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#4285F4" />
+        </View>
+        <BottomNavBar />
+      </View>
+    );
+  }
+
+  if (!leaveDetail) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+              <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Leave Details</Text>
+            <View style={{ width: 40 }} />
+          </View>
+        </SafeAreaView>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ fontSize: 16, color: '#999' }}>Leave not found</Text>
+        </View>
+        <BottomNavBar />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
-      {/* Header with Safe Area */}
+
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -112,70 +217,86 @@ export const LeaveDetailsScreen: React.FC = () => {
         </View>
       </SafeAreaView>
 
-      {/* Content Area */}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* User Info Card */}
         <View style={styles.userCard}>
           <View style={styles.userRow}>
-            {/* Avatar */}
             <View style={styles.avatar}>
               <Text style={styles.avatarInitial}>
-                {leave.name.charAt(0).toUpperCase()}
+                {leaveDetail.employeeName.charAt(0).toUpperCase()}
               </Text>
             </View>
 
-            {/* User Info */}
             <View style={styles.userInfoSection}>
-              <Text style={styles.userName}>{leave.name}</Text>
-              <Text style={styles.dateRange}>{leave.dateRange}</Text>
-              <Text style={styles.leaveApplication}>Leave Application</Text>
+              <Text style={styles.userName}>{leaveDetail.employeeName}</Text>
+              <Text style={styles.dateRange}>
+                {formatDate(leaveDetail.startDate)} - {formatDate(leaveDetail.endDate)}
+              </Text>
+              <Text style={styles.leaveApplication}>
+                {leaveDetail.leaveTypeDescription}
+              </Text>
             </View>
 
-            {/* Status and Time */}
             <View style={styles.rightSection}>
-              <Text style={styles.daysAgo}>{leave.daysAgo}</Text>
               <View
                 style={[
                   styles.statusBadge,
-                  { backgroundColor: getStatusColor(leave.status) },
+                  { backgroundColor: getStatusColor(leaveDetail.status) },
                 ]}
               >
-                <Text style={styles.statusText}>{getStatusLabel(leave.status)}</Text>
+                <Text style={[styles.statusText, { color: '#FFFFFF' }]}>
+                  {getStatusLabel(leaveDetail.status)}
+                </Text>
               </View>
             </View>
           </View>
 
           {/* Leave Duration Display */}
           <View style={styles.durationSection}>
-            <Text style={styles.daysCount}>{leaveDays} Days</Text>
-            <View style={styles.progressBar}>
-              <View
-                style={[
-                  styles.progressFill,
-                  { width: `${(leaveDays / leaveAvailable) * 100}%` },
-                ]}
-              />
-            </View>
-            <Text style={styles.leaveAvailable}>{leaveAvailable} Leave Available</Text>
+            <Text style={styles.daysCount}>{leaveDetail.totalDays} Days</Text>
+            {leaveDetail.isHalfDayStart && (
+              <Text style={styles.halfDayNote}>Half day start</Text>
+            )}
+            {leaveDetail.isHalfDayEnd && (
+              <Text style={styles.halfDayNote}>Half day end</Text>
+            )}
           </View>
 
           {/* Reason Section */}
-          <View style={styles.reasonSection}>
-            <Text style={styles.reasonLabel}>Reason :</Text>
-            <Text style={styles.reasonText}>
-              Reference site about Lorem Ipsum, giving information on its origins, as well as a random Lipsum generator.
-            </Text>
-          </View>
+          {leaveDetail.reason && (
+            <View style={styles.reasonSection}>
+              <Text style={styles.reasonLabel}>Reason:</Text>
+              <Text style={styles.reasonText}>{leaveDetail.reason}</Text>
+            </View>
+          )}
+
+          {/* Rejection Reason */}
+          {leaveDetail.rejectionReason && (
+            <View style={[styles.reasonSection, { backgroundColor: '#FFEBEE', padding: 12, borderRadius: 8 }]}>
+              <Text style={[styles.reasonLabel, { color: '#C62828' }]}>Rejection Reason:</Text>
+              <Text style={styles.reasonText}>{leaveDetail.rejectionReason}</Text>
+            </View>
+          )}
+
+          {/* Approval Info */}
+          {leaveDetail.approvedAt && (
+            <View style={styles.reasonSection}>
+              <Text style={styles.reasonLabel}>Approved:</Text>
+              <Text style={styles.reasonText}>
+                {formatDate(leaveDetail.approvedAt)}
+                {leaveDetail.approvedByEmployeeName && ` by ${leaveDetail.approvedByEmployeeName}`}
+              </Text>
+            </View>
+          )}
 
           {/* Action Buttons for Pending */}
-          {leave.status === 'requested' && (
+          {leaveDetail.status === STATUSES.PENDING && !actionLoading && (
             <View style={styles.actionButtons}>
-              <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+              <TouchableOpacity style={styles.cancelButton} onPress={handleReject}>
+                <Text style={styles.cancelButtonText}>Reject</Text>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.approveButton} onPress={handleApprove}>
@@ -183,10 +304,20 @@ export const LeaveDetailsScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
           )}
+
+          {/* Withdraw for own pending leaves */}
+          {leaveDetail.status === STATUSES.PENDING && !actionLoading && (
+            <TouchableOpacity style={styles.withdrawButton} onPress={handleWithdraw}>
+              <Text style={styles.withdrawButtonText}>Withdraw Application</Text>
+            </TouchableOpacity>
+          )}
+
+          {actionLoading && (
+            <ActivityIndicator size="small" color="#4285F4" style={{ marginTop: 16 }} />
+          )}
         </View>
       </ScrollView>
 
-      {/* Bottom Navigation Bar */}
       <BottomNavBar />
     </View>
   );
@@ -226,7 +357,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
-    paddingBottom: 100, // Space for bottom nav bar
+    paddingBottom: 100,
   },
   userCard: {
     backgroundColor: '#FFFFFF',
@@ -273,11 +404,6 @@ const styles = StyleSheet.create({
   rightSection: {
     alignItems: 'flex-end',
   },
-  daysAgo: {
-    fontSize: 12,
-    color: '#999',
-    marginBottom: 8,
-  },
   statusBadge: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -296,28 +422,14 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '700',
     color: '#4285F4',
-    marginBottom: 16,
+    marginBottom: 4,
   },
-  progressBar: {
-    width: '100%',
-    height: 8,
-    backgroundColor: '#E0E0E0',
-    borderRadius: 4,
-    marginBottom: 8,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#4285F4',
-    borderRadius: 4,
-  },
-  leaveAvailable: {
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '600',
+  halfDayNote: {
+    fontSize: 12,
+    color: '#999',
   },
   reasonSection: {
-    marginBottom: 24,
+    marginBottom: 16,
   },
   reasonLabel: {
     fontSize: 16,
@@ -332,6 +444,7 @@ const styles = StyleSheet.create({
   },
   actionButtons: {
     gap: 12,
+    marginTop: 8,
   },
   cancelButton: {
     backgroundColor: '#FFE5E5',
@@ -355,5 +468,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  withdrawButton: {
+    backgroundColor: '#F3E5F5',
+    paddingVertical: 14,
+    borderRadius: 25,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  withdrawButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#7B1FA2',
   },
 });

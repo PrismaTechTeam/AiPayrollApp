@@ -3,7 +3,7 @@
  * Displays detailed information about a specific request
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -11,57 +11,161 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  Alert,
+  ActivityIndicator,
+  TextInput,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Header } from '../components/requests';
 import { BottomNavBar } from '../components/BottomNavBar';
-import { Request } from '../types/request.types';
+import requestService, { EmployeeRequest } from '../api/services/requestService';
 
 type RequestDetailsRouteParams = {
   RequestDetails: {
-    request: Request;
+    request: EmployeeRequest;
   };
 };
 
 type RequestDetailsRouteProp = RouteProp<RequestDetailsRouteParams, 'RequestDetails'>;
 
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'PENDING':
+      return '#FF9800';
+    case 'APPROVED':
+      return '#4CAF50';
+    case 'REJECTED':
+      return '#F44336';
+    case 'CANCELLED':
+      return '#9E9E9E';
+    default:
+      return '#9E9E9E';
+  }
+};
+
+const getStatusLabel = (status: string) => {
+  switch (status) {
+    case 'PENDING':
+      return 'Pending Approval';
+    case 'APPROVED':
+      return 'Approved';
+    case 'REJECTED':
+      return 'Rejected';
+    case 'CANCELLED':
+      return 'Cancelled';
+    default:
+      return status;
+  }
+};
+
+const formatDate = (dateStr: string | null) => {
+  if (!dateStr) return 'N/A';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+};
+
+const getTimeAgo = (dateStr: string) => {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return '1 day ago';
+  if (diffDays < 30) return `${diffDays} days ago`;
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths === 1) return '1 month ago';
+  return `${diffMonths} months ago`;
+};
+
 export const RequestDetailsScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<RequestDetailsRouteProp>();
   const { request } = route.params;
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
 
-  const getStatusColor = (status?: string) => {
-    switch (status) {
-      case 'requested':
-        return '#FF9800'; // Orange
-      case 'active':
-        return '#4CAF50'; // Green
-      case 'cancelled':
-        return '#F44336'; // Red
-      default:
-        return '#9E9E9E'; // Gray
+  const statusColor = getStatusColor(request.status);
+
+  const handleApprove = () => {
+    Alert.alert('Approve Request', 'Are you sure you want to approve this request?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Approve',
+        onPress: async () => {
+          setIsProcessing(true);
+          try {
+            await requestService.approveRequest(request.id);
+            Alert.alert('Success', 'Request approved successfully.', [
+              { text: 'OK', onPress: () => navigation.goBack() },
+            ]);
+          } catch (error) {
+            console.error('Failed to approve request:', error);
+            Alert.alert('Error', 'Failed to approve request. Please try again.');
+          } finally {
+            setIsProcessing(false);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleRejectConfirm = async () => {
+    if (!rejectionReason.trim()) {
+      Alert.alert('Validation Error', 'Please provide a reason for rejection.');
+      return;
+    }
+    setShowRejectModal(false);
+    setIsProcessing(true);
+    try {
+      await requestService.rejectRequest(request.id, rejectionReason.trim());
+      Alert.alert('Success', 'Request rejected successfully.', [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+    } catch (error) {
+      console.error('Failed to reject request:', error);
+      Alert.alert('Error', 'Failed to reject request. Please try again.');
+    } finally {
+      setIsProcessing(false);
+      setRejectionReason('');
     }
   };
 
-  const getStatusLabel = (status?: string) => {
-    switch (status) {
-      case 'requested':
-        return 'Pending Approval';
-      case 'active':
-        return 'Active';
-      case 'cancelled':
-        return 'Cancelled';
-      default:
-        return 'Unknown';
-    }
+  const handleCancel = () => {
+    Alert.alert('Cancel Request', 'Are you sure you want to cancel this request?', [
+      { text: 'No', style: 'cancel' },
+      {
+        text: 'Yes, Cancel',
+        style: 'destructive',
+        onPress: async () => {
+          setIsProcessing(true);
+          try {
+            await requestService.cancelApplication(request.id);
+            Alert.alert('Success', 'Request cancelled successfully.', [
+              { text: 'OK', onPress: () => navigation.goBack() },
+            ]);
+          } catch (error) {
+            console.error('Failed to cancel request:', error);
+            Alert.alert('Error', 'Failed to cancel request. Please try again.');
+          } finally {
+            setIsProcessing(false);
+          }
+        },
+      },
+    ]);
   };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
+
       {/* Header with Safe Area */}
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <Header
@@ -77,155 +181,231 @@ export const RequestDetailsScreen: React.FC = () => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-          {/* Status Badge */}
-          <View style={styles.statusContainer}>
+        {/* Status Badge */}
+        <View style={styles.statusContainer}>
+          <View
+            style={[
+              styles.statusBadge,
+              { backgroundColor: statusColor + '20' },
+            ]}
+          >
             <View
               style={[
-                styles.statusBadge,
-                { backgroundColor: getStatusColor(request.status) + '20' },
+                styles.statusDot,
+                { backgroundColor: statusColor },
+              ]}
+            />
+            <Text
+              style={[
+                styles.statusText,
+                { color: statusColor },
               ]}
             >
-              <View
-                style={[
-                  styles.statusDot,
-                  { backgroundColor: getStatusColor(request.status) },
-                ]}
+              {getStatusLabel(request.status)}
+            </Text>
+          </View>
+        </View>
+
+        {/* Request Card */}
+        <View style={styles.detailsCard}>
+          {/* Avatar and Name */}
+          <View style={styles.userSection}>
+            <View style={styles.avatarContainer}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarInitial}>
+                  {(request.employeeName || 'U').charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.userInfo}>
+              <Text style={styles.userName}>
+                {request.employeeName || 'Unknown Employee'}
+              </Text>
+              <Text style={styles.daysAgo}>{getTimeAgo(request.createdAt)}</Text>
+            </View>
+          </View>
+
+          {/* Divider */}
+          <View style={styles.divider} />
+
+          {/* Request Type */}
+          <View style={styles.detailRow}>
+            <View style={styles.detailLabelContainer}>
+              <MaterialCommunityIcons
+                name="file-document-outline"
+                size={20}
+                color="#666"
               />
-              <Text
-                style={[
-                  styles.statusText,
-                  { color: getStatusColor(request.status) },
-                ]}
-              >
-                {getStatusLabel(request.status)}
+              <Text style={styles.detailLabel}>Request Type</Text>
+            </View>
+            <Text style={styles.detailValue}>{request.requestType}</Text>
+          </View>
+
+          {/* Start Date */}
+          <View style={styles.detailRow}>
+            <View style={styles.detailLabelContainer}>
+              <MaterialCommunityIcons
+                name="calendar-range"
+                size={20}
+                color="#666"
+              />
+              <Text style={styles.detailLabel}>Start Date</Text>
+            </View>
+            <Text style={styles.detailValue}>{formatDate(request.startDate)}</Text>
+          </View>
+
+          {/* Request ID */}
+          <View style={styles.detailRow}>
+            <View style={styles.detailLabelContainer}>
+              <MaterialCommunityIcons name="identifier" size={20} color="#666" />
+              <Text style={styles.detailLabel}>Request ID</Text>
+            </View>
+            <Text style={styles.detailValue}>{request.id}</Text>
+          </View>
+
+          {/* Employee Code */}
+          {request.employeeCode && (
+            <View style={styles.detailRow}>
+              <View style={styles.detailLabelContainer}>
+                <MaterialCommunityIcons name="badge-account-outline" size={20} color="#666" />
+                <Text style={styles.detailLabel}>Employee Code</Text>
+              </View>
+              <Text style={styles.detailValue}>{request.employeeCode}</Text>
+            </View>
+          )}
+
+          {/* Notes */}
+          {request.notes && (
+            <View style={styles.detailRow}>
+              <View style={styles.detailLabelContainer}>
+                <MaterialCommunityIcons name="note-text-outline" size={20} color="#666" />
+                <Text style={styles.detailLabel}>Notes</Text>
+              </View>
+              <Text style={styles.detailValue}>{request.notes}</Text>
+            </View>
+          )}
+
+          {/* Rejection Reason */}
+          {request.status === 'REJECTED' && request.rejectionReason && (
+            <View style={styles.detailRow}>
+              <View style={styles.detailLabelContainer}>
+                <MaterialCommunityIcons name="alert-circle-outline" size={20} color="#F44336" />
+                <Text style={[styles.detailLabel, { color: '#F44336' }]}>Rejection Reason</Text>
+              </View>
+              <Text style={[styles.detailValue, { color: '#F44336' }]}>
+                {request.rejectionReason}
               </Text>
             </View>
+          )}
+
+          {/* Submitted Date */}
+          <View style={styles.detailRow}>
+            <View style={styles.detailLabelContainer}>
+              <MaterialCommunityIcons name="clock-outline" size={20} color="#666" />
+              <Text style={styles.detailLabel}>Submitted</Text>
+            </View>
+            <Text style={styles.detailValue}>{formatDate(request.createdAt)}</Text>
           </View>
+        </View>
 
-          {/* Request Card */}
-          <View style={styles.detailsCard}>
-            {/* Avatar and Name */}
-            <View style={styles.userSection}>
-              <View style={styles.avatarContainer}>
-                {request.avatarUrl ? (
-                  <View style={[styles.avatar, styles.avatarImage]} />
-                ) : (
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarInitial}>
-                      {request.name.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                )}
-              </View>
-              <View style={styles.userInfo}>
-                <Text style={styles.userName}>{request.name}</Text>
-                <Text style={styles.daysAgo}>{request.daysAgo}</Text>
-              </View>
-            </View>
+        {/* Action Buttons for PENDING requests (manager: approve/reject) */}
+        {request.status === 'PENDING' && (
+          <View style={styles.actionButtonsContainer}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.rejectButton]}
+              onPress={() => setShowRejectModal(true)}
+              disabled={isProcessing}
+            >
+              {isProcessing ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <MaterialCommunityIcons name="close" size={20} color="#FFFFFF" />
+                  <Text style={styles.actionButtonText}>Reject</Text>
+                </>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.approveButton]}
+              onPress={handleApprove}
+              disabled={isProcessing}
+            >
+              {isProcessing ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <MaterialCommunityIcons name="check" size={20} color="#FFFFFF" />
+                  <Text style={styles.actionButtonText}>Approve</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
 
-            {/* Divider */}
-            <View style={styles.divider} />
+        {/* Cancel button for PENDING requests (own request) */}
+        {request.status === 'PENDING' && (
+          <View style={styles.cancelContainer}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.cancelButton]}
+              onPress={handleCancel}
+              disabled={isProcessing}
+            >
+              {isProcessing ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <MaterialCommunityIcons name="close-circle" size={20} color="#FFFFFF" />
+                  <Text style={styles.actionButtonText}>Cancel Request</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+      </ScrollView>
 
-            {/* Request Type */}
-            <View style={styles.detailRow}>
-              <View style={styles.detailLabelContainer}>
-                <MaterialCommunityIcons
-                  name="file-document-outline"
-                  size={20}
-                  color="#666"
-                />
-                <Text style={styles.detailLabel}>Request Type</Text>
-              </View>
-              <Text style={styles.detailValue}>{request.type}</Text>
-            </View>
-
-            {/* Date Range */}
-            <View style={styles.detailRow}>
-              <View style={styles.detailLabelContainer}>
-                <MaterialCommunityIcons
-                  name="calendar-range"
-                  size={20}
-                  color="#666"
-                />
-                <Text style={styles.detailLabel}>Date Range</Text>
-              </View>
-              <Text style={styles.detailValue}>{request.dateRange}</Text>
-            </View>
-
-            {/* Request ID */}
-            <View style={styles.detailRow}>
-              <View style={styles.detailLabelContainer}>
-                <MaterialCommunityIcons name="identifier" size={20} color="#666" />
-                <Text style={styles.detailLabel}>Request ID</Text>
-              </View>
-              <Text style={styles.detailValue}>{request.id}</Text>
+      {/* Rejection Reason Modal */}
+      <Modal
+        visible={showRejectModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowRejectModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Reject Request</Text>
+            <Text style={styles.modalSubtitle}>
+              Please provide a reason for rejecting this request.
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Enter rejection reason..."
+              placeholderTextColor="#999"
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+              value={rejectionReason}
+              onChangeText={setRejectionReason}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => {
+                  setShowRejectModal(false);
+                  setRejectionReason('');
+                }}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalRejectButton}
+                onPress={handleRejectConfirm}
+              >
+                <Text style={styles.modalRejectText}>Reject</Text>
+              </TouchableOpacity>
             </View>
           </View>
-
-          {/* Action Buttons */}
-          {request.status === 'requested' && (
-            <View style={styles.actionButtonsContainer}>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.rejectButton]}
-                onPress={() => {
-                  console.log('Reject request:', request.id);
-                  // TODO: Implement reject logic
-                  navigation.goBack();
-                }}
-              >
-                <MaterialCommunityIcons name="close" size={20} color="#FFFFFF" />
-                <Text style={styles.actionButtonText}>Reject</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.approveButton]}
-                onPress={() => {
-                  console.log('Approve request:', request.id);
-                  // TODO: Implement approve logic
-                  navigation.goBack();
-                }}
-              >
-                <MaterialCommunityIcons name="check" size={20} color="#FFFFFF" />
-                <Text style={styles.actionButtonText}>Approve</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {request.status === 'active' && (
-            <View style={styles.actionButtonsContainer}>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.cancelButton]}
-                onPress={() => {
-                  console.log('Cancel request:', request.id);
-                  // TODO: Implement cancel logic
-                  navigation.goBack();
-                }}
-              >
-                <MaterialCommunityIcons
-                  name="close-circle"
-                  size={20}
-                  color="#FFFFFF"
-                />
-                <Text style={styles.actionButtonText}>Cancel Request</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {request.status === 'cancelled' && (
-            <View style={styles.actionButtonsContainer}>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.restoreButton]}
-                onPress={() => {
-                  console.log('Restore request:', request.id);
-                  // TODO: Implement restore logic
-                  navigation.goBack();
-                }}
-              >
-                <MaterialCommunityIcons name="restore" size={20} color="#FFFFFF" />
-                <Text style={styles.actionButtonText}>Restore Request</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </ScrollView>
+        </View>
+      </Modal>
 
       {/* Bottom Navigation Bar */}
       <BottomNavBar />
@@ -246,7 +426,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
-    paddingBottom: 100, // Space for bottom nav bar
+    paddingBottom: 100,
   },
   statusContainer: {
     marginBottom: 20,
@@ -290,9 +470,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#E0E0E0',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  avatarImage: {
-    backgroundColor: '#4285F4',
   },
   avatarInitial: {
     fontSize: 24,
@@ -342,6 +519,9 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 10,
   },
+  cancelContainer: {
+    marginTop: 12,
+  },
   actionButton: {
     flex: 1,
     flexDirection: 'row',
@@ -360,13 +540,73 @@ const styles = StyleSheet.create({
   cancelButton: {
     backgroundColor: '#FF9800',
   },
-  restoreButton: {
-    backgroundColor: '#4285F4',
-  },
   actionButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
   },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000',
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+  },
+  modalInput: {
+    backgroundColor: '#F5F5F5',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    fontSize: 16,
+    color: '#000',
+    minHeight: 100,
+    marginBottom: 16,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  modalCancelButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#F5F5F5',
+  },
+  modalCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  modalRejectButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#FF5252',
+  },
+  modalRejectText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
 });
-

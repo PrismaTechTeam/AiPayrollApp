@@ -1,130 +1,116 @@
 /**
  * Notifications Screen
- * Displays all user notifications
+ * Displays user notifications from API with real-time push notification support.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
+  FlatList,
   TouchableOpacity,
   StatusBar,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
+import notificationService, { NotificationItem } from '../api/services/notificationService';
 
-interface Notification {
-  id: string;
-  type: 'leave' | 'request' | 'payslip' | 'attendance' | 'general';
-  title: string;
-  message: string;
-  time: string;
-  isRead: boolean;
+// Parse notification message to determine type for icon/color
+function inferNotificationType(message: string): 'leave' | 'claim' | 'payslip' | 'attendance' | 'general' {
+  const lower = message.toLowerCase();
+  if (lower.includes('leave')) return 'leave';
+  if (lower.includes('claim')) return 'claim';
+  if (lower.includes('payslip') || lower.includes('salary')) return 'payslip';
+  if (lower.includes('attendance') || lower.includes('clock') || lower.includes('check in')) return 'attendance';
+  return 'general';
 }
 
-// Mock notifications data
-const MOCK_NOTIFICATIONS: Notification[] = [
-  {
-    id: '1',
-    type: 'leave',
-    title: 'Leave Request Approved',
-    message: 'Your leave request for 27 Aug - 28 Aug has been approved by your manager.',
-    time: '2 hours ago',
-    isRead: false,
-  },
-  {
-    id: '2',
-    type: 'request',
-    title: 'New Request Submitted',
-    message: 'John Smith has submitted a new business trip request for your approval.',
-    time: '5 hours ago',
-    isRead: false,
-  },
-  {
-    id: '3',
-    type: 'payslip',
-    title: 'Payslip Available',
-    message: 'Your payslip for August 2024 is now available. Tap to view details.',
-    time: '1 day ago',
-    isRead: true,
-  },
-  {
-    id: '4',
-    type: 'attendance',
-    title: 'Attendance Reminder',
-    message: 'Don\'t forget to check in for today. Your shift starts at 9:00 AM.',
-    time: '2 days ago',
-    isRead: true,
-  },
-  {
-    id: '5',
-    type: 'general',
-    title: 'System Update',
-    message: 'The payroll system will undergo maintenance on Sunday, 2:00 AM - 4:00 AM.',
-    time: '3 days ago',
-    isRead: true,
-  },
-];
+function getNotificationIcon(type: string): string {
+  switch (type) {
+    case 'leave': return 'calendar-clock';
+    case 'claim': return 'receipt';
+    case 'payslip': return 'file-document-outline';
+    case 'attendance': return 'clock-check-outline';
+    default: return 'bell-outline';
+  }
+}
+
+function getNotificationColor(type: string): string {
+  switch (type) {
+    case 'leave': return '#FF9800';
+    case 'claim': return '#4CAF50';
+    case 'payslip': return '#2196F3';
+    case 'attendance': return '#9C27B0';
+    default: return '#666666';
+  }
+}
+
+function formatTimeAgo(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHrs = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMin < 1) return 'Just now';
+  if (diffMin < 60) return `${diffMin} min ago`;
+  if (diffHrs < 24) return `${diffHrs} hour${diffHrs > 1 ? 's' : ''} ago`;
+  if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+  return date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+}
 
 export const NotificationsScreen: React.FC = () => {
   const navigation = useNavigation();
-  const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'leave':
-        return 'calendar-clock';
-      case 'request':
-        return 'email-outline';
-      case 'payslip':
-        return 'file-document-outline';
-      case 'attendance':
-        return 'clock-check-outline';
-      case 'general':
-        return 'bell-outline';
-      default:
-        return 'bell-outline';
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const result = await notificationService.getList({ page: 1, pageSize: 50 });
+      setNotifications(result.items || []);
+      setUnreadCount(result.unreadCount || 0);
+    } catch (err: any) {
+      console.error('Failed to load notifications:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
+
+  const handleNotificationPress = async (notification: NotificationItem) => {
+    if (!notification.isRead) {
+      try {
+        await notificationService.markAsRead(notification.id);
+        setNotifications(prev =>
+          prev.map(n => n.id === notification.id ? { ...n, isRead: true } : n)
+        );
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      } catch (err) {
+        console.error('Failed to mark as read:', err);
+      }
     }
   };
 
-  const getNotificationColor = (type: string) => {
-    switch (type) {
-      case 'leave':
-        return '#FF9800'; // Orange
-      case 'request':
-        return '#4CAF50'; // Green
-      case 'payslip':
-        return '#2196F3'; // Blue
-      case 'attendance':
-        return '#9C27B0'; // Purple
-      case 'general':
-        return '#666666'; // Gray
-      default:
-        return '#666666';
+  const handleMarkAllAsRead = async () => {
+    try {
+      await notificationService.markAllAsRead();
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      setUnreadCount(0);
+    } catch (err) {
+      console.error('Failed to mark all as read:', err);
+      Alert.alert('Error', 'Failed to mark all as read');
     }
-  };
-
-  const handleNotificationPress = (notification: Notification) => {
-    // Mark as read
-    setNotifications((prevNotifications) =>
-      prevNotifications.map((notif) =>
-        notif.id === notification.id ? { ...notif, isRead: true } : notif
-      )
-    );
-
-    // Navigate based on notification type
-    // In a real app, you would navigate to the relevant screen
-    Alert.alert(notification.title, notification.message);
-  };
-
-  const handleMarkAllAsRead = () => {
-    setNotifications((prevNotifications) =>
-      prevNotifications.map((notif) => ({ ...notif, isRead: true }))
-    );
   };
 
   const handleClearAll = () => {
@@ -136,19 +122,64 @@ export const NotificationsScreen: React.FC = () => {
         {
           text: 'Clear All',
           style: 'destructive',
-          onPress: () => setNotifications([]),
+          onPress: async () => {
+            try {
+              await notificationService.clearAll();
+              setNotifications([]);
+              setUnreadCount(0);
+            } catch (err) {
+              console.error('Failed to clear notifications:', err);
+              Alert.alert('Error', 'Failed to clear notifications');
+            }
+          },
         },
       ]
     );
   };
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const renderNotificationItem = ({ item }: { item: NotificationItem }) => {
+    const type = inferNotificationType(item.message);
+
+    return (
+      <TouchableOpacity
+        style={[
+          styles.notificationCard,
+          !item.isRead && styles.notificationCardUnread,
+        ]}
+        onPress={() => handleNotificationPress(item)}
+        activeOpacity={0.7}
+      >
+        {!item.isRead && <View style={styles.unreadIndicator} />}
+
+        <View
+          style={[
+            styles.iconContainer,
+            { backgroundColor: getNotificationColor(type) + '20' },
+          ]}
+        >
+          <MaterialCommunityIcons
+            name={getNotificationIcon(type) as any}
+            size={24}
+            color={getNotificationColor(type)}
+          />
+        </View>
+
+        <View style={styles.notificationContent}>
+          <Text style={styles.notificationMessage} numberOfLines={3}>
+            {item.message}
+          </Text>
+          <Text style={styles.notificationTime}>{formatTimeAgo(item.createdAt)}</Text>
+        </View>
+
+        <MaterialCommunityIcons name="chevron-right" size={20} color="#CCC" />
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
-      {/* Header */}
+
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -166,7 +197,6 @@ export const NotificationsScreen: React.FC = () => {
         </View>
       </SafeAreaView>
 
-      {/* Actions Bar */}
       {notifications.length > 0 && (
         <View style={styles.actionsBar}>
           <TouchableOpacity style={styles.actionButton} onPress={handleMarkAllAsRead}>
@@ -180,216 +210,84 @@ export const NotificationsScreen: React.FC = () => {
         </View>
       )}
 
-      {/* Notifications List */}
-      <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
-        <ScrollView
-          style={styles.content}
-          contentContainerStyle={styles.scrollContent}
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4285F4" />
+        </View>
+      ) : (
+        <FlatList
+          data={notifications}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={renderNotificationItem}
+          contentContainerStyle={[
+            styles.listContent,
+            notifications.length === 0 && styles.emptyListContent,
+          ]}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <MaterialCommunityIcons name="bell-off-outline" size={80} color="#CCC" />
+              <Text style={styles.emptyStateTitle}>No Notifications</Text>
+              <Text style={styles.emptyStateText}>
+                You're all caught up! Check back later for new notifications.
+              </Text>
+            </View>
+          }
           showsVerticalScrollIndicator={false}
-        >
-        {notifications.length === 0 ? (
-          // Empty State
-          <View style={styles.emptyState}>
-            <MaterialCommunityIcons name="bell-off-outline" size={80} color="#CCC" />
-            <Text style={styles.emptyStateTitle}>No Notifications</Text>
-            <Text style={styles.emptyStateText}>
-              You're all caught up! Check back later for new notifications.
-            </Text>
-          </View>
-        ) : (
-          // Notifications List
-          notifications.map((notification) => (
-            <TouchableOpacity
-              key={notification.id}
-              style={[
-                styles.notificationCard,
-                !notification.isRead && styles.notificationCardUnread,
-              ]}
-              onPress={() => handleNotificationPress(notification)}
-              activeOpacity={0.7}
-            >
-              {/* Unread Indicator */}
-              {!notification.isRead && <View style={styles.unreadIndicator} />}
-
-              {/* Icon */}
-              <View
-                style={[
-                  styles.iconContainer,
-                  { backgroundColor: getNotificationColor(notification.type) + '20' },
-                ]}
-              >
-                <MaterialCommunityIcons
-                  name={getNotificationIcon(notification.type)}
-                  size={24}
-                  color={getNotificationColor(notification.type)}
-                />
-              </View>
-
-              {/* Content */}
-              <View style={styles.notificationContent}>
-                <Text style={styles.notificationTitle}>{notification.title}</Text>
-                <Text style={styles.notificationMessage} numberOfLines={2}>
-                  {notification.message}
-                </Text>
-                <Text style={styles.notificationTime}>{notification.time}</Text>
-              </View>
-
-              {/* Chevron */}
-              <MaterialCommunityIcons name="chevron-right" size={20} color="#CCC" />
-            </TouchableOpacity>
-          ))
-        )}
-        </ScrollView>
-      </SafeAreaView>
+          refreshing={refreshing}
+          onRefresh={() => {
+            setRefreshing(true);
+            fetchNotifications();
+          }}
+        />
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  safeAreaTop: {
-    backgroundColor: '#FFFFFF',
-  },
+  container: { flex: 1, backgroundColor: '#F5F5F5' },
+  safeAreaTop: { backgroundColor: '#FFFFFF' },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1, borderBottomColor: '#F0F0F0',
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#000',
-  },
+  backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  headerTitleContainer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: '#000' },
   badge: {
-    backgroundColor: '#FF5252',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 6,
+    backgroundColor: '#FF5252', borderRadius: 10, minWidth: 20, height: 20,
+    justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6,
   },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
+  badgeText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
   actionsBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20,
+    paddingVertical: 12, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F0F0F0',
   },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  actionButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#4285F4',
-  },
-  content: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 20,
-  },
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 80,
-  },
-  emptyStateTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#666',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptyStateText: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-    paddingHorizontal: 40,
-    lineHeight: 20,
-  },
+  actionButton: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  actionButtonText: { fontSize: 14, fontWeight: '600', color: '#4285F4' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  listContent: { padding: 16, paddingBottom: 20 },
+  emptyListContent: { flexGrow: 1, justifyContent: 'center' },
+  emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 80 },
+  emptyStateTitle: { fontSize: 20, fontWeight: '700', color: '#666', marginTop: 16, marginBottom: 8 },
+  emptyStateText: { fontSize: 14, color: '#999', textAlign: 'center', paddingHorizontal: 40, lineHeight: 20 },
   notificationCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    position: 'relative',
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF',
+    borderRadius: 12, padding: 16, marginBottom: 12, position: 'relative',
   },
-  notificationCardUnread: {
-    backgroundColor: '#F0F8FF',
-    borderLeftWidth: 3,
-    borderLeftColor: '#4285F4',
-  },
+  notificationCardUnread: { backgroundColor: '#F0F8FF', borderLeftWidth: 3, borderLeftColor: '#4285F4' },
   unreadIndicator: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#4285F4',
+    position: 'absolute', top: 16, right: 16, width: 8, height: 8,
+    borderRadius: 4, backgroundColor: '#4285F4',
   },
   iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
+    width: 48, height: 48, borderRadius: 24, justifyContent: 'center',
+    alignItems: 'center', marginRight: 12,
   },
-  notificationContent: {
-    flex: 1,
-    marginRight: 8,
-  },
-  notificationTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#000',
-    marginBottom: 4,
-  },
-  notificationMessage: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
-    marginBottom: 6,
-  },
-  notificationTime: {
-    fontSize: 12,
-    color: '#999',
-  },
+  notificationContent: { flex: 1, marginRight: 8 },
+  notificationMessage: { fontSize: 14, color: '#333', lineHeight: 20, marginBottom: 6 },
+  notificationTime: { fontSize: 12, color: '#999' },
 });
 
 export default NotificationsScreen;

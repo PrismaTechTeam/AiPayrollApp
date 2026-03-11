@@ -21,7 +21,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 LOCALHOST_URL="https://localhost:7133"
-ENDPOINT_FILE="./src/config/endpoint.ts"
+ENDPOINT_FILE="./payroll/api/endpoint.ts"
 LOG_FILE="./cloudflared-tunnel.log"
 
 echo -e "${BLUE}==============================================================================${NC}"
@@ -39,7 +39,7 @@ fi
 # Check if endpoint.ts exists
 if [ ! -f "$ENDPOINT_FILE" ]; then
     echo -e "${RED}❌ Error: endpoint.ts not found at $ENDPOINT_FILE${NC}"
-    echo -e "${YELLOW}💡 Make sure you're running this script from the LetLinkApp directory${NC}"
+    echo -e "${YELLOW}💡 Run this script from the AiPayrollApp directory (e.g. cd AiPayrollApp && ./start-tunnel.sh)${NC}"
     exit 1
 fi
 
@@ -123,14 +123,11 @@ BACKUP_FILE="${ENDPOINT_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
 cp "$ENDPOINT_FILE" "$BACKUP_FILE"
 echo -e "${GREEN}✅ Backup created: $BACKUP_FILE${NC}"
 
-# Update the BasedURL line with the new tunnel URL (keeping /api suffix)
-# Using sed with different syntax for macOS
-sed -i '' "s|const BasedURL = getEnvVar('EXPO_PUBLIC_API_URL', '[^']*');|const BasedURL = getEnvVar('EXPO_PUBLIC_API_URL', '${TUNNEL_URL}/api');|" "$ENDPOINT_FILE"
+# Update baseURL (no /api suffix - backend routes are already /api/mobile/...)
+sed -i '' "s|getEnvVar('EXPO_PUBLIC_API_URL', '[^']*')|getEnvVar('EXPO_PUBLIC_API_URL', '${TUNNEL_URL}')|" "$ENDPOINT_FILE"
 
-# For React Native, use HTTPS (not WSS) for SignalR
-# SignalR will negotiate via HTTPS first, then upgrade to WebSocket
-# Update the BaseWebSocketUrl line with the new tunnel URL (HTTPS protocol for React Native)
-sed -i '' "s|const BaseWebSocketUrl = getEnvVar('EXPO_PUBLIC_WEBSOCKET_URL', '[^']*');|const BaseWebSocketUrl = getEnvVar('EXPO_PUBLIC_WEBSOCKET_URL', '${TUNNEL_URL}');|" "$ENDPOINT_FILE"
+# Update baseWebSocketUrl for future SignalR/WebSocket (HTTPS for React Native)
+sed -i '' "s|getEnvVar('EXPO_PUBLIC_WEBSOCKET_URL', '[^']*')|getEnvVar('EXPO_PUBLIC_WEBSOCKET_URL', '${TUNNEL_URL}')|" "$ENDPOINT_FILE"
 
 echo -e "${GREEN}✅ endpoint.ts updated with new tunnel URLs (HTTP + WebSocket)${NC}"
 echo ""
@@ -140,7 +137,7 @@ echo -e "${BLUE}================================================================
 echo -e "${GREEN}🎉 Tunnel is ready!${NC}"
 echo -e "${BLUE}==============================================================================${NC}"
 echo ""
-echo -e "${GREEN}📍 API URL:           ${TUNNEL_URL}/api${NC}"
+echo -e "${GREEN}📍 API base URL:      ${TUNNEL_URL}${NC}"
 echo -e "${GREEN}🔌 WebSocket URL:     ${TUNNEL_URL} (HTTPS for React Native)${NC}"
 echo -e "${GREEN}🔗 Tunnel URL:        ${TUNNEL_URL}${NC}"
 echo -e "${GREEN}🎯 Target:            ${LOCALHOST_URL}${NC}"

@@ -3,7 +3,7 @@
  * Form for employees to submit new requests
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,29 +14,40 @@ import {
   StatusBar,
   Alert,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-
-const REQUEST_TYPES = [
-  'Document Request',
-  'Salary Advance',
-  'Equipment Request',
-  'Work From Home',
-  'Travel Request',
-  'Other',
-];
+import requestService, { RequestType } from '../api/services/requestService';
 
 export const CreateRequestScreen: React.FC = () => {
   const navigation = useNavigation();
+  const [requestTypes, setRequestTypes] = useState<RequestType[]>([]);
+  const [loadingTypes, setLoadingTypes] = useState(true);
   const [requestType, setRequestType] = useState('');
+  const [requestTypeLabel, setRequestTypeLabel] = useState('');
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [additionalNote, setAdditionalNote] = useState('');
   const [showRequestTypePicker, setShowRequestTypePicker] = useState(false);
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    const fetchTypes = async () => {
+      try {
+        const types = await requestService.getTypes();
+        setRequestTypes(types);
+      } catch (error) {
+        console.error('Failed to fetch request types:', error);
+        Alert.alert('Error', 'Failed to load request types. Please try again.');
+      } finally {
+        setLoadingTypes(false);
+      }
+    };
+    fetchTypes();
+  }, []);
 
   const formatDate = (date: Date | null): string => {
     if (!date) return '';
@@ -74,19 +85,11 @@ export const CreateRequestScreen: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      // TODO: Replace with actual API call
-      const request = {
+      await requestService.createApplication({
         requestType,
         startDate: startDate?.toISOString(),
-        additionalNote,
-        status: 'requested',
-        submittedAt: new Date().toISOString(),
-      };
-
-      console.log('Submitting request:', request);
-
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+        notes: additionalNote.trim(),
+      });
 
       Alert.alert(
         'Success',
@@ -99,6 +102,7 @@ export const CreateRequestScreen: React.FC = () => {
         ]
       );
     } catch (error) {
+      console.error('Failed to submit request:', error);
       Alert.alert('Error', 'Failed to submit request. Please try again.');
     } finally {
       setIsSubmitting(false);
@@ -115,7 +119,7 @@ export const CreateRequestScreen: React.FC = () => {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Requested</Text>
+          <Text style={styles.headerTitle}>New Request</Text>
           <View style={{ width: 24 }} />
         </View>
       </SafeAreaView>
@@ -129,35 +133,45 @@ export const CreateRequestScreen: React.FC = () => {
         {/* Request Type Dropdown */}
         <View style={styles.fieldContainer}>
           <Text style={styles.label}>Request Type</Text>
-          <TouchableOpacity
-            style={styles.dropdown}
-            onPress={() => setShowRequestTypePicker(!showRequestTypePicker)}
-          >
-            <Text style={[styles.dropdownText, !requestType && styles.placeholder]}>
-              {requestType || 'Select Request Type'}
-            </Text>
-            <MaterialCommunityIcons name="chevron-down" size={24} color="#666" />
-          </TouchableOpacity>
-
-          {/* Request Type Picker */}
-          {showRequestTypePicker && (
-            <View style={styles.pickerContainer}>
-              {REQUEST_TYPES.map((type) => (
-                <TouchableOpacity
-                  key={type}
-                  style={styles.pickerItem}
-                  onPress={() => {
-                    setRequestType(type);
-                    setShowRequestTypePicker(false);
-                  }}
-                >
-                  <Text style={styles.pickerItemText}>{type}</Text>
-                  {requestType === type && (
-                    <MaterialCommunityIcons name="check" size={20} color="#4285F4" />
-                  )}
-                </TouchableOpacity>
-              ))}
+          {loadingTypes ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#4285F4" />
+              <Text style={styles.loadingText}>Loading request types...</Text>
             </View>
+          ) : (
+            <>
+              <TouchableOpacity
+                style={styles.dropdown}
+                onPress={() => setShowRequestTypePicker(!showRequestTypePicker)}
+              >
+                <Text style={[styles.dropdownText, !requestType && styles.placeholder]}>
+                  {requestTypeLabel || 'Select Request Type'}
+                </Text>
+                <MaterialCommunityIcons name="chevron-down" size={24} color="#666" />
+              </TouchableOpacity>
+
+              {/* Request Type Picker */}
+              {showRequestTypePicker && (
+                <View style={styles.pickerContainer}>
+                  {requestTypes.map((type) => (
+                    <TouchableOpacity
+                      key={type.key}
+                      style={styles.pickerItem}
+                      onPress={() => {
+                        setRequestType(type.key);
+                        setRequestTypeLabel(type.label);
+                        setShowRequestTypePicker(false);
+                      }}
+                    >
+                      <Text style={styles.pickerItemText}>{type.label}</Text>
+                      {requestType === type.key && (
+                        <MaterialCommunityIcons name="check" size={20} color="#4285F4" />
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </>
           )}
         </View>
 
@@ -196,9 +210,11 @@ export const CreateRequestScreen: React.FC = () => {
           onPress={handleSubmit}
           disabled={isSubmitting}
         >
-          <Text style={styles.submitButtonText}>
-            {isSubmitting ? 'Submitting...' : 'Submit'}
-          </Text>
+          {isSubmitting ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Text style={styles.submitButtonText}>Submit</Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
 
@@ -254,6 +270,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#000',
     marginBottom: 8,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    gap: 8,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#999',
   },
   dropdown: {
     flexDirection: 'row',

@@ -7,24 +7,26 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
-export type ClaimStatus = 'Not Submitted' | 'Reviewing' | 'Approved' | 'Rejected' | 'Paid';
+export type ClaimStatus = 'DRAFT' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 
 export interface Claim {
   id: string;
   employeeId: string;
   employeeName: string;
   type: string;
-  location: string;
-  startDate: string;
-  endDate: string;
+  claimTypeId?: string;
+  location?: string;
+  transDate: string;
   amount: number;
   status: ClaimStatus;
   description?: string;
+  receiptNo?: string;
   receipts?: string[];
-  submittedDate?: string;
-  reviewedDate?: string;
-  reviewedBy?: string;
-  rejectionReason?: string;
+  attachmentFileName?: string | null;
+  submittedFrom?: string;
+  createdAt?: string;
+  approvedAt?: string | null;
+  rejectionReason?: string | null;
 }
 
 interface ClaimCardProps {
@@ -35,6 +37,14 @@ interface ClaimCardProps {
   showEmployeeName?: boolean;
 }
 
+const STATUS_DISPLAY: Record<ClaimStatus, { label: string; color: string }> = {
+  DRAFT: { label: 'Draft', color: '#999' },
+  PENDING: { label: 'Pending', color: '#4285F4' },
+  APPROVED: { label: 'Approved', color: '#34A853' },
+  REJECTED: { label: 'Rejected', color: '#EA4335' },
+  CANCELLED: { label: 'Cancelled', color: '#546E7A' },
+};
+
 export const ClaimCard: React.FC<ClaimCardProps> = ({
   claim,
   onPress,
@@ -42,24 +52,21 @@ export const ClaimCard: React.FC<ClaimCardProps> = ({
   onReject,
   showEmployeeName = false,
 }) => {
-  const getStatusColor = (status: ClaimStatus): string => {
-    switch (status) {
-      case 'Not Submitted':
-        return '#999';
-      case 'Reviewing':
-        return '#4285F4';
-      case 'Approved':
-        return '#34A853';
-      case 'Rejected':
-        return '#EA4335';
-      case 'Paid':
-        return '#FBBC04';
-      default:
-        return '#999';
+  const statusInfo = STATUS_DISPLAY[claim.status] || { label: claim.status, color: '#999' };
+
+  const showApproveReject = claim.status === 'PENDING' && (onApprove || onReject);
+
+  const formatDate = (dateStr: string) => {
+    try {
+      return new Date(dateStr).toLocaleDateString('en-US', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      });
+    } catch {
+      return dateStr;
     }
   };
-
-  const showApproveReject = claim.status === 'Reviewing' && (onApprove || onReject);
 
   return (
     <TouchableOpacity
@@ -79,19 +86,21 @@ export const ClaimCard: React.FC<ClaimCardProps> = ({
         </View>
       )}
 
-      {/* Location */}
-      <Text style={styles.location} numberOfLines={1}>
-        {claim.location}
-      </Text>
+      {/* Description */}
+      {claim.description && (
+        <Text style={styles.location} numberOfLines={1}>
+          {claim.description}
+        </Text>
+      )}
 
-      {/* Date Range */}
-      <Text style={styles.dateRange}>{claim.startDate} - {claim.endDate}</Text>
+      {/* Date */}
+      <Text style={styles.dateRange}>{formatDate(claim.transDate)}</Text>
 
       {/* Amount and Status Row */}
       <View style={styles.bottomRow}>
         <Text style={styles.amount}>${claim.amount.toFixed(2)}</Text>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(claim.status) }]}>
-          <Text style={styles.statusText}>{claim.status}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: statusInfo.color }]}>
+          <Text style={styles.statusText}>{statusInfo.label}</Text>
         </View>
       </View>
 
