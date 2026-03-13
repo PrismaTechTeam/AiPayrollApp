@@ -96,6 +96,19 @@ const authService = {
     return data;
   },
 
+  /** Get all tenants the current user is a member of (for Tenant Hub). */
+  async getMyTenants(): Promise<TenantInfo[]> {
+    const response = await axiosInstance.get(ENDPOINTS.AUTH.MY_TENANTS);
+    const content = response.data?.content ?? response.data?.Content ?? response.data;
+    if (!Array.isArray(content)) return [];
+    return content.map((t: { id?: string; Id?: string; name?: string; Name?: string; role?: string; Role?: string; logoUrl?: string; LogoUrl?: string }) => ({
+      id: t.id ?? t.Id ?? '',
+      name: t.name ?? t.Name ?? '',
+      role: t.role ?? t.Role ?? 'Employee',
+      logoUrl: t.logoUrl ?? t.LogoUrl ?? null,
+    }));
+  },
+
   /** Register via Identity (legacy). Prefer firebaseSignUp so user can log in with Firebase. */
   async register(request: RegisterRequest): Promise<void> {
     await axiosInstance.post(ENDPOINTS.AUTH.REGISTER, request);

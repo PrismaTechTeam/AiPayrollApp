@@ -6,15 +6,17 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, Alert } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { useNavigation } from '@react-navigation/native';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
 
 export const CompanySwitcher: React.FC = () => {
-  const { currentCompany, availableCompanies, switchCompany } = usePayrollAuth();
+  const { currentCompany, availableCompanies, switchCompany, user } = usePayrollAuth();
+  const navigation = useNavigation();
   const [modalVisible, setModalVisible] = useState(false);
   const [switching, setSwitching] = useState(false);
 
-  // Don't show if user doesn't have multiple companies
-  if (!availableCompanies || availableCompanies.length <= 1) {
+  // Always show if user has at least one company
+  if (!currentCompany) {
     return null;
   }
 
@@ -27,22 +29,29 @@ export const CompanySwitcher: React.FC = () => {
       .substring(0, 2);
   };
 
-  const handleSwitchCompany = async (newCompany: string) => {
-    if (newCompany === currentCompany) {
+  const tenants = user?.availableTenants ?? [];
+  const hasMultipleTenants = tenants.length > 1;
+
+  const handleSwitchCompany = async (tenantId: string, tenantName: string) => {
+    if (tenantName === currentCompany) {
       setModalVisible(false);
       return;
     }
 
     setSwitching(true);
     try {
-      await switchCompany(newCompany);
+      await switchCompany(tenantId);
       setModalVisible(false);
-      Alert.alert('Success', `Switched to ${newCompany}`);
     } catch (error) {
       Alert.alert('Error', 'Failed to switch company. Please try again.');
     } finally {
       setSwitching(false);
     }
+  };
+
+  const handleGoToTenantHub = () => {
+    setModalVisible(false);
+    navigation.navigate('TenantHub' as never);
   };
 
   return (
@@ -75,52 +84,83 @@ export const CompanySwitcher: React.FC = () => {
         >
           <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Switch Company</Text>
+              <Text style={styles.modalTitle}>Current Tenant</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <MaterialCommunityIcons name="close" size={24} color="#666" />
               </TouchableOpacity>
             </View>
 
             <View style={styles.companyList}>
-              {availableCompanies.map((company) => {
-                const isActive = company === currentCompany;
-
-                return (
-                  <TouchableOpacity
-                    key={company}
-                    style={[
-                      styles.companyItem,
-                      isActive && styles.companyItemActive,
-                    ]}
-                    onPress={() => handleSwitchCompany(company)}
-                    disabled={switching}
-                  >
-                    <View style={styles.companyItemLeft}>
-                      <View style={styles.companyIconContainer}>
-                        <Text style={styles.companyIconText}>
-                          {getCompanyInitials(company)}
-                        </Text>
+              {/* Show tenant list for switching if multiple */}
+              {hasMultipleTenants ? (
+                tenants.map((tenant) => {
+                  const isActive = tenant.name === currentCompany;
+                  return (
+                    <TouchableOpacity
+                      key={tenant.id}
+                      style={[
+                        styles.companyItem,
+                        isActive && styles.companyItemActive,
+                      ]}
+                      onPress={() => handleSwitchCompany(tenant.id, tenant.name)}
+                      disabled={switching}
+                    >
+                      <View style={styles.companyItemLeft}>
+                        <View style={styles.companyIconContainer}>
+                          <Text style={styles.companyIconText}>
+                            {getCompanyInitials(tenant.name)}
+                          </Text>
+                        </View>
+                        <View>
+                          <Text style={[
+                            styles.companyItemTitle,
+                            isActive && styles.companyItemTitleActive,
+                          ]}>
+                            {tenant.name}
+                          </Text>
+                          <Text style={styles.companyItemSubtitle}>
+                            {isActive ? 'Current tenant' : 'Tap to switch'}
+                          </Text>
+                        </View>
                       </View>
-                      <View>
-                        <Text style={[
-                          styles.companyItemTitle,
-                          isActive && styles.companyItemTitleActive,
-                        ]}>
-                          {company}
-                        </Text>
-                        <Text style={styles.companyItemSubtitle}>
-                          {isActive ? 'Current company' : 'Tap to switch'}
-                        </Text>
-                      </View>
+                      {isActive && (
+                        <View style={styles.activeIndicator}>
+                          <MaterialCommunityIcons name="check" size={16} color="#FFFFFF" />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })
+              ) : (
+                <View style={[styles.companyItem, styles.companyItemActive]}>
+                  <View style={styles.companyItemLeft}>
+                    <View style={styles.companyIconContainer}>
+                      <Text style={styles.companyIconText}>
+                        {getCompanyInitials(currentCompany)}
+                      </Text>
                     </View>
-                    {isActive && (
-                      <View style={styles.activeIndicator}>
-                        <MaterialCommunityIcons name="check" size={16} color="#FFFFFF" />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
+                    <View>
+                      <Text style={[styles.companyItemTitle, styles.companyItemTitleActive]}>
+                        {currentCompany}
+                      </Text>
+                      <Text style={styles.companyItemSubtitle}>Current tenant</Text>
+                    </View>
+                  </View>
+                  <View style={styles.activeIndicator}>
+                    <MaterialCommunityIcons name="check" size={16} color="#FFFFFF" />
+                  </View>
+                </View>
+              )}
+
+              {/* Go to Tenant Hub */}
+              <TouchableOpacity
+                style={styles.tenantHubButton}
+                onPress={handleGoToTenantHub}
+              >
+                <MaterialCommunityIcons name="office-building" size={20} color="#4285F4" />
+                <Text style={styles.tenantHubText}>Go to Tenant Hub</Text>
+                <MaterialCommunityIcons name="chevron-right" size={18} color="#4285F4" />
+              </TouchableOpacity>
             </View>
           </View>
         </TouchableOpacity>
@@ -242,5 +282,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#4285F4',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  tenantHubButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#E8F0FE',
+    marginTop: 4,
+    gap: 8,
+  },
+  tenantHubText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#4285F4',
   },
 });

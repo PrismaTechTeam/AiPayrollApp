@@ -48,6 +48,7 @@ interface PayrollAuthContextType {
   loginWithFirebaseToken: (firebaseIdToken: string, deviceId: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshAuthState: () => Promise<void>;
+  refreshTenants: () => Promise<void>;
 }
 
 const PayrollAuthContext = createContext<PayrollAuthContextType | undefined>(undefined);
@@ -297,22 +298,52 @@ export const PayrollAuthProvider = ({ children }: { children: ReactNode }) => {
   }, [user]);
 
   /**
-   * Refresh auth state from API (e.g., after join request approved)
+   * Refresh auth state from API (e.g., after join request approved).
+   * Re-fetches employee data AND tenant memberships so the user
+   * doesn't need to re-login after HR approval.
    */
   const refreshAuthState = useCallback(async () => {
     if (!user) return;
 
     try {
-      // Re-fetch employee data
       const { default: axiosInstance } = await import('../api/axiosInstance');
       const { ENDPOINTS } = await import('../api/endpoints');
-      const response = await axiosInstance.get(ENDPOINTS.ME.EMPLOYEE);
-      const employeeData = response.data.content as MobileEmployee | null;
+
+      // Re-fetch employee data
+      let employeeData: MobileEmployee | null = null;
+      try {
+        const empResponse = await axiosInstance.get(ENDPOINTS.ME.EMPLOYEE);
+        employeeData = empResponse.data.content as MobileEmployee | null;
+      } catch {
+        // May fail if user has no tenant yet — that's ok
+      }
+
+      // Update tenantId from employee data if user didn't have one yet
+      // (happens after HR approves a join request)
+      let updatedTenantId = user.tenantId;
+      let updatedTenantName = user.tenantName;
+      let updatedTenants = user.availableTenants;
+
+      if (employeeData?.tenantId && !updatedTenantId) {
+        updatedTenantId = employeeData.tenantId;
+        updatedTenantName = employeeData.tenantName ?? null;
+        // Add the new tenant to the list if not already present
+        if (!updatedTenants.some(t => t.id === employeeData.tenantId)) {
+          updatedTenants = [
+            ...updatedTenants,
+            { id: employeeData.tenantId, name: employeeData.tenantName ?? '', role: 'Employee', logoUrl: null },
+          ];
+        }
+      }
 
       const updatedUser: PayrollUser = {
         ...user,
         employeeId: employeeData?.id ?? null,
         employeeCode: employeeData?.employeeCode ?? null,
+        tenantId: updatedTenantId,
+        tenantName: updatedTenantName,
+        company: updatedTenantName,
+        availableTenants: updatedTenants,
       };
 
       await persistUserState(updatedUser, employeeData);
@@ -322,6 +353,27 @@ export const PayrollAuthProvider = ({ children }: { children: ReactNode }) => {
       console.error('Error refreshing auth state:', error);
     }
   }, [user]);
+
+  /**
+   * Refresh the list of tenants for the current user (e.g. when opening Tenant Hub).
+   * Calls GET /api/mobile/auth/my-tenants and updates user.availableTenants.
+   */
+  const refreshTenants = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const tenants = await authService.getMyTenants();
+      const updatedUser: PayrollUser = {
+        ...user,
+        availableTenants: tenants,
+        availableCompanies: tenants.map(t => t.name),
+      };
+      await persistUserState(updatedUser, employee);
+      setUser(updatedUser);
+    } catch (error) {
+      console.error('Error refreshing tenants:', error);
+    }
+  }, [user, employee]);
 
   const value = {
     user,
@@ -338,6 +390,7 @@ export const PayrollAuthProvider = ({ children }: { children: ReactNode }) => {
     loginWithFirebaseToken,
     logout,
     refreshAuthState,
+    refreshTenants,
   };
 
   return <PayrollAuthContext.Provider value={value}>{children}</PayrollAuthContext.Provider>;

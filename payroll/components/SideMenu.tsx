@@ -28,7 +28,8 @@ interface SideMenuProps {
 }
 
 export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, navigation }) => {
-  const { user, logout } = usePayrollAuth();
+  const { user, logout, availableRoles } = usePayrollAuth();
+  const hasMultipleRoles = availableRoles && availableRoles.length > 1;
 
   const handleLogout = () => {
     onClose();
@@ -76,17 +77,29 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, navigation
               </TouchableOpacity>
             </View>
 
-            {/* Role Switcher Section */}
-            <View style={styles.roleSwitcherSection}>
-              <Text style={styles.sectionTitle}>Switch Role</Text>
-              <RoleSwitcher />
-            </View>
-
-            {/* Divider */}
-            <View style={styles.divider} />
+            {/* Role Switcher Section — only when user has multiple roles */}
+            {hasMultipleRoles && (
+              <>
+                <View style={styles.roleSwitcherSection}>
+                  <Text style={styles.sectionTitle}>Switch Role</Text>
+                  <RoleSwitcher />
+                </View>
+                <View style={styles.divider} />
+              </>
+            )}
 
             {/* Menu Items */}
             <View style={styles.menuItems}>
+              {/* Tenant Hub — always first */}
+              <TouchableOpacity style={styles.menuItem} onPress={() => {
+                onClose();
+                navigation?.navigate('TenantHub');
+              }}>
+                <MaterialCommunityIcons name="office-building" size={24} color="#4285F4" />
+                <Text style={styles.menuItemText}>Tenant Hub</Text>
+                <MaterialCommunityIcons name="chevron-right" size={20} color="#CCC" />
+              </TouchableOpacity>
+
               <TouchableOpacity style={styles.menuItem} onPress={handleProfile}>
                 <MaterialCommunityIcons name="account" size={24} color="#666" />
                 <Text style={styles.menuItemText}>Profile</Text>

@@ -125,8 +125,10 @@ export const JoinTenantScreen: React.FC = () => {
       if (scanned || scanSubmitting) return;
       setScanned(true);
 
+      console.log('[JoinTenant] QR raw data:', data);
       const payload = parseQRData(data);
       if (!payload) {
+        console.log('[JoinTenant] QR parse failed — invalid or unsupported format');
         Alert.alert(
           'Invalid QR Code',
           'This QR code does not contain valid join information. Please try a different code.',
@@ -134,21 +136,26 @@ export const JoinTenantScreen: React.FC = () => {
         );
         return;
       }
+      console.log('[JoinTenant] QR parsed payload:', payload);
 
       setScanSubmitting(true);
+
       try {
+        const message = 'Joined via QR scan';
+        console.log('[JoinTenant] Sending join request:', { tenantId: payload.tenantId, message });
         const joinRequest = await companyService.submitJoinRequest(
           payload.tenantId,
-          'Joined via QR scan',
+          message,
         );
         navigation.navigate('JoinRequestPending' as never, {
           companyId: payload.tenantId,
           companyName: payload.companyName || joinRequest.tenantName || 'Company',
         } as never);
       } catch (err: any) {
+        const message = err?.response?.data?.message ?? err?.message ?? 'Failed to submit join request. Please try again.';
         Alert.alert(
           'Join Failed',
-          err.message || 'Failed to submit join request. Please try again.',
+          message,
           [{ text: 'Scan Again', onPress: () => setScanned(false) }],
         );
       } finally {

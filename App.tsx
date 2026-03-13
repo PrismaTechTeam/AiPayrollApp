@@ -23,6 +23,7 @@ import ForgotPasswordScreen from './payroll/screens/ForgotPasswordScreen';
 import { UserHomeScreen } from './payroll/screens/UserHomeScreen';
 import { JoinTenantScreen } from './payroll/screens/JoinTenantScreen';
 import { JoinRequestPendingScreen } from './payroll/screens/JoinRequestPendingScreen';
+import { TenantHubScreen } from './payroll/screens/TenantHubScreen';
 
 // Main app screens
 import { PayrollHomeScreen } from './payroll/screens/PayrollHomeScreen';
@@ -146,8 +147,12 @@ function AuthenticatedApp() {
           </>
         ) : (
           // Full app — authenticated with linked employee
+          // TenantHub is the entry point; user selects a tenant → PayrollHome
           <>
+            <Stack.Screen name="TenantHub" component={TenantHubScreen} />
             <Stack.Screen name="PayrollHome" component={PayrollHomeScreen} />
+            <Stack.Screen name="JoinTenant" component={JoinTenantScreen} />
+            <Stack.Screen name="JoinRequestPending" component={JoinRequestPendingScreen} />
             <Stack.Screen name="Requests" component={RequestsScreen} />
             <Stack.Screen name="RequestDetails" component={RequestDetailsScreen} />
             <Stack.Screen name="CreateRequest" component={CreateRequestScreen} />

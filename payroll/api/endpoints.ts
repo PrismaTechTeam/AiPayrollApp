@@ -10,6 +10,7 @@ export const ENDPOINTS = {
     REFRESH: '/api/mobile/auth/refresh',
     LOGOUT: '/api/mobile/auth/logout',
     SWITCH_TENANT: '/api/mobile/auth/switch-tenant',
+    MY_TENANTS: '/api/mobile/auth/my-tenants',
     REGISTER: '/api/mobile/auth/register',
     RESEND_VERIFICATION: '/api/mobile/auth/resend-verification',
     FORGOT_PASSWORD: '/api/auth/firebase/forgot-password',
