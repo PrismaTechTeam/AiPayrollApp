@@ -32,6 +32,7 @@ export interface MobileEmployee {
   status: string;
   joinDate: string | null;
   classification: string | null;
+  isDepartmentHead: boolean;
   tenantId: string;
   tenantName: string | null;
 }

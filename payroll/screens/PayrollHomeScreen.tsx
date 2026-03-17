@@ -43,8 +43,9 @@ function formatLeaveDate(start: string, end: string): string {
 }
 
 export const PayrollHomeScreen: React.FC<PayrollHomeScreenProps> = ({ navigation }) => {
-  const { user, currentRole } = usePayrollAuth();
+  const { user, currentRole, employee } = usePayrollAuth();
   const isOwner = checkIsOwner(currentRole);
+  const isDepartmentHead = employee?.isDepartmentHead === true;
   const [menuVisible, setMenuVisible] = useState(false);
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
 
@@ -132,7 +133,12 @@ export const PayrollHomeScreen: React.FC<PayrollHomeScreenProps> = ({ navigation
               {isOwner ? (
                 <ServiceCard title="Leave Approval" icon="calendar-clock" color="#FF5722" onPress={() => navigation?.navigate('Leaves')} />
               ) : (
-                <ServiceCard title="My Leaves" icon="calendar-clock" color="#9C27B0" onPress={() => navigation?.navigate('MyLeaves')} />
+                <>
+                  <ServiceCard title="My Leaves" icon="calendar-clock" color="#9C27B0" onPress={() => navigation?.navigate('MyLeaves')} />
+                  {isDepartmentHead && (
+                    <ServiceCard title="Leave Approval" icon="calendar-check" color="#FF5722" onPress={() => navigation?.navigate('Leaves')} />
+                  )}
+                </>
               )}
 
               {!isOwner && (
