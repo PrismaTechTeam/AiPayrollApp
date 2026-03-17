@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import notificationService, { NotificationItem } from '../api/services/notificationService';
+import { useTheme } from '../context/ThemeContext';
 
 // Parse notification message to determine type for icon/color
 function inferNotificationType(message: string): 'leave' | 'claim' | 'payslip' | 'attendance' | 'general' {
@@ -66,6 +67,7 @@ function formatTimeAgo(dateStr: string): string {
 
 export const NotificationsScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -171,19 +173,19 @@ export const NotificationsScreen: React.FC = () => {
           <Text style={styles.notificationTime}>{formatTimeAgo(item.createdAt)}</Text>
         </View>
 
-        <MaterialCommunityIcons name="chevron-right" size={20} color="#CCC" />
+        <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textTertiary} />
       </TouchableOpacity>
     );
   };
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
 
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
             <Text style={styles.headerTitle}>Notifications</Text>
@@ -200,19 +202,19 @@ export const NotificationsScreen: React.FC = () => {
       {notifications.length > 0 && (
         <View style={styles.actionsBar}>
           <TouchableOpacity style={styles.actionButton} onPress={handleMarkAllAsRead}>
-            <MaterialCommunityIcons name="check-all" size={18} color="#4285F4" />
+            <MaterialCommunityIcons name="check-all" size={18} color={colors.primary} />
             <Text style={styles.actionButtonText}>Mark all as read</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionButton} onPress={handleClearAll}>
-            <MaterialCommunityIcons name="delete-outline" size={18} color="#FF5252" />
-            <Text style={[styles.actionButtonText, { color: '#FF5252' }]}>Clear all</Text>
+            <MaterialCommunityIcons name="delete-outline" size={18} color={colors.error} />
+            <Text style={[styles.actionButtonText, { color: colors.error }]}>Clear all</Text>
           </TouchableOpacity>
         </View>
       )}
 
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4285F4" />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : (
         <FlatList
@@ -225,7 +227,7 @@ export const NotificationsScreen: React.FC = () => {
           ]}
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <MaterialCommunityIcons name="bell-off-outline" size={80} color="#CCC" />
+              <MaterialCommunityIcons name="bell-off-outline" size={80} color={colors.textTertiary} />
               <Text style={styles.emptyStateTitle}>No Notifications</Text>
               <Text style={styles.emptyStateText}>
                 You're all caught up! Check back later for new notifications.
@@ -245,16 +247,16 @@ export const NotificationsScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
-  safeAreaTop: { backgroundColor: '#FFFFFF' },
+  container: { flex: 1, backgroundColor: colors.background },
+  safeAreaTop: { backgroundColor: colors.surface },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1, borderBottomColor: '#F0F0F0',
+    paddingHorizontal: 20, paddingVertical: 16, backgroundColor: colors.surface,
+    borderBottomWidth: 1, borderBottomColor: colors.borderLight,
   },
   backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   headerTitleContainer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: '#000' },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: colors.text },
   badge: {
     backgroundColor: '#FF5252', borderRadius: 10, minWidth: 20, height: 20,
     justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6,
@@ -262,32 +264,32 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
   actionsBar: {
     flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20,
-    paddingVertical: 12, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F0F0F0',
+    paddingVertical: 12, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.borderLight,
   },
   actionButton: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  actionButtonText: { fontSize: 14, fontWeight: '600', color: '#4285F4' },
+  actionButtonText: { fontSize: 14, fontWeight: '600', color: colors.primary },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   listContent: { padding: 16, paddingBottom: 20 },
   emptyListContent: { flexGrow: 1, justifyContent: 'center' },
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 80 },
-  emptyStateTitle: { fontSize: 20, fontWeight: '700', color: '#666', marginTop: 16, marginBottom: 8 },
-  emptyStateText: { fontSize: 14, color: '#999', textAlign: 'center', paddingHorizontal: 40, lineHeight: 20 },
+  emptyStateTitle: { fontSize: 20, fontWeight: '700', color: colors.textSecondary, marginTop: 16, marginBottom: 8 },
+  emptyStateText: { fontSize: 14, color: colors.textTertiary, textAlign: 'center', paddingHorizontal: 40, lineHeight: 20 },
   notificationCard: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF',
+    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface,
     borderRadius: 12, padding: 16, marginBottom: 12, position: 'relative',
   },
   notificationCardUnread: { backgroundColor: '#F0F8FF', borderLeftWidth: 3, borderLeftColor: '#4285F4' },
   unreadIndicator: {
     position: 'absolute', top: 16, right: 16, width: 8, height: 8,
-    borderRadius: 4, backgroundColor: '#4285F4',
+    borderRadius: 4, backgroundColor: colors.primary,
   },
   iconContainer: {
     width: 48, height: 48, borderRadius: 24, justifyContent: 'center',
     alignItems: 'center', marginRight: 12,
   },
   notificationContent: { flex: 1, marginRight: 8 },
-  notificationMessage: { fontSize: 14, color: '#333', lineHeight: 20, marginBottom: 6 },
-  notificationTime: { fontSize: 12, color: '#999' },
+  notificationMessage: { fontSize: 14, color: colors.text, lineHeight: 20, marginBottom: 6 },
+  notificationTime: { fontSize: 12, color: colors.textTertiary },
 });
 
 export default NotificationsScreen;

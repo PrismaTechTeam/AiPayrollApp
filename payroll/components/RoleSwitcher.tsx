@@ -7,10 +7,12 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, Alert } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { isOwner as checkIsOwner } from '../constants/userRoles';
 
 export const RoleSwitcher: React.FC = () => {
   const { currentRole, availableRoles, switchRole } = usePayrollAuth();
+  const { colors } = useTheme();
   const [modalVisible, setModalVisible] = useState(false);
   const [switching, setSwitching] = useState(false);
 
@@ -24,7 +26,7 @@ export const RoleSwitcher: React.FC = () => {
   };
 
   const getRoleColor = (role: string): string => {
-    return checkIsOwner(role) ? '#FF5722' : '#4285F4';
+    return checkIsOwner(role) ? colors.error : colors.primary;
   };
 
   const handleSwitchRole = async (newRole: string) => {
@@ -48,7 +50,7 @@ export const RoleSwitcher: React.FC = () => {
   return (
     <>
       <TouchableOpacity
-        style={[styles.button, { borderColor: getRoleColor(currentRole || '') }]}
+        style={[styles.button, { borderColor: getRoleColor(currentRole || ''), backgroundColor: colors.surface }]}
         onPress={() => setModalVisible(true)}
       >
         <MaterialCommunityIcons
@@ -59,7 +61,7 @@ export const RoleSwitcher: React.FC = () => {
         <Text style={[styles.roleText, { color: getRoleColor(currentRole || '') }]}>
           {currentRole}
         </Text>
-        <MaterialCommunityIcons name="chevron-down" size={16} color="#666" />
+        <MaterialCommunityIcons name="chevron-down" size={16} color={colors.icon} />
       </TouchableOpacity>
 
       <Modal
@@ -73,11 +75,11 @@ export const RoleSwitcher: React.FC = () => {
           activeOpacity={1}
           onPress={() => setModalVisible(false)}
         >
-          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Switch Role</Text>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]} onStartShouldSetResponder={() => true}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.borderLight }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Switch Role</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <MaterialCommunityIcons name="close" size={24} color="#666" />
+                <MaterialCommunityIcons name="close" size={24} color={colors.icon} />
               </TouchableOpacity>
             </View>
 
@@ -91,6 +93,7 @@ export const RoleSwitcher: React.FC = () => {
                     key={role}
                     style={[
                       styles.roleItem,
+                      { backgroundColor: colors.background },
                       isActive && { backgroundColor: `${color}10` },
                     ]}
                     onPress={() => handleSwitchRole(role)}
@@ -107,10 +110,10 @@ export const RoleSwitcher: React.FC = () => {
                         />
                       </View>
                       <View>
-                        <Text style={[styles.roleItemTitle, isActive && { color }]}>
+                        <Text style={[styles.roleItemTitle, { color: colors.text }, isActive && { color }]}>
                           {role}
                         </Text>
-                        <Text style={styles.roleItemSubtitle}>
+                        <Text style={[styles.roleItemSubtitle, { color: colors.textSecondary }]}>
                           {checkIsOwner(role)
                             ? 'Manage & approve requests, view all data'
                             : 'Submit requests, view own data'}
@@ -141,7 +144,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
     borderWidth: 2,
-    backgroundColor: '#FFFFFF',
     gap: 6,
     marginTop: 12,
     marginBottom: 16,
@@ -157,7 +159,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     width: '85%',
     maxWidth: 400,
@@ -168,12 +169,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#000',
   },
   roleList: {
     padding: 16,
@@ -185,7 +184,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     marginBottom: 12,
-    backgroundColor: '#F9F9F9',
   },
   roleItemLeft: {
     flexDirection: 'row',
@@ -204,12 +202,10 @@ const styles = StyleSheet.create({
   roleItemTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#000',
     marginBottom: 2,
   },
   roleItemSubtitle: {
     fontSize: 12,
-    color: '#666',
   },
   activeIndicator: {
     width: 28,

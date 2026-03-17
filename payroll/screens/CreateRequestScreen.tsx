@@ -21,9 +21,11 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import requestService, { RequestType } from '../api/services/requestService';
+import { useTheme } from '../context/ThemeContext';
 
 export const CreateRequestScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const [requestTypes, setRequestTypes] = useState<RequestType[]>([]);
   const [loadingTypes, setLoadingTypes] = useState(true);
   const [requestType, setRequestType] = useState('');
@@ -140,13 +142,13 @@ export const CreateRequestScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
 
       {/* Header */}
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>New Request</Text>
           <View style={{ width: 24 }} />
@@ -164,7 +166,7 @@ export const CreateRequestScreen: React.FC = () => {
           <Text style={styles.label}>Request Type</Text>
           {loadingTypes ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color="#4285F4" />
+              <ActivityIndicator size="small" color={colors.primary} />
               <Text style={styles.loadingText}>Loading request types...</Text>
             </View>
           ) : (
@@ -176,7 +178,7 @@ export const CreateRequestScreen: React.FC = () => {
                 <Text style={[styles.dropdownText, !requestType && styles.placeholder]}>
                   {requestTypeLabel || 'Select Request Type'}
                 </Text>
-                <MaterialCommunityIcons name="chevron-down" size={24} color="#666" />
+                <MaterialCommunityIcons name="chevron-down" size={24} color={colors.icon} />
               </TouchableOpacity>
 
               {/* Request Type Picker */}
@@ -195,7 +197,7 @@ export const CreateRequestScreen: React.FC = () => {
                     >
                       <Text style={styles.pickerItemText}>{type.label}</Text>
                       {requestType === type.key && (
-                        <MaterialCommunityIcons name="check" size={20} color="#4285F4" />
+                        <MaterialCommunityIcons name="check" size={20} color={colors.primary} />
                       )}
                     </TouchableOpacity>
                   ))}
@@ -211,7 +213,8 @@ export const CreateRequestScreen: React.FC = () => {
             <Text style={styles.label}>Please specify</Text>
             <TextInput
               style={styles.otherInput}
-              placeholder="Enter the request type..."
+              placeholderTextColor={colors.textTertiary}
+                  placeholder="Enter the request type..."
               placeholderTextColor="#999"
               value={otherRequestType}
               onChangeText={setOtherRequestType}
@@ -229,7 +232,7 @@ export const CreateRequestScreen: React.FC = () => {
             <Text style={[styles.dateText, !startDate && styles.placeholder]}>
               {startDate ? formatDate(startDate) : 'Select Start Date'}
             </Text>
-            <MaterialCommunityIcons name="calendar" size={24} color="#4285F4" />
+            <MaterialCommunityIcons name="calendar" size={24} color={colors.primary} />
           </TouchableOpacity>
         </View>
 
@@ -238,7 +241,8 @@ export const CreateRequestScreen: React.FC = () => {
           <Text style={styles.label}>Additional Note</Text>
           <TextInput
             style={styles.textArea}
-            placeholder="Enter request details..."
+            placeholderTextColor={colors.textTertiary}
+                  placeholder="Enter request details..."
             placeholderTextColor="#999"
             multiline
             numberOfLines={6}
@@ -289,10 +293,10 @@ export const CreateRequestScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   safeAreaTop: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   header: {
     flexDirection: 'row',
@@ -300,14 +304,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: colors.borderLight,
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
   },
   content: {
     flex: 1,
@@ -322,55 +326,55 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#000',
+    color: colors.text,
     marginBottom: 8,
   },
   loadingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: colors.border,
     gap: 8,
   },
   loadingText: {
     fontSize: 14,
-    color: '#999',
+    color: colors.textTertiary,
   },
   dropdown: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: colors.border,
   },
   dropdownText: {
     fontSize: 16,
-    color: '#000',
+    color: colors.text,
   },
   placeholder: {
-    color: '#999',
+    color: colors.textTertiary,
   },
   otherInput: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: colors.border,
     fontSize: 16,
-    color: '#000',
+    color: colors.text,
   },
   pickerContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     marginTop: 8,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: colors.border,
     overflow: 'hidden',
   },
   pickerItem: {
@@ -379,34 +383,34 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: colors.borderLight,
   },
   pickerItemText: {
     fontSize: 16,
-    color: '#000',
+    color: colors.text,
   },
   dateInput: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: colors.border,
   },
   dateText: {
     fontSize: 16,
-    color: '#000',
+    color: colors.text,
   },
   textArea: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: colors.border,
     fontSize: 16,
-    color: '#000',
+    color: colors.text,
     minHeight: 150,
   },
   buttonContainer: {
@@ -416,21 +420,21 @@ const styles = StyleSheet.create({
   },
   draftButton: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 25,
     padding: 18,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#4285F4',
+    borderColor: colors.primary,
   },
   draftButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#4285F4',
+    color: colors.primary,
   },
   submitButton: {
     flex: 1,
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
     borderRadius: 25,
     padding: 18,
     alignItems: 'center',

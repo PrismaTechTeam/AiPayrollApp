@@ -7,6 +7,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { LeaveCardProps } from '../../types/leave.types';
+import { useTheme } from '../../context/ThemeContext';
 
 export const LeaveCard: React.FC<LeaveCardProps> = ({
   leave,
@@ -17,6 +18,7 @@ export const LeaveCard: React.FC<LeaveCardProps> = ({
   onRestore,
   onViewDetails,
 }) => {
+  const { colors } = useTheme();
   // Determine if action buttons should be shown based on status AND role
   // Only show approve/reject if status is 'requested' AND callbacks are provided (Manager role)
   const showApproveReject = leave.status === 'requested' && (onApprove || onReject);
@@ -101,7 +103,7 @@ export const LeaveCard: React.FC<LeaveCardProps> = ({
                 style={styles.cancelButton}
                 onPress={() => onCancel(leave.id)}
               >
-                <MaterialCommunityIcons name="close-circle" size={18} color="#FF5252" />
+                <MaterialCommunityIcons name="close-circle" size={18} color={colors.error} />
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
             )}
@@ -111,7 +113,7 @@ export const LeaveCard: React.FC<LeaveCardProps> = ({
                 style={styles.restoreButton}
                 onPress={() => onRestore(leave.id)}
               >
-                <MaterialCommunityIcons name="restore" size={18} color="#4285F4" />
+                <MaterialCommunityIcons name="restore" size={18} color={colors.primary} />
                 <Text style={styles.restoreButtonText}>Restore</Text>
               </TouchableOpacity>
             )}
@@ -122,7 +124,7 @@ export const LeaveCard: React.FC<LeaveCardProps> = ({
                 style={styles.viewDetailsButton}
                 onPress={() => onViewDetails(leave.id)}
               >
-                <MaterialCommunityIcons name="eye" size={16} color="#666" />
+                <MaterialCommunityIcons name="eye" size={16} color={colors.icon} />
               </TouchableOpacity>
             )}
           </View>
@@ -135,7 +137,7 @@ export const LeaveCard: React.FC<LeaveCardProps> = ({
 const styles = StyleSheet.create({
   leaveCard: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -153,12 +155,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   avatarImage: {
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
   },
   avatarInitial: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#666',
+    color: colors.textSecondary,
   },
   leaveDetails: {
     flex: 1,
@@ -167,17 +169,17 @@ const styles = StyleSheet.create({
   leaveName: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 4,
   },
   leaveDate: {
     fontSize: 13,
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 4,
   },
   leaveType: {
     fontSize: 13,
-    color: '#4285F4',
+    color: colors.primary,
     fontWeight: '600',
   },
   rightSection: {
@@ -186,7 +188,7 @@ const styles = StyleSheet.create({
   },
   daysAgo: {
     fontSize: 12,
-    color: '#999',
+    color: colors.textTertiary,
     marginBottom: 8,
   },
   actionButtons: {
@@ -205,7 +207,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#4CAF50',
+    backgroundColor: colors.success,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -217,12 +219,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   statusText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
   },
   cancelButton: {
     flexDirection: 'row',
@@ -236,7 +238,7 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#FF5252',
+    color: colors.error,
   },
   restoreButton: {
     flexDirection: 'row',
@@ -244,19 +246,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: '#E3F2FD',
+    backgroundColor: colors.primaryLight + '30',
     gap: 4,
   },
   restoreButtonText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#4285F4',
+    color: colors.primary,
   },
   viewDetailsButton: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
   },

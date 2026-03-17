@@ -7,6 +7,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, View, Text } from 'react-native';
 import { LeaveListProps } from '../../types/leave.types';
 import { LeaveCard } from './LeaveCard';
+import { useTheme } from '../../context/ThemeContext';
 
 export const LeaveList: React.FC<LeaveListProps> = ({
   leaves,
@@ -17,6 +18,7 @@ export const LeaveList: React.FC<LeaveListProps> = ({
   onRestore,
   onViewDetails,
 }) => {
+  const { colors } = useTheme();
   if (leaves.length === 0) {
     return (
       <View style={styles.emptyContainer}>
@@ -63,7 +65,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#999',
+    color: colors.textTertiary,
     fontWeight: '500',
   },
 });

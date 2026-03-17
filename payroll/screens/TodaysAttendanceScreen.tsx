@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import attendanceService, { TeamMemberAttendance, TeamTodayResponse } from '../api/services/attendanceService';
+import { useTheme } from '../context/ThemeContext';
 
 type FilterStatus = 'Present' | 'Late' | 'Absent';
 
@@ -51,6 +52,7 @@ const getLocationText = (latitude: number | null, longitude: number | null): str
 
 export const TodaysAttendanceScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const route = useRoute();
 
   // Get filter from navigation params or default to 'Present'
@@ -132,24 +134,24 @@ export const TodaysAttendanceScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
 
       {/* Header */}
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Attendance</Text>
           <TouchableOpacity style={styles.calendarButton}>
-            <MaterialCommunityIcons name="calendar-blank" size={24} color="#999" />
+            <MaterialCommunityIcons name="calendar-blank" size={24} color={colors.textTertiary} />
           </TouchableOpacity>
         </View>
       </SafeAreaView>
 
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4285F4" />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading attendance...</Text>
         </View>
       ) : (
@@ -162,7 +164,7 @@ export const TodaysAttendanceScreen: React.FC = () => {
               refreshing={refreshing}
               onRefresh={onRefresh}
               colors={['#4285F4']}
-              tintColor="#4285F4"
+              tintColor={colors.primary}
             />
           }
         >
@@ -182,7 +184,7 @@ export const TodaysAttendanceScreen: React.FC = () => {
               activeOpacity={0.7}
             >
               <View style={[styles.circle, { backgroundColor: '#4285F410' }]}>
-                <Text style={[styles.count, { color: '#4285F4' }]}>{presentCount}</Text>
+                <Text style={[styles.count, { color: colors.primary }]}>{presentCount}</Text>
               </View>
               <Text style={styles.label}>Presents</Text>
             </TouchableOpacity>
@@ -210,7 +212,7 @@ export const TodaysAttendanceScreen: React.FC = () => {
               activeOpacity={0.7}
             >
               <View style={[styles.circle, { backgroundColor: '#FF525210' }]}>
-                <Text style={[styles.count, { color: '#FF5252' }]}>{absentCount}</Text>
+                <Text style={[styles.count, { color: colors.error }]}>{absentCount}</Text>
               </View>
               <Text style={styles.label}>Absent</Text>
             </TouchableOpacity>
@@ -220,7 +222,7 @@ export const TodaysAttendanceScreen: React.FC = () => {
           <View style={styles.listContainer}>
             {filteredEmployees.length === 0 ? (
               <View style={styles.emptyState}>
-                <MaterialCommunityIcons name="account-off-outline" size={64} color="#CCC" />
+                <MaterialCommunityIcons name="account-off-outline" size={64} color={colors.textTertiary} />
                 <Text style={styles.emptyStateText}>No {getFilterLabel(selectedFilter)} attendances today</Text>
               </View>
             ) : (
@@ -287,10 +289,10 @@ export const TodaysAttendanceScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   safeAreaTop: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   header: {
     flexDirection: 'row',
@@ -298,9 +300,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: colors.borderLight,
   },
   backButton: {
     width: 40,
@@ -311,7 +313,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
   },
   calendarButton: {
     width: 40,
@@ -327,7 +329,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 16,
-    color: '#999',
+    color: colors.textTertiary,
   },
   scrollView: {
     flex: 1,
@@ -345,7 +347,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#333',
+    color: colors.text,
   },
   cardsContainer: {
     flexDirection: 'row',
@@ -353,7 +355,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 16,
     alignItems: 'center',
@@ -363,7 +365,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   cardActive: {
-    borderColor: '#4285F4',
+    borderColor: colors.primary,
     backgroundColor: '#F0F7FF',
   },
   circle: {
@@ -381,14 +383,14 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#333',
+    color: colors.text,
   },
   listContainer: {
     marginTop: 8,
   },
   attendanceCard: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -406,7 +408,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#666',
+    color: colors.textSecondary,
   },
   detailsContainer: {
     flex: 1,
@@ -414,7 +416,7 @@ const styles = StyleSheet.create({
   employeeName: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#333',
+    color: colors.text,
     marginBottom: 4,
   },
   timeRow: {
@@ -423,13 +425,13 @@ const styles = StyleSheet.create({
   timeLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 2,
   },
   checkInTime: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#4285F4',
+    color: colors.primary,
   },
   checkOutTime: {
     fontSize: 14,
@@ -443,7 +445,7 @@ const styles = StyleSheet.create({
   },
   locationText: {
     fontSize: 12,
-    color: '#666',
+    color: colors.textSecondary,
     marginLeft: 4,
     flex: 1,
   },
@@ -465,7 +467,7 @@ const styles = StyleSheet.create({
   },
   emptyStateText: {
     fontSize: 16,
-    color: '#999',
+    color: colors.textTertiary,
     marginTop: 16,
   },
 });

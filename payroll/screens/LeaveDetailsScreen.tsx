@@ -20,6 +20,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { BottomNavBar } from '../components/BottomNavBar';
 import leaveService, { LeaveApplication } from '../api/services/leaveService';
 import { STATUSES, STATUS_COLORS, STATUS_LABELS } from '../constants/statuses';
+import { useTheme } from '../context/ThemeContext';
 
 type LeaveDetailsRouteParams = {
   LeaveDetails: {
@@ -33,6 +34,7 @@ type LeaveDetailsRouteProp = RouteProp<LeaveDetailsRouteParams, 'LeaveDetails'>;
 
 export const LeaveDetailsScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const route = useRoute<LeaveDetailsRouteProp>();
   const { leaveId, leave: legacyLeave, canApprove = false } = route.params;
 
@@ -165,18 +167,18 @@ export const LeaveDetailsScreen: React.FC = () => {
   if (loading) {
     return (
       <View style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
         <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
           <View style={styles.header}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-              <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+              <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Leave Details</Text>
             <View style={{ width: 40 }} />
           </View>
         </SafeAreaView>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color="#4285F4" />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
         <BottomNavBar />
       </View>
@@ -186,18 +188,18 @@ export const LeaveDetailsScreen: React.FC = () => {
   if (!leaveDetail) {
     return (
       <View style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
         <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
           <View style={styles.header}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-              <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+              <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Leave Details</Text>
             <View style={{ width: 40 }} />
           </View>
         </SafeAreaView>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ fontSize: 16, color: '#999' }}>Leave not found</Text>
+          <Text style={{ fontSize: 16, color: colors.textTertiary }}>Leave not found</Text>
         </View>
         <BottomNavBar />
       </View>
@@ -206,12 +208,12 @@ export const LeaveDetailsScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
 
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Leave Details</Text>
           <View style={{ width: 40 }} />
@@ -314,7 +316,7 @@ export const LeaveDetailsScreen: React.FC = () => {
           )}
 
           {actionLoading && (
-            <ActivityIndicator size="small" color="#4285F4" style={{ marginTop: 16 }} />
+            <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 16 }} />
           )}
         </View>
       </ScrollView>
@@ -327,10 +329,10 @@ export const LeaveDetailsScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   safeAreaTop: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   header: {
     flexDirection: 'row',
@@ -338,9 +340,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: colors.borderLight,
   },
   backButton: {
     width: 40,
@@ -351,7 +353,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
   },
   scrollView: {
     flex: 1,
@@ -361,7 +363,7 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   userCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 20,
   },
@@ -381,7 +383,7 @@ const styles = StyleSheet.create({
   avatarInitial: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#666',
+    color: colors.textSecondary,
   },
   userInfoSection: {
     flex: 1,
@@ -389,17 +391,17 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 4,
   },
   dateRange: {
     fontSize: 14,
-    color: '#999',
+    color: colors.textTertiary,
     marginBottom: 4,
   },
   leaveApplication: {
     fontSize: 14,
-    color: '#4285F4',
+    color: colors.primary,
     fontWeight: '600',
   },
   rightSection: {
@@ -422,12 +424,12 @@ const styles = StyleSheet.create({
   daysCount: {
     fontSize: 32,
     fontWeight: '700',
-    color: '#4285F4',
+    color: colors.primary,
     marginBottom: 4,
   },
   halfDayNote: {
     fontSize: 12,
-    color: '#999',
+    color: colors.textTertiary,
   },
   reasonSection: {
     marginBottom: 16,
@@ -435,12 +437,12 @@ const styles = StyleSheet.create({
   reasonLabel: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 8,
   },
   reasonText: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     lineHeight: 22,
   },
   actionButtons: {
@@ -457,10 +459,10 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#FF5252',
+    color: colors.error,
   },
   approveButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: colors.success,
     paddingVertical: 16,
     borderRadius: 25,
     alignItems: 'center',

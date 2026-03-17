@@ -20,9 +20,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import authService from '../api/services/authService';
+import { useTheme } from '../context/ThemeContext';
 
 export const ForgotPasswordScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -48,7 +50,6 @@ export const ForgotPasswordScreen: React.FC = () => {
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
     } catch (err: unknown) {
-      // Backend returns success even for unknown emails (security), so this is usually network/config
       const message = err && typeof err === 'object' && 'message' in err ? String((err as Error).message) : 'Unable to send reset email. Please try again.';
       Alert.alert('Request failed', message);
     } finally {
@@ -57,8 +58,8 @@ export const ForgotPasswordScreen: React.FC = () => {
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#4285F4" />
+    <View style={[styles.container, { backgroundColor: colors.primary }]}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <KeyboardAvoidingView
@@ -72,16 +73,17 @@ export const ForgotPasswordScreen: React.FC = () => {
               <Text style={styles.subtitle}>Enter your email to receive a reset link</Text>
             </View>
 
-            <View style={styles.formContainer}>
-              <Text style={styles.instructionText}>
+            <View style={[styles.formContainer, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.instructionText, { color: colors.textSecondary }]}>
                 We'll send you an email with a link to reset your password.
               </Text>
 
-              <View style={styles.inputContainer}>
-                <MaterialCommunityIcons name="email-outline" size={20} color="#666" />
+              <View style={[styles.inputContainer, { backgroundColor: colors.background }]}>
+                <MaterialCommunityIcons name="email-outline" size={20} color={colors.icon} />
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { color: colors.text }]}
                   placeholder="Email"
+                  placeholderTextColor={colors.textTertiary}
                   value={email}
                   onChangeText={setEmail}
                   keyboardType="email-address"
@@ -92,7 +94,7 @@ export const ForgotPasswordScreen: React.FC = () => {
               </View>
 
               <TouchableOpacity
-                style={[styles.submitButton, loading && styles.submitButtonDisabled]}
+                style={[styles.submitButton, { backgroundColor: colors.primary }, loading && styles.submitButtonDisabled]}
                 onPress={handleSubmit}
                 disabled={loading}
               >
@@ -106,8 +108,8 @@ export const ForgotPasswordScreen: React.FC = () => {
                 onPress={() => navigation.goBack()}
                 disabled={loading}
               >
-                <MaterialCommunityIcons name="arrow-left" size={20} color="#4285F4" />
-                <Text style={styles.backLinkText}>Back to Sign In</Text>
+                <MaterialCommunityIcons name="arrow-left" size={20} color={colors.primary} />
+                <Text style={[styles.backLinkText, { color: colors.primary }]}>Back to Sign In</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -120,7 +122,6 @@ export const ForgotPasswordScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#4285F4',
   },
   safeArea: {
     flex: 1,
@@ -149,20 +150,17 @@ const styles = StyleSheet.create({
   },
   formContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     padding: 24,
   },
   instructionText: {
     fontSize: 14,
-    color: '#666',
     marginBottom: 24,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
     borderRadius: 12,
     paddingHorizontal: 16,
     marginBottom: 20,
@@ -171,11 +169,9 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 16,
-    color: '#000',
     marginLeft: 12,
   },
   submitButton: {
-    backgroundColor: '#4285F4',
     borderRadius: 12,
     height: 56,
     justifyContent: 'center',
@@ -198,7 +194,6 @@ const styles = StyleSheet.create({
   },
   backLinkText: {
     fontSize: 14,
-    color: '#4285F4',
     fontWeight: '600',
   },
 });

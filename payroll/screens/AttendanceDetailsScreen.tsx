@@ -17,6 +17,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Header } from '../components/attendance';
 import { BottomNavBar } from '../components/BottomNavBar';
 import { Attendance } from '../types/attendance.types';
+import { useTheme } from '../context/ThemeContext';
 
 type AttendanceDetailsRouteParams = {
   AttendanceDetails: {
@@ -28,12 +29,13 @@ type AttendanceDetailsRouteProp = RouteProp<AttendanceDetailsRouteParams, 'Atten
 
 const AttendanceDetailsScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const route = useRoute<AttendanceDetailsRouteProp>();
   const { attendance } = route.params;
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
       
       {/* Header with Safe Area */}
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
@@ -103,10 +105,10 @@ const AttendanceDetailsScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   safeAreaTop: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   scrollView: {
     flex: 1,
@@ -116,7 +118,7 @@ const styles = StyleSheet.create({
     paddingBottom: 100, // Space for bottom nav bar
   },
   attendanceCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 20,
   },
@@ -137,12 +139,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   avatarImage: {
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
   },
   avatarInitial: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#666',
+    color: colors.textSecondary,
   },
   userInfo: {
     flex: 1,
@@ -150,12 +152,12 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 4,
   },
   date: {
     fontSize: 14,
-    color: '#999',
+    color: colors.textTertiary,
   },
   divider: {
     height: 1,
@@ -168,13 +170,13 @@ const styles = StyleSheet.create({
   timeLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 8,
   },
   checkInTime: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#4285F4', // Blue color for check-in
+    color: colors.primary, // Blue color for check-in
   },
   checkOutTime: {
     fontSize: 18,
@@ -188,7 +190,7 @@ const styles = StyleSheet.create({
   },
   locationText: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     marginLeft: 8,
     flex: 1,
   },

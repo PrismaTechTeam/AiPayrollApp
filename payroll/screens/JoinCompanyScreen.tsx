@@ -20,6 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import companyService, { CompanySearchResult } from '../api/services/companyService';
+import { useTheme } from '../context/ThemeContext';
 
 interface CompanyResult {
   id: string;
@@ -30,6 +31,7 @@ interface CompanyResult {
 
 export const JoinCompanyScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<CompanyResult[]>([]);
@@ -114,7 +116,7 @@ export const JoinCompanyScreen: React.FC = () => {
   const renderCompanyItem = ({ item }: { item: CompanyResult }) => (
     <View style={styles.companyCard}>
       <View style={styles.companyLogoPlaceholder}>
-        <MaterialCommunityIcons name="office-building" size={28} color="#4285F4" />
+        <MaterialCommunityIcons name="office-building" size={28} color={colors.primary} />
       </View>
       <View style={styles.companyInfo}>
         <Text style={styles.companyName}>{item.name}</Text>
@@ -139,7 +141,7 @@ export const JoinCompanyScreen: React.FC = () => {
 
     return (
       <View style={styles.emptyState}>
-        <MaterialCommunityIcons name="magnify-close" size={64} color="#CCC" />
+        <MaterialCommunityIcons name="magnify-close" size={64} color={colors.textTertiary} />
         <Text style={styles.emptyStateTitle}>No companies found</Text>
         <Text style={styles.emptyStateText}>Try a different search.</Text>
       </View>
@@ -148,7 +150,7 @@ export const JoinCompanyScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#4285F4" />
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         {/* Header */}
@@ -166,10 +168,11 @@ export const JoinCompanyScreen: React.FC = () => {
         <View style={styles.contentContainer}>
           {/* Search Bar */}
           <View style={styles.searchContainer}>
-            <MaterialCommunityIcons name="magnify" size={20} color="#666" />
+            <MaterialCommunityIcons name="magnify" size={20} color={colors.icon} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Search companies..."
+              placeholderTextColor={colors.textTertiary}
+                  placeholder="Search companies..."
               value={searchQuery}
               onChangeText={handleSearchChange}
               autoCapitalize="none"
@@ -177,7 +180,7 @@ export const JoinCompanyScreen: React.FC = () => {
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => handleSearchChange('')}>
-                <MaterialCommunityIcons name="close-circle" size={20} color="#999" />
+                <MaterialCommunityIcons name="close-circle" size={20} color={colors.textTertiary} />
               </TouchableOpacity>
             )}
           </View>
@@ -185,7 +188,7 @@ export const JoinCompanyScreen: React.FC = () => {
           {/* Loading Indicator */}
           {searching && (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color="#4285F4" />
+              <ActivityIndicator size="small" color={colors.primary} />
               <Text style={styles.loadingText}>Searching...</Text>
             </View>
           )}
@@ -219,7 +222,8 @@ export const JoinCompanyScreen: React.FC = () => {
             <Text style={styles.modalLabel}>Message (optional)</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="Introduce yourself or add a note..."
+              placeholderTextColor={colors.textTertiary}
+                  placeholder="Introduce yourself or add a note..."
               value={joinMessage}
               onChangeText={setJoinMessage}
               multiline
@@ -257,7 +261,7 @@ export const JoinCompanyScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
   },
   safeArea: {
     flex: 1,
@@ -288,7 +292,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     paddingTop: 24,
@@ -296,7 +300,7 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
     borderRadius: 12,
     paddingHorizontal: 16,
     marginHorizontal: 24,
@@ -306,7 +310,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 16,
-    color: '#000',
+    color: colors.text,
     marginLeft: 12,
   },
   loadingContainer: {
@@ -318,7 +322,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
   },
   listContent: {
     paddingHorizontal: 24,
@@ -348,15 +352,15 @@ const styles = StyleSheet.create({
   companyName: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 4,
   },
   companyMeta: {
     fontSize: 12,
-    color: '#999',
+    color: colors.textTertiary,
   },
   joinRequestButton: {
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -375,7 +379,7 @@ const styles = StyleSheet.create({
   emptyStateTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#999',
+    color: colors.textTertiary,
     marginTop: 16,
     marginBottom: 8,
   },
@@ -392,7 +396,7 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   modalContent: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 24,
     width: '100%',
@@ -401,31 +405,31 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 8,
   },
   modalDescription: {
     fontSize: 15,
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 20,
     lineHeight: 22,
   },
   modalCompanyName: {
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
   },
   modalLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 8,
   },
   modalInput: {
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
     borderRadius: 12,
     padding: 16,
     fontSize: 15,
-    color: '#000',
+    color: colors.text,
     minHeight: 80,
     marginBottom: 20,
   },
@@ -438,20 +442,20 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalCancelText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
   },
   modalConfirmButton: {
     flex: 1,
     height: 48,
     borderRadius: 12,
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },

@@ -20,9 +20,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
+import { useTheme } from '../context/ThemeContext';
 
 export const LoginScreen: React.FC = () => {
   const { login } = usePayrollAuth();
+  const { colors } = useTheme();
   const navigation = useNavigation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -50,8 +52,8 @@ export const LoginScreen: React.FC = () => {
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#4285F4" />
+    <View style={[styles.container, { backgroundColor: colors.primary }]}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <KeyboardAvoidingView
@@ -67,16 +69,17 @@ export const LoginScreen: React.FC = () => {
             </View>
 
             {/* Login Form */}
-            <View style={styles.formContainer}>
-              <Text style={styles.welcomeText}>Welcome Back!</Text>
-              <Text style={styles.instructionText}>Sign in to continue</Text>
+            <View style={[styles.formContainer, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.welcomeText, { color: colors.text }]}>Welcome Back!</Text>
+              <Text style={[styles.instructionText, { color: colors.textSecondary }]}>Sign in to continue</Text>
 
               {/* Email Input */}
-              <View style={styles.inputContainer}>
-                <MaterialCommunityIcons name="email-outline" size={20} color="#666" />
+              <View style={[styles.inputContainer, { backgroundColor: colors.background }]}>
+                <MaterialCommunityIcons name="email-outline" size={20} color={colors.icon} />
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { color: colors.text }]}
                   placeholder="Email"
+                  placeholderTextColor={colors.textTertiary}
                   value={email}
                   onChangeText={setEmail}
                   keyboardType="email-address"
@@ -86,11 +89,12 @@ export const LoginScreen: React.FC = () => {
               </View>
 
               {/* Password Input */}
-              <View style={styles.inputContainer}>
-                <MaterialCommunityIcons name="lock-outline" size={20} color="#666" />
+              <View style={[styles.inputContainer, { backgroundColor: colors.background }]}>
+                <MaterialCommunityIcons name="lock-outline" size={20} color={colors.icon} />
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { color: colors.text }]}
                   placeholder="Password"
+                  placeholderTextColor={colors.textTertiary}
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
@@ -100,14 +104,14 @@ export const LoginScreen: React.FC = () => {
                   <MaterialCommunityIcons
                     name={showPassword ? 'eye-off-outline' : 'eye-outline'}
                     size={20}
-                    color="#666"
+                    color={colors.icon}
                   />
                 </TouchableOpacity>
               </View>
 
               {/* Login Button */}
               <TouchableOpacity
-                style={[styles.loginButton, loading && styles.loginButtonDisabled]}
+                style={[styles.loginButton, { backgroundColor: colors.primary }, loading && styles.loginButtonDisabled]}
                 onPress={handleLogin}
                 disabled={loading}
               >
@@ -122,14 +126,14 @@ export const LoginScreen: React.FC = () => {
                 onPress={() => navigation.navigate('ForgotPassword' as never)}
                 disabled={loading}
               >
-                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+                <Text style={[styles.forgotPasswordText, { color: colors.primary }]}>Forgot Password?</Text>
               </TouchableOpacity>
 
               {/* Register Link */}
               <View style={styles.registerContainer}>
-                <Text style={styles.registerText}>Don't have an account? </Text>
+                <Text style={[styles.registerText, { color: colors.textSecondary }]}>Don't have an account? </Text>
                 <TouchableOpacity onPress={() => navigation.navigate('Register' as never)}>
-                  <Text style={styles.registerLink}>Create Account</Text>
+                  <Text style={[styles.registerLink, { color: colors.primary }]}>Create Account</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -143,7 +147,6 @@ export const LoginScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#4285F4',
   },
   safeArea: {
     flex: 1,
@@ -172,7 +175,6 @@ const styles = StyleSheet.create({
   },
   formContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     padding: 24,
@@ -180,18 +182,15 @@ const styles = StyleSheet.create({
   welcomeText: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#000',
     marginBottom: 8,
   },
   instructionText: {
     fontSize: 14,
-    color: '#666',
     marginBottom: 32,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
     borderRadius: 12,
     paddingHorizontal: 16,
     marginBottom: 16,
@@ -200,11 +199,9 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 16,
-    color: '#000',
     marginLeft: 12,
   },
   loginButton: {
-    backgroundColor: '#4285F4',
     borderRadius: 12,
     height: 56,
     justifyContent: 'center',
@@ -225,7 +222,6 @@ const styles = StyleSheet.create({
   },
   forgotPasswordText: {
     fontSize: 14,
-    color: '#4285F4',
     fontWeight: '600',
   },
   registerContainer: {
@@ -235,11 +231,9 @@ const styles = StyleSheet.create({
   },
   registerText: {
     fontSize: 14,
-    color: '#666',
   },
   registerLink: {
     fontSize: 14,
-    color: '#4285F4',
     fontWeight: '700',
   },
 });

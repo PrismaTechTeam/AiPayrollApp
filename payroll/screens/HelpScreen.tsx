@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
+import { useTheme } from '../context/ThemeContext';
 
 interface FAQItem {
   id: string;
@@ -77,6 +78,7 @@ const FAQ_DATA: FAQItem[] = [
 
 export const HelpScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const [expandedId, setExpandedId] = useState<string | null>('1'); // First item expanded by default
 
   const toggleExpand = (id: string) => {
@@ -85,13 +87,13 @@ export const HelpScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
       
       {/* Header */}
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Help & Support</Text>
           <View style={{ width: 40 }} />
@@ -135,7 +137,7 @@ export const HelpScreen: React.FC = () => {
 
         {/* Contact Section */}
         <View style={styles.contactSection}>
-          <MaterialCommunityIcons name="help-circle-outline" size={48} color="#4285F4" />
+          <MaterialCommunityIcons name="help-circle-outline" size={48} color={colors.primary} />
           <Text style={styles.contactTitle}>Still need help?</Text>
           <Text style={styles.contactText}>
             Get in touch with us through any of the following channels.
@@ -143,14 +145,14 @@ export const HelpScreen: React.FC = () => {
 
           {/* Contact Dealer */}
           <TouchableOpacity style={styles.contactCard}>
-            <View style={[styles.contactIconContainer, { backgroundColor: '#4285F4' }]}>
+            <View style={[styles.contactIconContainer, { backgroundColor: colors.primary }]}>
               <MaterialCommunityIcons name="phone-outline" size={24} color="#FFFFFF" />
             </View>
             <View style={styles.contactInfo}>
               <Text style={styles.contactLabel}>Contact Your Dealer</Text>
               <Text style={styles.contactValue}>+1 (800) 123-4567</Text>
             </View>
-            <MaterialCommunityIcons name="chevron-right" size={24} color="#999" />
+            <MaterialCommunityIcons name="chevron-right" size={24} color={colors.textTertiary} />
           </TouchableOpacity>
 
           {/* Contact HR */}
@@ -162,7 +164,7 @@ export const HelpScreen: React.FC = () => {
               <Text style={styles.contactLabel}>Contact Your HR</Text>
               <Text style={styles.contactValue}>+1 (800) 765-4321</Text>
             </View>
-            <MaterialCommunityIcons name="chevron-right" size={24} color="#999" />
+            <MaterialCommunityIcons name="chevron-right" size={24} color={colors.textTertiary} />
           </TouchableOpacity>
 
           {/* Email Support */}
@@ -174,7 +176,7 @@ export const HelpScreen: React.FC = () => {
               <Text style={styles.contactLabel}>Email Support</Text>
               <Text style={styles.contactValue}>support@payroll.com</Text>
             </View>
-            <MaterialCommunityIcons name="chevron-right" size={24} color="#999" />
+            <MaterialCommunityIcons name="chevron-right" size={24} color={colors.textTertiary} />
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -185,10 +187,10 @@ export const HelpScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   safeAreaTop: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   header: {
     flexDirection: 'row',
@@ -196,9 +198,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: colors.borderLight,
   },
   backButton: {
     width: 40,
@@ -209,7 +211,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
   },
   scrollView: {
     flex: 1,
@@ -219,7 +221,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   faqCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     marginBottom: 12,
     overflow: 'hidden',
@@ -234,14 +236,14 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     fontWeight: '600',
-    color: '#000',
+    color: colors.text,
     marginRight: 12,
   },
   iconButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -253,10 +255,10 @@ const styles = StyleSheet.create({
   answer: {
     fontSize: 14,
     lineHeight: 22,
-    color: '#666',
+    color: colors.textSecondary,
   },
   contactSection: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 24,
     marginTop: 12,
@@ -265,13 +267,13 @@ const styles = StyleSheet.create({
   contactTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginTop: 16,
     marginBottom: 8,
   },
   contactText: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: 20,
     lineHeight: 20,
@@ -300,12 +302,12 @@ const styles = StyleSheet.create({
   contactLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#000',
+    color: colors.text,
     marginBottom: 4,
   },
   contactValue: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
   },
 });
 

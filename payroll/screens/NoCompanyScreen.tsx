@@ -15,9 +15,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
+import { useTheme } from '../context/ThemeContext';
 
 export const NoCompanyScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const { user, logout } = usePayrollAuth();
 
   const handleJoinCompany = () => {
@@ -30,7 +32,7 @@ export const NoCompanyScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#4285F4" />
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         {/* Header */}
@@ -56,7 +58,7 @@ export const NoCompanyScreen: React.FC = () => {
           {user && (
             <View style={styles.userInfoCard}>
               <View style={styles.userAvatar}>
-                <MaterialCommunityIcons name="account-circle" size={48} color="#4285F4" />
+                <MaterialCommunityIcons name="account-circle" size={48} color={colors.primary} />
               </View>
               <View style={styles.userDetails}>
                 <Text style={styles.userName}>{user.name}</Text>
@@ -73,7 +75,7 @@ export const NoCompanyScreen: React.FC = () => {
 
           {/* Helper Text */}
           <View style={styles.helperContainer}>
-            <MaterialCommunityIcons name="information-outline" size={18} color="#999" />
+            <MaterialCommunityIcons name="information-outline" size={18} color={colors.textTertiary} />
             <Text style={styles.helperText}>
               Your company admin may need to invite you. Contact your HR department if you're
               unsure.
@@ -88,7 +90,7 @@ export const NoCompanyScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
   },
   safeArea: {
     flex: 1,
@@ -123,7 +125,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     padding: 24,
@@ -132,20 +134,20 @@ const styles = StyleSheet.create({
   welcomeText: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginTop: 16,
     marginBottom: 8,
   },
   subtitleText: {
     fontSize: 16,
-    color: '#666',
+    color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: 32,
   },
   userInfoCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
     borderRadius: 12,
     padding: 16,
     width: '100%',
@@ -160,16 +162,16 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 4,
   },
   userEmail: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
   },
   joinButton: {
     flexDirection: 'row',
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
     borderRadius: 12,
     height: 56,
     justifyContent: 'center',
@@ -192,7 +194,7 @@ const styles = StyleSheet.create({
   helperText: {
     flex: 1,
     fontSize: 13,
-    color: '#999',
+    color: colors.textTertiary,
     lineHeight: 20,
   },
 });

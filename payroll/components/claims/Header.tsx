@@ -6,6 +6,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { useTheme } from '../../context/ThemeContext';
 
 interface HeaderProps {
   title: string;
@@ -18,11 +19,12 @@ export const Header: React.FC<HeaderProps> = ({
   onBackPress,
   showBackButton = true,
 }) => {
+  const { colors } = useTheme();
   return (
     <View style={styles.header}>
       {showBackButton ? (
         <TouchableOpacity style={styles.backButton} onPress={onBackPress}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
         </TouchableOpacity>
       ) : (
         <View style={styles.placeholder} />
@@ -40,9 +42,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#F5F5F5',
+    borderBottomColor: colors.borderLight,
   },
   backButton: {
     width: 40,
@@ -53,7 +55,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
   },
   placeholder: {
     width: 40,

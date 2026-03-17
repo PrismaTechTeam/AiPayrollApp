@@ -16,10 +16,12 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Header } from '../components/requests';
 import { BottomNavBar } from '../components/BottomNavBar';
 import requestService, { EmployeeRequest } from '../api/services/requestService';
+import { useTheme } from '../context/ThemeContext';
 
 type StatusFilter = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 
-const STATUS_TABS: { key: StatusFilter; label: string }[] = [
+const STATUS_TABS: {
+  key: StatusFilter; label: string }[] = [
   { key: 'ALL', label: 'All' },
   { key: 'PENDING', label: 'Pending' },
   { key: 'APPROVED', label: 'Approved' },
@@ -28,6 +30,7 @@ const STATUS_TABS: { key: StatusFilter; label: string }[] = [
 ];
 
 const getStatusColor = (status: string) => {
+  const { colors } = useTheme();
   switch (status) {
     case 'PENDING':
       return '#FF9800';
@@ -182,11 +185,11 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({ navigation: navP
 
         <View style={styles.cardDetails}>
           <View style={styles.detailItem}>
-            <MaterialCommunityIcons name="calendar" size={14} color="#999" />
+            <MaterialCommunityIcons name="calendar" size={14} color={colors.textTertiary} />
             <Text style={styles.detailText}>{formatDate(item.startDate)}</Text>
           </View>
           <View style={styles.detailItem}>
-            <MaterialCommunityIcons name="clock-outline" size={14} color="#999" />
+            <MaterialCommunityIcons name="clock-outline" size={14} color={colors.textTertiary} />
             <Text style={styles.detailText}>{formatDate(item.createdAt)}</Text>
           </View>
         </View>
@@ -197,15 +200,15 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({ navigation: navP
               style={[styles.cardActionButton, styles.rejectActionButton]}
               onPress={() => handleReject(item.id)}
             >
-              <MaterialCommunityIcons name="close" size={16} color="#FF5252" />
-              <Text style={[styles.cardActionText, { color: '#FF5252' }]}>Reject</Text>
+              <MaterialCommunityIcons name="close" size={16} color={colors.error} />
+              <Text style={[styles.cardActionText, { color: colors.error }]}>Reject</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.cardActionButton, styles.approveActionButton]}
               onPress={() => handleApprove(item.id)}
             >
-              <MaterialCommunityIcons name="check" size={16} color="#4CAF50" />
-              <Text style={[styles.cardActionText, { color: '#4CAF50' }]}>Approve</Text>
+              <MaterialCommunityIcons name="check" size={16} color={colors.success} />
+              <Text style={[styles.cardActionText, { color: colors.success }]}>Approve</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -215,7 +218,7 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({ navigation: navP
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
 
       {/* Header with Safe Area */}
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
@@ -261,12 +264,12 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({ navigation: navP
         <View style={styles.listContainer}>
           {loading ? (
             <View style={styles.centerContainer}>
-              <ActivityIndicator size="large" color="#4285F4" />
+              <ActivityIndicator size="large" color={colors.primary} />
               <Text style={styles.loadingText}>Loading requests...</Text>
             </View>
           ) : filteredRequests.length === 0 ? (
             <View style={styles.centerContainer}>
-              <MaterialCommunityIcons name="file-document-outline" size={48} color="#CCC" />
+              <MaterialCommunityIcons name="file-document-outline" size={48} color={colors.textTertiary} />
               <Text style={styles.emptyText}>No requests found</Text>
             </View>
           ) : (
@@ -281,7 +284,7 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({ navigation: navP
                   refreshing={refreshing}
                   onRefresh={() => fetchRequests(true)}
                   colors={['#4285F4']}
-                  tintColor="#4285F4"
+                  tintColor={colors.primary}
                 />
               }
             />
@@ -298,20 +301,20 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({ navigation: navP
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   safeAreaTop: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   content: {
     flex: 1,
     paddingBottom: 80,
   },
   filterContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: colors.borderLight,
   },
   filterList: {
     paddingHorizontal: 16,
@@ -321,16 +324,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
     marginRight: 8,
   },
   filterTabActive: {
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
   },
   filterTabText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#666',
+    color: colors.textSecondary,
   },
   filterTabTextActive: {
     color: '#FFFFFF',
@@ -347,19 +350,19 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 14,
-    color: '#999',
+    color: colors.textTertiary,
   },
   emptyText: {
     marginTop: 12,
     fontSize: 16,
-    color: '#999',
+    color: colors.textTertiary,
   },
   requestList: {
     padding: 16,
     gap: 12,
   },
   requestCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -387,7 +390,7 @@ const styles = StyleSheet.create({
   avatarInitial: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#666',
+    color: colors.textSecondary,
   },
   cardInfo: {
     flex: 1,
@@ -395,11 +398,11 @@ const styles = StyleSheet.create({
   employeeName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#000',
+    color: colors.text,
   },
   requestType: {
     fontSize: 13,
-    color: '#666',
+    color: colors.textSecondary,
     marginTop: 2,
   },
   statusBadge: {
@@ -423,14 +426,14 @@ const styles = StyleSheet.create({
   },
   detailText: {
     fontSize: 12,
-    color: '#999',
+    color: colors.textTertiary,
   },
   cardActions: {
     flexDirection: 'row',
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
+    borderTopColor: colors.borderLight,
     gap: 12,
   },
   cardActionButton: {

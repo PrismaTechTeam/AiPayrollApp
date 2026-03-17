@@ -22,9 +22,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import claimService, { ClaimTypeDetail, CreateClaimTypePayload } from '../api/services/claimService';
+import { useTheme } from '../context/ThemeContext';
 
 export const ClaimTypesScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const [types, setTypes] = useState<ClaimTypeDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -177,11 +179,11 @@ export const ClaimTypesScreen: React.FC = () => {
 
       <View style={styles.cardActions}>
         <TouchableOpacity style={styles.editButton} onPress={() => openEditModal(item)}>
-          <MaterialCommunityIcons name="pencil-outline" size={18} color="#4285F4" />
+          <MaterialCommunityIcons name="pencil-outline" size={18} color={colors.primary} />
           <Text style={styles.editText}>Edit</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(item)}>
-          <MaterialCommunityIcons name="delete-outline" size={18} color="#FF5252" />
+          <MaterialCommunityIcons name="delete-outline" size={18} color={colors.error} />
           <Text style={styles.deleteText}>Delete</Text>
         </TouchableOpacity>
       </View>
@@ -190,23 +192,23 @@ export const ClaimTypesScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
 
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Claim Types</Text>
           <TouchableOpacity onPress={openCreateModal} style={styles.addButton}>
-            <MaterialCommunityIcons name="plus" size={24} color="#4285F4" />
+            <MaterialCommunityIcons name="plus" size={24} color={colors.primary} />
           </TouchableOpacity>
         </View>
       </SafeAreaView>
 
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4285F4" />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : (
         <FlatList
@@ -216,14 +218,14 @@ export const ClaimTypesScreen: React.FC = () => {
           contentContainerStyle={[styles.listContent, types.length === 0 && styles.emptyListContent]}
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <MaterialCommunityIcons name="receipt-text-plus-outline" size={64} color="#CCC" />
+              <MaterialCommunityIcons name="receipt-text-plus-outline" size={64} color={colors.textTertiary} />
               <Text style={styles.emptyText}>No claim types yet</Text>
               <Text style={styles.emptySubtext}>Tap + to create one</Text>
             </View>
           }
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={() => fetchTypes(true)} colors={['#4285F4']} tintColor="#4285F4" />
+            <RefreshControl refreshing={refreshing} onRefresh={() => fetchTypes(true)} colors={['#4285F4']} tintColor={colors.primary} />
           }
         />
       )}
@@ -235,7 +237,7 @@ export const ClaimTypesScreen: React.FC = () => {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{editingType ? 'Edit Claim Type' : 'New Claim Type'}</Text>
               <TouchableOpacity onPress={() => setShowModal(false)}>
-                <MaterialCommunityIcons name="close" size={24} color="#666" />
+                <MaterialCommunityIcons name="close" size={24} color={colors.icon} />
               </TouchableOpacity>
             </View>
 
@@ -244,7 +246,8 @@ export const ClaimTypesScreen: React.FC = () => {
               style={styles.textInput}
               value={shortCode}
               onChangeText={setShortCode}
-              placeholder="e.g. MEDICAL"
+              placeholderTextColor={colors.textTertiary}
+                  placeholder="e.g. MEDICAL"
               placeholderTextColor="#999"
               autoCapitalize="characters"
             />
@@ -254,7 +257,8 @@ export const ClaimTypesScreen: React.FC = () => {
               style={styles.textInput}
               value={description}
               onChangeText={setDescription}
-              placeholder="e.g. Medical Expenses"
+              placeholderTextColor={colors.textTertiary}
+                  placeholder="e.g. Medical Expenses"
               placeholderTextColor="#999"
             />
 
@@ -263,7 +267,8 @@ export const ClaimTypesScreen: React.FC = () => {
               style={styles.textInput}
               value={claimCategory}
               onChangeText={setClaimCategory}
-              placeholder="e.g. Healthcare, Travel"
+              placeholderTextColor={colors.textTertiary}
+                  placeholder="e.g. Healthcare, Travel"
               placeholderTextColor="#999"
             />
 
@@ -274,6 +279,7 @@ export const ClaimTypesScreen: React.FC = () => {
                   style={styles.textInput}
                   value={yearlyLimit}
                   onChangeText={setYearlyLimit}
+                  placeholderTextColor={colors.textTertiary}
                   placeholder="0.00"
                   placeholderTextColor="#999"
                   keyboardType="decimal-pad"
@@ -285,6 +291,7 @@ export const ClaimTypesScreen: React.FC = () => {
                   style={styles.textInput}
                   value={monthlyLimit}
                   onChangeText={setMonthlyLimit}
+                  placeholderTextColor={colors.textTertiary}
                   placeholder="0.00"
                   placeholderTextColor="#999"
                   keyboardType="decimal-pad"
@@ -322,63 +329,63 @@ export const ClaimTypesScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
-  safeArea: { backgroundColor: '#FFFFFF' },
+  container: { flex: 1, backgroundColor: colors.background },
+  safeArea: { backgroundColor: colors.surface },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1, borderBottomColor: '#F0F0F0',
+    paddingHorizontal: 20, paddingVertical: 16, backgroundColor: colors.surface,
+    borderBottomWidth: 1, borderBottomColor: colors.borderLight,
   },
   backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: '#000' },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: colors.text },
   addButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   listContent: { padding: 16 },
   emptyListContent: { flexGrow: 1, justifyContent: 'center' },
   emptyState: { alignItems: 'center', paddingVertical: 60 },
-  emptyText: { fontSize: 18, fontWeight: '600', color: '#999', marginTop: 16 },
-  emptySubtext: { fontSize: 14, color: '#CCC', marginTop: 8 },
+  emptyText: { fontSize: 18, fontWeight: '600', color: colors.textTertiary, marginTop: 16 },
+  emptySubtext: { fontSize: 14, color: colors.textTertiary, marginTop: 8 },
   card: {
-    backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, marginBottom: 12,
+    backgroundColor: colors.surface, borderRadius: 12, padding: 16, marginBottom: 12,
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
   },
   cardMain: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   cardInfo: { flex: 1, marginRight: 12 },
-  cardCode: { fontSize: 16, fontWeight: '700', color: '#000' },
-  cardDesc: { fontSize: 14, color: '#666', marginTop: 4 },
-  cardCategory: { fontSize: 12, color: '#999', marginTop: 2 },
+  cardCode: { fontSize: 16, fontWeight: '700', color: colors.text },
+  cardDesc: { fontSize: 14, color: colors.textSecondary, marginTop: 4 },
+  cardCategory: { fontSize: 12, color: colors.textTertiary, marginTop: 2 },
   cardBadges: { flexDirection: 'row', gap: 6 },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   statusBadgeText: { fontSize: 11, fontWeight: '600' },
   limitsRow: { flexDirection: 'row', marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F5F5F5' },
   limitItem: { flex: 1, alignItems: 'center' },
-  limitLabel: { fontSize: 11, color: '#999', marginBottom: 2 },
-  limitValue: { fontSize: 14, fontWeight: '600', color: '#333' },
+  limitLabel: { fontSize: 11, color: colors.textTertiary, marginBottom: 2 },
+  limitValue: { fontSize: 14, fontWeight: '600', color: colors.text },
   cardActions: {
     flexDirection: 'row', marginTop: 12, paddingTop: 12,
-    borderTopWidth: 1, borderTopColor: '#F0F0F0', gap: 12,
+    borderTopWidth: 1, borderTopColor: colors.borderLight, gap: 12,
   },
-  editButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, borderRadius: 8, backgroundColor: '#E3F2FD', gap: 4 },
-  editText: { fontSize: 14, fontWeight: '600', color: '#4285F4' },
+  editButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, borderRadius: 8, backgroundColor: colors.primaryLight + '30', gap: 4 },
+  editText: { fontSize: 14, fontWeight: '600', color: colors.primary },
   deleteButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, borderRadius: 8, backgroundColor: '#FFEBEE', gap: 4 },
-  deleteText: { fontSize: 14, fontWeight: '600', color: '#FF5252' },
+  deleteText: { fontSize: 14, fontWeight: '600', color: colors.error },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modalContent: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 24, width: '100%', maxWidth: 400 },
+  modalContent: { backgroundColor: colors.surface, borderRadius: 16, padding: 24, width: '100%', maxWidth: 400 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  modalTitle: { fontSize: 20, fontWeight: '700', color: '#000' },
-  inputLabel: { fontSize: 14, fontWeight: '600', color: '#333', marginBottom: 6, marginTop: 12 },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: colors.text },
+  inputLabel: { fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 6, marginTop: 12 },
   textInput: {
-    backgroundColor: '#F9F9F9', borderRadius: 12, padding: 14, fontSize: 15, color: '#000',
-    borderWidth: 1, borderColor: '#E0E0E0',
+    backgroundColor: '#F9F9F9', borderRadius: 12, padding: 14, fontSize: 15, color: colors.text,
+    borderWidth: 1, borderColor: colors.border,
   },
   formRow: { flexDirection: 'row', gap: 12 },
   formCol: { flex: 1 },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, paddingVertical: 8 },
-  switchLabel: { fontSize: 15, fontWeight: '600', color: '#333' },
+  switchLabel: { fontSize: 15, fontWeight: '600', color: colors.text },
   modalButtons: { flexDirection: 'row', gap: 12, marginTop: 24 },
-  cancelModalButton: { flex: 1, backgroundColor: '#F5F5F5', borderRadius: 12, padding: 16, alignItems: 'center' },
-  cancelModalText: { fontSize: 16, fontWeight: '600', color: '#666' },
-  saveButton: { flex: 1, backgroundColor: '#4285F4', borderRadius: 12, padding: 16, alignItems: 'center' },
+  cancelModalButton: { flex: 1, backgroundColor: colors.background, borderRadius: 12, padding: 16, alignItems: 'center' },
+  cancelModalText: { fontSize: 16, fontWeight: '600', color: colors.textSecondary },
+  saveButton: { flex: 1, backgroundColor: colors.primary, borderRadius: 12, padding: 16, alignItems: 'center' },
   saveButtonText: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
 });
 

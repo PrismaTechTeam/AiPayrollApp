@@ -20,12 +20,16 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect } from '@react-navigation/native';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
 import companyService, { JoinRequest } from '../api/services/companyService';
+import { useTheme } from '../context/ThemeContext';
 
 interface TenantHubScreenProps {
   navigation?: any;
 }
 
-export const TenantHubScreen: React.FC<TenantHubScreenProps> = ({ navigation }) => {
+export const TenantHubScreen: React.FC<TenantHubScreenProps> = ({
+  navigation }) => {
+
+  const { colors } = useTheme();
   const { user, logout, switchCompany, refreshTenants } = usePayrollAuth();
   const [activeTab, setActiveTab] = useState<'tenants' | 'pending'>('tenants');
   const [pendingRequests, setPendingRequests] = useState<JoinRequest[]>([]);
@@ -143,13 +147,13 @@ export const TenantHubScreen: React.FC<TenantHubScreenProps> = ({ navigation }) 
           </Text>
         </View>
         {isSwitching ? (
-          <ActivityIndicator size="small" color="#4285F4" />
+          <ActivityIndicator size="small" color={colors.primary} />
         ) : isCurrent ? (
           <View style={styles.currentBadge}>
             <MaterialCommunityIcons name="check" size={14} color="#FFF" />
           </View>
         ) : (
-          <MaterialCommunityIcons name="chevron-right" size={24} color="#CCC" />
+          <MaterialCommunityIcons name="chevron-right" size={24} color={colors.textTertiary} />
         )}
       </TouchableOpacity>
     );
@@ -174,7 +178,7 @@ export const TenantHubScreen: React.FC<TenantHubScreenProps> = ({ navigation }) 
           style={styles.cancelButton}
           onPress={() => handleCancelRequest(item)}
         >
-          <MaterialCommunityIcons name="close-circle-outline" size={22} color="#FF5252" />
+          <MaterialCommunityIcons name="close-circle-outline" size={22} color={colors.error} />
         </TouchableOpacity>
       </View>
     );
@@ -182,7 +186,7 @@ export const TenantHubScreen: React.FC<TenantHubScreenProps> = ({ navigation }) 
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#4285F4" />
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         {/* Header */}
@@ -194,7 +198,7 @@ export const TenantHubScreen: React.FC<TenantHubScreenProps> = ({ navigation }) 
             </View>
             <View style={styles.headerRight}>
               <TouchableOpacity style={styles.addButton} onPress={handleJoinTenant}>
-                <MaterialCommunityIcons name="plus" size={24} color="#4285F4" />
+                <MaterialCommunityIcons name="plus" size={24} color={colors.primary} />
               </TouchableOpacity>
               <TouchableOpacity style={styles.logoutHeaderButton} onPress={handleLogout}>
                 <MaterialCommunityIcons name="logout" size={20} color="#FFF" />
@@ -241,7 +245,7 @@ export const TenantHubScreen: React.FC<TenantHubScreenProps> = ({ navigation }) 
           {activeTab === 'tenants' ? (
             tenants.length === 0 ? (
               <View style={styles.emptyState}>
-                <MaterialCommunityIcons name="office-building-outline" size={64} color="#CCC" />
+                <MaterialCommunityIcons name="office-building-outline" size={64} color={colors.textTertiary} />
                 <Text style={styles.emptyTitle}>No Tenants Yet</Text>
                 <Text style={styles.emptySubtitle}>
                   Join a tenant to access payroll features
@@ -263,11 +267,11 @@ export const TenantHubScreen: React.FC<TenantHubScreenProps> = ({ navigation }) 
           ) : (
             loadingPending ? (
               <View style={styles.emptyState}>
-                <ActivityIndicator size="large" color="#4285F4" />
+                <ActivityIndicator size="large" color={colors.primary} />
               </View>
             ) : pendingRequests.length === 0 ? (
               <View style={styles.emptyState}>
-                <MaterialCommunityIcons name="check-circle-outline" size={64} color="#CCC" />
+                <MaterialCommunityIcons name="check-circle-outline" size={64} color={colors.textTertiary} />
                 <Text style={styles.emptyTitle}>No Pending Requests</Text>
                 <Text style={styles.emptySubtitle}>
                   All your join requests have been processed
@@ -292,7 +296,7 @@ export const TenantHubScreen: React.FC<TenantHubScreenProps> = ({ navigation }) 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
   },
   safeArea: {
     flex: 1,
@@ -328,7 +332,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -347,7 +351,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
   },
@@ -364,16 +368,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
     gap: 6,
   },
   tabActive: {
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
   },
   tabText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
   },
   tabTextActive: {
     color: '#FFFFFF',
@@ -393,7 +397,7 @@ const styles = StyleSheet.create({
   tabBadgeText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#666',
+    color: colors.textSecondary,
   },
   tabBadgeTextActive: {
     color: '#FFFFFF',
@@ -412,14 +416,14 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   tenantCardActive: {
-    backgroundColor: '#E8F0FE',
-    borderColor: '#4285F4',
+    backgroundColor: colors.primaryLight + '30',
+    borderColor: colors.primary,
   },
   tenantIcon: {
     width: 50,
     height: 50,
     borderRadius: 14,
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
@@ -438,7 +442,7 @@ const styles = StyleSheet.create({
   tenantName: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#333',
+    color: colors.text,
     marginBottom: 3,
   },
   tenantNameActive: {
@@ -452,7 +456,7 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -481,7 +485,7 @@ const styles = StyleSheet.create({
   pendingName: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#333',
+    color: colors.text,
     marginBottom: 2,
   },
   pendingStatus: {
@@ -492,7 +496,7 @@ const styles = StyleSheet.create({
   },
   pendingDate: {
     fontSize: 11,
-    color: '#999',
+    color: colors.textTertiary,
   },
   cancelButton: {
     padding: 8,
@@ -506,13 +510,13 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#333',
+    color: colors.text,
     marginTop: 16,
     marginBottom: 8,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: '#999',
+    color: colors.textTertiary,
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: 24,
@@ -520,7 +524,7 @@ const styles = StyleSheet.create({
   emptyJoinButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
     paddingHorizontal: 24,
     paddingVertical: 14,
     borderRadius: 12,

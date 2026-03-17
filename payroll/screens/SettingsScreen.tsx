@@ -18,9 +18,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
+import { useTheme } from '../context/ThemeContext';
 
 export const SettingsScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const { user, logout } = usePayrollAuth();
 
   // More Options toggles
@@ -53,13 +55,13 @@ export const SettingsScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
       
       {/* Header */}
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={handleMenuPress}>
-            <MaterialCommunityIcons name="menu" size={28} color="#000" />
+            <MaterialCommunityIcons name="menu" size={28} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Settings</Text>
           <View style={{ width: 28 }} />
@@ -86,7 +88,7 @@ export const SettingsScreen: React.FC = () => {
             <Text style={styles.profileName}>{user?.name || 'User'}</Text>
             <Text style={styles.profileRole}>Basic Member</Text>
           </View>
-          <MaterialCommunityIcons name="chevron-right" size={24} color="#CCC" />
+          <MaterialCommunityIcons name="chevron-right" size={24} color={colors.textTertiary} />
         </TouchableOpacity>
 
         {/* Accounts Section */}
@@ -97,19 +99,19 @@ export const SettingsScreen: React.FC = () => {
 
           <View style={styles.menuList}>
             <TouchableOpacity style={styles.menuItem} onPress={() => {}}>
-              <MaterialCommunityIcons name="lock" size={24} color="#000" />
+              <MaterialCommunityIcons name="lock" size={24} color={colors.text} />
               <Text style={styles.menuItemText}>Change Password</Text>
-              <MaterialCommunityIcons name="chevron-right" size={24} color="#CCC" />
+              <MaterialCommunityIcons name="chevron-right" size={24} color={colors.textTertiary} />
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.menuItem} onPress={() => {}}>
-              <MaterialCommunityIcons name="cog" size={24} color="#000" />
+              <MaterialCommunityIcons name="cog" size={24} color={colors.text} />
               <Text style={styles.menuItemText}>Document Management</Text>
-              <MaterialCommunityIcons name="chevron-right" size={24} color="#CCC" />
+              <MaterialCommunityIcons name="chevron-right" size={24} color={colors.textTertiary} />
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
-              <MaterialCommunityIcons name="logout" size={24} color="#000" />
+              <MaterialCommunityIcons name="logout" size={24} color={colors.text} />
               <Text style={styles.menuItemText}>Sign Out</Text>
             </TouchableOpacity>
           </View>
@@ -122,7 +124,7 @@ export const SettingsScreen: React.FC = () => {
           <View style={styles.menuList}>
             {/* Newsletter Toggle */}
             <View style={styles.menuItem}>
-              <MaterialCommunityIcons name="email-newsletter" size={24} color="#000" />
+              <MaterialCommunityIcons name="email-newsletter" size={24} color={colors.text} />
               <Text style={styles.menuItemText}>Newsletter</Text>
               <Switch
                 value={newsletter}
@@ -137,10 +139,10 @@ export const SettingsScreen: React.FC = () => {
               style={styles.menuItem}
               onPress={() => navigation.navigate('Theme' as never)}
             >
-              <MaterialCommunityIcons name="palette-outline" size={24} color="#000" />
+              <MaterialCommunityIcons name="palette-outline" size={24} color={colors.text} />
               <Text style={styles.menuItemText}>Theme</Text>
               <Text style={styles.menuItemValue}>Light</Text>
-              <MaterialCommunityIcons name="chevron-right" size={24} color="#CCC" />
+              <MaterialCommunityIcons name="chevron-right" size={24} color={colors.textTertiary} />
             </TouchableOpacity>
 
             {/* Language */}
@@ -148,10 +150,10 @@ export const SettingsScreen: React.FC = () => {
               style={styles.menuItem}
               onPress={() => navigation.navigate('Language' as never)}
             >
-              <MaterialCommunityIcons name="translate" size={24} color="#000" />
+              <MaterialCommunityIcons name="translate" size={24} color={colors.text} />
               <Text style={styles.menuItemText}>Language</Text>
               <Text style={styles.menuItemValue}>English</Text>
-              <MaterialCommunityIcons name="chevron-right" size={24} color="#CCC" />
+              <MaterialCommunityIcons name="chevron-right" size={24} color={colors.textTertiary} />
             </TouchableOpacity>
           </View>
         </View>
@@ -163,10 +165,10 @@ export const SettingsScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   safeAreaTop: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   header: {
     flexDirection: 'row',
@@ -174,14 +176,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: colors.borderLight,
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
   },
   scrollView: {
     flex: 1,
@@ -192,7 +194,7 @@ const styles = StyleSheet.create({
   profileSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     padding: 20,
     marginBottom: 16,
   },
@@ -208,7 +210,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#666',
+    color: colors.textSecondary,
   },
   profileInfo: {
     flex: 1,
@@ -216,18 +218,18 @@ const styles = StyleSheet.create({
   profileName: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 4,
   },
   profileRole: {
     fontSize: 14,
-    color: '#999',
+    color: colors.textTertiary,
   },
   section: {
     marginBottom: 16,
   },
   sectionHeader: {
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
     paddingHorizontal: 20,
     paddingVertical: 12,
   },
@@ -239,13 +241,13 @@ const styles = StyleSheet.create({
   moreOptionsTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#4285F4',
+    color: colors.primary,
     paddingHorizontal: 20,
     paddingVertical: 12,
-    backgroundColor: '#E3F2FD',
+    backgroundColor: colors.primaryLight + '30',
   },
   menuList: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   menuItem: {
     flexDirection: 'row',
@@ -253,17 +255,17 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: colors.borderLight,
   },
   menuItemText: {
     flex: 1,
     fontSize: 16,
-    color: '#000',
+    color: colors.text,
     marginLeft: 16,
   },
   menuItemValue: {
     fontSize: 14,
-    color: '#CCC',
+    color: colors.textTertiary,
     marginRight: 8,
   },
 });

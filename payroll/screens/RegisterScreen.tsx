@@ -25,9 +25,11 @@ import Constants from 'expo-constants';
 import authService from '../api/services/authService';
 import { API_CONFIG } from '../api/config';
 import { getFirebaseAuth, isFirebaseConfigured } from '../lib/firebase';
+import { useTheme } from '../context/ThemeContext';
 
 export const RegisterScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -113,8 +115,8 @@ export const RegisterScreen: React.FC = () => {
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#4285F4" />
+    <View style={[styles.container, { backgroundColor: colors.primary }]}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <KeyboardAvoidingView
@@ -130,19 +132,20 @@ export const RegisterScreen: React.FC = () => {
 
           {/* Registration Form */}
           <ScrollView
-            style={styles.formContainer}
+            style={[styles.formContainer, { backgroundColor: colors.surface }]}
             contentContainerStyle={styles.formContent}
             keyboardShouldPersistTaps="handled"
           >
-            <Text style={styles.welcomeText}>Get Started</Text>
-            <Text style={styles.instructionText}>Fill in the details to create your account</Text>
+            <Text style={[styles.welcomeText, { color: colors.text }]}>Get Started</Text>
+            <Text style={[styles.instructionText, { color: colors.textSecondary }]}>Fill in the details to create your account</Text>
 
             {/* First Name Input */}
-            <View style={styles.inputContainer}>
-              <MaterialCommunityIcons name="account-outline" size={20} color="#666" />
+            <View style={[styles.inputContainer, { backgroundColor: colors.background }]}>
+              <MaterialCommunityIcons name="account-outline" size={20} color={colors.icon} />
               <TextInput
-                style={styles.input}
+                style={[styles.input, { color: colors.text }]}
                 placeholder="First Name"
+                placeholderTextColor={colors.textTertiary}
                 value={firstName}
                 onChangeText={setFirstName}
                 autoCapitalize="words"
@@ -151,11 +154,12 @@ export const RegisterScreen: React.FC = () => {
             </View>
 
             {/* Last Name Input */}
-            <View style={styles.inputContainer}>
-              <MaterialCommunityIcons name="account-outline" size={20} color="#666" />
+            <View style={[styles.inputContainer, { backgroundColor: colors.background }]}>
+              <MaterialCommunityIcons name="account-outline" size={20} color={colors.icon} />
               <TextInput
-                style={styles.input}
+                style={[styles.input, { color: colors.text }]}
                 placeholder="Last Name"
+                placeholderTextColor={colors.textTertiary}
                 value={lastName}
                 onChangeText={setLastName}
                 autoCapitalize="words"
@@ -164,11 +168,12 @@ export const RegisterScreen: React.FC = () => {
             </View>
 
             {/* Email Input */}
-            <View style={styles.inputContainer}>
-              <MaterialCommunityIcons name="email-outline" size={20} color="#666" />
+            <View style={[styles.inputContainer, { backgroundColor: colors.background }]}>
+              <MaterialCommunityIcons name="email-outline" size={20} color={colors.icon} />
               <TextInput
-                style={styles.input}
+                style={[styles.input, { color: colors.text }]}
                 placeholder="Email"
+                placeholderTextColor={colors.textTertiary}
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
@@ -178,11 +183,12 @@ export const RegisterScreen: React.FC = () => {
             </View>
 
             {/* Password Input */}
-            <View style={styles.inputContainer}>
-              <MaterialCommunityIcons name="lock-outline" size={20} color="#666" />
+            <View style={[styles.inputContainer, { backgroundColor: colors.background }]}>
+              <MaterialCommunityIcons name="lock-outline" size={20} color={colors.icon} />
               <TextInput
-                style={styles.input}
+                style={[styles.input, { color: colors.text }]}
                 placeholder="Password (min 6 characters)"
+                placeholderTextColor={colors.textTertiary}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
@@ -192,17 +198,18 @@ export const RegisterScreen: React.FC = () => {
                 <MaterialCommunityIcons
                   name={showPassword ? 'eye-off-outline' : 'eye-outline'}
                   size={20}
-                  color="#666"
+                  color={colors.icon}
                 />
               </TouchableOpacity>
             </View>
 
             {/* Confirm Password Input */}
-            <View style={styles.inputContainer}>
-              <MaterialCommunityIcons name="lock-check-outline" size={20} color="#666" />
+            <View style={[styles.inputContainer, { backgroundColor: colors.background }]}>
+              <MaterialCommunityIcons name="lock-check-outline" size={20} color={colors.icon} />
               <TextInput
-                style={styles.input}
+                style={[styles.input, { color: colors.text }]}
                 placeholder="Confirm Password"
+                placeholderTextColor={colors.textTertiary}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 secureTextEntry={!showConfirmPassword}
@@ -212,14 +219,14 @@ export const RegisterScreen: React.FC = () => {
                 <MaterialCommunityIcons
                   name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
                   size={20}
-                  color="#666"
+                  color={colors.icon}
                 />
               </TouchableOpacity>
             </View>
 
             {/* Register Button */}
             <TouchableOpacity
-              style={[styles.registerButton, loading && styles.registerButtonDisabled]}
+              style={[styles.registerButton, { backgroundColor: colors.primary }, loading && styles.registerButtonDisabled]}
               onPress={handleRegister}
               disabled={loading}
             >
@@ -232,9 +239,9 @@ export const RegisterScreen: React.FC = () => {
 
             {/* Sign In Link */}
             <View style={styles.signInContainer}>
-              <Text style={styles.signInText}>Already have an account? </Text>
+              <Text style={[styles.signInText, { color: colors.textSecondary }]}>Already have an account? </Text>
               <TouchableOpacity onPress={() => navigation.goBack()}>
-                <Text style={styles.signInLink}>Sign In</Text>
+                <Text style={[styles.signInLink, { color: colors.primary }]}>Sign In</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -247,7 +254,6 @@ export const RegisterScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#4285F4',
   },
   safeArea: {
     flex: 1,
@@ -273,7 +279,6 @@ const styles = StyleSheet.create({
   },
   formContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
   },
@@ -284,18 +289,15 @@ const styles = StyleSheet.create({
   welcomeText: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#000',
     marginBottom: 8,
   },
   instructionText: {
     fontSize: 14,
-    color: '#666',
     marginBottom: 24,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
     borderRadius: 12,
     paddingHorizontal: 16,
     marginBottom: 16,
@@ -304,11 +306,9 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 16,
-    color: '#000',
     marginLeft: 12,
   },
   registerButton: {
-    backgroundColor: '#4285F4',
     borderRadius: 12,
     height: 56,
     justifyContent: 'center',
@@ -330,12 +330,10 @@ const styles = StyleSheet.create({
   },
   signInText: {
     fontSize: 14,
-    color: '#666',
   },
   signInLink: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#4285F4',
   },
 });
 

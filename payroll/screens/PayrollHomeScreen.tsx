@@ -18,6 +18,7 @@ import { BottomNavBar } from '../components/BottomNavBar';
 import { SideMenu } from '../components/SideMenu';
 import { CompanySwitcher } from '../components/CompanySwitcher';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { isOwner as checkIsOwner } from '../constants/userRoles';
 import dashboardService, { DashboardData } from '../api/services/dashboardService';
 
@@ -43,8 +44,10 @@ function formatLeaveDate(start: string, end: string): string {
 }
 
 export const PayrollHomeScreen: React.FC<PayrollHomeScreenProps> = ({ navigation }) => {
-  const { user, currentRole } = usePayrollAuth();
+  const { user, currentRole, employee } = usePayrollAuth();
+  const { colors, theme } = useTheme();
   const isOwner = checkIsOwner(currentRole);
+  const isDepartmentHead = employee?.isDepartmentHead === true;
   const [menuVisible, setMenuVisible] = useState(false);
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
 
@@ -67,12 +70,19 @@ export const PayrollHomeScreen: React.FC<PayrollHomeScreenProps> = ({ navigation
   const attendance = dashboard?.attendanceStats ?? { present: 0, late: 0, absent: 0 };
   const unreadCount = dashboard?.unreadNotificationCount ?? 0;
 
-  return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" translucent={false} backgroundColor="#4285F4" />
+  // Gradient colors adapt to theme
+  const headerGradient = theme === 'light'
+    ? ['#4285F4', '#1A6BF0'] as const
+    : theme === 'dark'
+      ? [colors.primaryDark, colors.primary] as const
+      : [colors.primaryDark, colors.primary] as const;
 
-      <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
-        <LinearGradient colors={['#4285F4', '#1A6BF0']} style={styles.header}>
+  return (
+    <View style={[styles.container, { backgroundColor: colors.primary }]}>
+      <StatusBar barStyle="light-content" translucent={false} backgroundColor={colors.primary} />
+
+      <SafeAreaView style={[styles.safeAreaTop, { backgroundColor: colors.primary }]} edges={['top']}>
+        <LinearGradient colors={headerGradient} style={styles.header}>
           <View style={styles.headerTop}>
             <TouchableOpacity style={styles.headerIconButton} onPress={() => setMenuVisible(true)}>
               <MaterialCommunityIcons name="menu" size={24} color="#FFFFFF" />
@@ -85,7 +95,7 @@ export const PayrollHomeScreen: React.FC<PayrollHomeScreenProps> = ({ navigation
               >
                 <MaterialCommunityIcons name="bell-outline" size={22} color="#FFFFFF" />
                 {unreadCount > 0 && (
-                  <View style={styles.notifBadge}>
+                  <View style={[styles.notifBadge, { backgroundColor: colors.error }]}>
                     <Text style={styles.notifBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
                   </View>
                 )}
@@ -100,7 +110,7 @@ export const PayrollHomeScreen: React.FC<PayrollHomeScreenProps> = ({ navigation
         </LinearGradient>
       </SafeAreaView>
 
-      <View style={styles.contentContainer}>
+      <View style={[styles.contentContainer, { backgroundColor: colors.background }]}>
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
@@ -108,14 +118,14 @@ export const PayrollHomeScreen: React.FC<PayrollHomeScreenProps> = ({ navigation
           {/* Services Section */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>
                 {isOwner ? 'Please Choose Services' : 'Category'}
               </Text>
               <TouchableOpacity
-                style={styles.searchButton}
+                style={[styles.searchButton, { backgroundColor: colors.primaryLight + '30' }]}
                 onPress={() => navigation?.navigate('Search')}
               >
-                <MaterialCommunityIcons name="magnify" size={24} color="#4285F4" />
+                <MaterialCommunityIcons name="magnify" size={24} color={colors.primary} />
               </TouchableOpacity>
             </View>
             <ScrollView
@@ -132,7 +142,12 @@ export const PayrollHomeScreen: React.FC<PayrollHomeScreenProps> = ({ navigation
               {isOwner ? (
                 <ServiceCard title="Leave Approval" icon="calendar-clock" color="#FF5722" onPress={() => navigation?.navigate('Leaves')} />
               ) : (
-                <ServiceCard title="My Leaves" icon="calendar-clock" color="#9C27B0" onPress={() => navigation?.navigate('MyLeaves')} />
+                <>
+                  <ServiceCard title="My Leaves" icon="calendar-clock" color="#9C27B0" onPress={() => navigation?.navigate('MyLeaves')} />
+                  {isDepartmentHead && (
+                    <ServiceCard title="Leave Approval" icon="calendar-check" color="#FF5722" onPress={() => navigation?.navigate('Leaves')} />
+                  )}
+                </>
               )}
 
               {!isOwner && (
@@ -169,14 +184,14 @@ export const PayrollHomeScreen: React.FC<PayrollHomeScreenProps> = ({ navigation
           {isOwner && (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Recent Leave Application</Text>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Leave Application</Text>
                 <TouchableOpacity onPress={() => navigation?.navigate('Leaves')}>
-                  <Text style={styles.seeAll}>See All</Text>
+                  <Text style={[styles.seeAll, { color: colors.primary }]}>See All</Text>
                 </TouchableOpacity>
               </View>
 
               {(dashboard?.recentLeaveApplications ?? []).length === 0 ? (
-                <Text style={styles.noDataText}>No pending leave applications</Text>
+                <Text style={[styles.noDataText, { color: colors.textTertiary }]}>No pending leave applications</Text>
               ) : (
                 (dashboard?.recentLeaveApplications ?? []).slice(0, 3).map((leave) => (
                   <LeaveApplicationCard
@@ -192,24 +207,24 @@ export const PayrollHomeScreen: React.FC<PayrollHomeScreenProps> = ({ navigation
 
           {/* Today's Attendance Section */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Todays Attendance</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Todays Attendance</Text>
             <View style={styles.attendanceContainer}>
               <AttendanceCard
                 label="Presents"
                 count={attendance.present}
-                color="#4285F4"
+                color={colors.primary}
                 onPress={() => navigation?.navigate('TodaysAttendance', { filter: 'Present' })}
               />
               <AttendanceCard
                 label="Late"
                 count={attendance.late}
-                color="#FFB300"
+                color={colors.warning}
                 onPress={() => navigation?.navigate('TodaysAttendance', { filter: 'Late' })}
               />
               <AttendanceCard
                 label="Absent"
                 count={attendance.absent}
-                color="#FF5252"
+                color={colors.error}
                 onPress={() => navigation?.navigate('TodaysAttendance', { filter: 'Absent' })}
               />
             </View>
@@ -229,8 +244,8 @@ export const PayrollHomeScreen: React.FC<PayrollHomeScreenProps> = ({ navigation
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#4285F4' },
-  safeAreaTop: { backgroundColor: '#4285F4' },
+  container: { flex: 1 },
+  safeAreaTop: {},
   header: { paddingHorizontal: 20, paddingBottom: 50, paddingTop: 18 },
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 36 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -240,7 +255,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   notifBadge: {
-    position: 'absolute', top: -2, right: -4, backgroundColor: '#FF5252',
+    position: 'absolute', top: -2, right: -4,
     borderRadius: 10, minWidth: 18, height: 18, justifyContent: 'center',
     alignItems: 'center', paddingHorizontal: 4,
   },
@@ -249,18 +264,18 @@ const styles = StyleSheet.create({
   greetingTitle: { fontSize: 24, fontWeight: '600', color: '#FFFFFF', opacity: 0.9 },
   greetingSub: { fontSize: 32, fontWeight: 'bold', color: '#FFFFFF', marginTop: 4 },
   contentContainer: {
-    flex: 1, backgroundColor: '#F0F4F8', borderTopLeftRadius: 30,
+    flex: 1, borderTopLeftRadius: 30,
     borderTopRightRadius: 30, marginTop: -20,
   },
   scrollContent: { padding: 20, paddingBottom: 100 },
   section: { marginBottom: 24 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#1A1A1A' },
-  searchButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center', borderRadius: 20, backgroundColor: '#E8F0FE' },
-  seeAll: { fontSize: 14, color: '#4285F4', fontWeight: '600' },
+  sectionTitle: { fontSize: 18, fontWeight: '700' },
+  searchButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center', borderRadius: 20 },
+  seeAll: { fontSize: 14, fontWeight: '600' },
   servicesScroll: { paddingRight: 20 },
   attendanceContainer: { flexDirection: 'row', justifyContent: 'space-between' },
-  noDataText: { fontSize: 14, color: '#999', textAlign: 'center', paddingVertical: 16 },
+  noDataText: { fontSize: 14, textAlign: 'center', paddingVertical: 16 },
 });
 
 export default PayrollHomeScreen;

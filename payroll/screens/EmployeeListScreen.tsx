@@ -19,12 +19,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import attendanceService, { TeamMemberAttendance, TeamTodayResponse } from '../api/services/attendanceService';
+import { useTheme } from '../context/ThemeContext';
 
 interface EmployeeListScreenProps {
   navigation?: any;
 }
 
 const formatCheckInTime = (isoString: string | null): string => {
+  const { colors } = useTheme();
   if (!isoString) return '---';
   try {
     const date = new Date(isoString);
@@ -113,7 +115,7 @@ const EmployeeListScreen: React.FC<EmployeeListScreenProps> = ({ navigation: nav
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#4285F4" />
+        <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Loading employees...</Text>
       </View>
     );
@@ -124,7 +126,7 @@ const EmployeeListScreen: React.FC<EmployeeListScreenProps> = ({ navigation: nav
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
 
       {/* Header */}
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
@@ -133,7 +135,7 @@ const EmployeeListScreen: React.FC<EmployeeListScreenProps> = ({ navigation: nav
             onPress={() => navigation?.goBack()}
             style={styles.backButton}
           >
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Employee List</Text>
           <View style={styles.placeholder} />
@@ -143,7 +145,7 @@ const EmployeeListScreen: React.FC<EmployeeListScreenProps> = ({ navigation: nav
       {/* Summary Cards */}
       <View style={styles.summaryContainer}>
         <View style={[styles.summaryCard, styles.checkedInCard]}>
-          <MaterialCommunityIcons name="check-circle" size={32} color="#4CAF50" />
+          <MaterialCommunityIcons name="check-circle" size={32} color={colors.success} />
           <Text style={styles.summaryCount}>{checkedInCount}</Text>
           <Text style={styles.summaryLabel}>Checked In</Text>
         </View>
@@ -234,7 +236,7 @@ const EmployeeListScreen: React.FC<EmployeeListScreenProps> = ({ navigation: nav
               </View>
               {employee.status === 'checked-in' && (
                 <View style={styles.timeRow}>
-                  <MaterialCommunityIcons name="clock-outline" size={14} color="#666" />
+                  <MaterialCommunityIcons name="clock-outline" size={14} color={colors.icon} />
                   <Text style={styles.checkInTime}>{formatCheckInTime(employee.checkInTime)}</Text>
                 </View>
               )}
@@ -245,7 +247,7 @@ const EmployeeListScreen: React.FC<EmployeeListScreenProps> = ({ navigation: nav
               <MaterialCommunityIcons
                 name="chevron-right"
                 size={24}
-                color="#999"
+                color={colors.textTertiary}
                 style={styles.arrowIcon}
               />
             )}
@@ -259,21 +261,21 @@ const EmployeeListScreen: React.FC<EmployeeListScreenProps> = ({ navigation: nav
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   loadingText: {
     marginTop: 16,
     fontSize: 16,
-    color: '#666',
+    color: colors.textSecondary,
   },
   safeAreaTop: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   header: {
     flexDirection: 'row',
@@ -281,9 +283,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: colors.borderLight,
   },
   backButton: {
     width: 40,
@@ -294,7 +296,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
   },
   placeholder: {
     width: 40,
@@ -307,7 +309,7 @@ const styles = StyleSheet.create({
   },
   summaryCard: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
@@ -328,12 +330,12 @@ const styles = StyleSheet.create({
   summaryCount: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#333',
+    color: colors.text,
     marginTop: 8,
   },
   summaryLabel: {
     fontSize: 12,
-    color: '#666',
+    color: colors.textSecondary,
     marginTop: 4,
   },
   scrollView: {
@@ -346,12 +348,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#333',
+    color: colors.text,
     marginBottom: 16,
   },
   employeeCard: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -369,7 +371,7 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -388,12 +390,12 @@ const styles = StyleSheet.create({
   employeeName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: colors.text,
     marginBottom: 4,
   },
   employeePosition: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 4,
   },
   departmentRow: {
@@ -403,10 +405,10 @@ const styles = StyleSheet.create({
   },
   employeeDepartment: {
     fontSize: 12,
-    color: '#999',
+    color: colors.textTertiary,
   },
   textDisabled: {
-    color: '#CCC',
+    color: colors.textTertiary,
   },
   statusContainer: {
     alignItems: 'flex-end',
@@ -432,7 +434,7 @@ const styles = StyleSheet.create({
   },
   checkInTime: {
     fontSize: 12,
-    color: '#666',
+    color: colors.textSecondary,
     fontWeight: '500',
   },
   arrowIcon: {

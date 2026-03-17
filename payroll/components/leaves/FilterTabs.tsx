@@ -6,14 +6,17 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { LeaveFilterTabsProps } from '../../types/leave.types';
+import { useTheme } from '../../context/ThemeContext';
 
-const TABS: Array<{ label: string; value: 'requested' | 'active' | 'cancelled' }> = [
+const TABS: Array<{
+  label: string; value: 'requested' | 'active' | 'cancelled' }> = [
   { label: 'Requested', value: 'requested' },
   { label: 'Active', value: 'active' },
   { label: 'Cancelled', value: 'cancelled' },
 ];
 
 export const FilterTabs: React.FC<LeaveFilterTabsProps> = ({ activeTab, onTabChange }) => {
+  const { colors } = useTheme();
   return (
     <View style={styles.filterContainer}>
       {TABS.map((tab) => {
@@ -44,25 +47,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     gap: 12,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   filterButton: {
     flex: 1,
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 8,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 40,
   },
   filterButtonActive: {
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
   },
   filterText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
     includeFontPadding: false,
     textAlign: 'center',
   },

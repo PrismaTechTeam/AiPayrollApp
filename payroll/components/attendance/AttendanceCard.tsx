@@ -7,11 +7,13 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { AttendanceCardProps } from '../../types/attendance.types';
+import { useTheme } from '../../context/ThemeContext';
 
 export const AttendanceCard: React.FC<AttendanceCardProps> = ({
   attendance,
   onPress,
 }) => {
+  const { colors } = useTheme();
   const getStatusColor = () => {
     switch (attendance.status) {
       case 'Present':
@@ -76,7 +78,7 @@ export const AttendanceCard: React.FC<AttendanceCardProps> = ({
 const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -99,12 +101,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   avatarImage: {
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
   },
   avatarInitial: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#666',
+    color: colors.textSecondary,
   },
   detailsContainer: {
     flex: 1,
@@ -115,13 +117,13 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 4,
   },
   checkInTime: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#4285F4', // Blue color for check-in
+    color: colors.primary, // Blue color for check-in
   },
   checkOutTime: {
     fontSize: 14,
@@ -135,7 +137,7 @@ const styles = StyleSheet.create({
   },
   locationText: {
     fontSize: 12,
-    color: '#666',
+    color: colors.textSecondary,
     marginLeft: 4,
     flex: 1,
   },

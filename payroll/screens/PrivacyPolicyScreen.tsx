@@ -15,19 +15,21 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
+import { useTheme } from '../context/ThemeContext';
 
 export const PrivacyPolicyScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
       
       {/* Header */}
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Privacy Policy</Text>
           <View style={{ width: 40 }} />
@@ -43,7 +45,7 @@ export const PrivacyPolicyScreen: React.FC = () => {
         >
           {/* Last Updated */}
           <View style={styles.updateBanner}>
-            <MaterialCommunityIcons name="calendar-clock" size={20} color="#666" />
+            <MaterialCommunityIcons name="calendar-clock" size={20} color={colors.icon} />
             <Text style={styles.updateText}>Last Updated: January 17, 2026</Text>
           </View>
 
@@ -190,15 +192,15 @@ export const PrivacyPolicyScreen: React.FC = () => {
             </Text>
             <View style={styles.contactCard}>
               <View style={styles.contactItem}>
-                <MaterialCommunityIcons name="email-outline" size={20} color="#4285F4" />
+                <MaterialCommunityIcons name="email-outline" size={20} color={colors.primary} />
                 <Text style={styles.contactText}>privacy@payrollapp.com</Text>
               </View>
               <View style={styles.contactItem}>
-                <MaterialCommunityIcons name="phone-outline" size={20} color="#4285F4" />
+                <MaterialCommunityIcons name="phone-outline" size={20} color={colors.primary} />
                 <Text style={styles.contactText}>+1 (555) 123-4567</Text>
               </View>
               <View style={styles.contactItem}>
-                <MaterialCommunityIcons name="map-marker-outline" size={20} color="#4285F4" />
+                <MaterialCommunityIcons name="map-marker-outline" size={20} color={colors.primary} />
                 <Text style={styles.contactText}>
                   123 Business Street{'\n'}Tech City, TC 12345{'\n'}United States
                 </Text>
@@ -208,7 +210,7 @@ export const PrivacyPolicyScreen: React.FC = () => {
 
           {/* Consent */}
           <View style={styles.consentSection}>
-            <MaterialCommunityIcons name="shield-check" size={24} color="#4CAF50" />
+            <MaterialCommunityIcons name="shield-check" size={24} color={colors.success} />
             <View style={styles.consentContent}>
               <Text style={styles.consentTitle}>Your Consent</Text>
               <Text style={styles.consentText}>
@@ -227,10 +229,10 @@ export const PrivacyPolicyScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   safeAreaTop: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   header: {
     flexDirection: 'row',
@@ -238,9 +240,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: colors.borderLight,
   },
   backButton: {
     width: 40,
@@ -251,7 +253,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
   },
   content: {
     flex: 1,
@@ -271,11 +273,11 @@ const styles = StyleSheet.create({
   },
   updateText: {
     fontSize: 13,
-    color: '#666',
+    color: colors.textSecondary,
     fontWeight: '600',
   },
   section: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     padding: 20,
     borderRadius: 12,
     marginBottom: 16,
@@ -283,19 +285,19 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 12,
   },
   subsectionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#000',
+    color: colors.text,
     marginTop: 12,
     marginBottom: 8,
   },
   paragraph: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     lineHeight: 22,
     marginBottom: 12,
   },
@@ -305,7 +307,7 @@ const styles = StyleSheet.create({
   },
   bulletItem: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     lineHeight: 24,
     paddingLeft: 8,
   },
@@ -323,7 +325,7 @@ const styles = StyleSheet.create({
   },
   contactText: {
     fontSize: 14,
-    color: '#333',
+    color: colors.text,
     lineHeight: 20,
     flex: 1,
   },

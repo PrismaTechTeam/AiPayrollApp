@@ -6,6 +6,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { useTheme } from '../../context/ThemeContext';
 
 export type ClaimStatus = 'DRAFT' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 
@@ -37,9 +38,10 @@ interface ClaimCardProps {
   showEmployeeName?: boolean;
 }
 
-const STATUS_DISPLAY: Record<ClaimStatus, { label: string; color: string }> = {
-  DRAFT: { label: 'Draft', color: '#999' },
-  PENDING: { label: 'Pending', color: '#4285F4' },
+const STATUS_DISPLAY: Record<ClaimStatus, {
+  label: string; color: string }> = {
+  DRAFT: { label: 'Draft', color: colors.textTertiary },
+  PENDING: { label: 'Pending', color: colors.primary },
   APPROVED: { label: 'Approved', color: '#34A853' },
   REJECTED: { label: 'Rejected', color: '#EA4335' },
   CANCELLED: { label: 'Cancelled', color: '#546E7A' },
@@ -52,7 +54,8 @@ export const ClaimCard: React.FC<ClaimCardProps> = ({
   onReject,
   showEmployeeName = false,
 }) => {
-  const statusInfo = STATUS_DISPLAY[claim.status] || { label: claim.status, color: '#999' };
+  const { colors } = useTheme();
+  const statusInfo = STATUS_DISPLAY[claim.status] || { label: claim.status, color: colors.textTertiary };
 
   const showApproveReject = claim.status === 'PENDING' && (onApprove || onReject);
 
@@ -81,7 +84,7 @@ export const ClaimCard: React.FC<ClaimCardProps> = ({
       {/* Employee Name (for managers) */}
       {showEmployeeName && (
         <View style={styles.employeeRow}>
-          <MaterialCommunityIcons name="account-outline" size={16} color="#666" />
+          <MaterialCommunityIcons name="account-outline" size={16} color={colors.icon} />
           <Text style={styles.employeeName}>{claim.employeeName}</Text>
         </View>
       )}
@@ -139,7 +142,7 @@ export const ClaimCard: React.FC<ClaimCardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -147,7 +150,7 @@ const styles = StyleSheet.create({
   claimType: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#4285F4',
+    color: colors.primary,
     marginBottom: 8,
   },
   employeeRow: {
@@ -157,13 +160,13 @@ const styles = StyleSheet.create({
   },
   employeeName: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     marginLeft: 6,
     fontWeight: '500',
   },
   location: {
     fontSize: 14,
-    color: '#999',
+    color: colors.textTertiary,
     marginBottom: 6,
   },
   dateRange: {

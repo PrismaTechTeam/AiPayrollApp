@@ -22,6 +22,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Header } from '../components/requests';
 import { BottomNavBar } from '../components/BottomNavBar';
 import requestService, { EmployeeRequest } from '../api/services/requestService';
+import { useTheme } from '../context/ThemeContext';
 
 type RequestDetailsRouteParams = {
   RequestDetails: {
@@ -87,6 +88,7 @@ const getTimeAgo = (dateStr: string) => {
 
 export const RequestDetailsScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const route = useRoute<RequestDetailsRouteProp>();
   const { request, canApprove = false } = route.params;
   const [isProcessing, setIsProcessing] = useState(false);
@@ -165,7 +167,7 @@ export const RequestDetailsScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
 
       {/* Header with Safe Area */}
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
@@ -235,7 +237,7 @@ export const RequestDetailsScreen: React.FC = () => {
               <MaterialCommunityIcons
                 name="file-document-outline"
                 size={20}
-                color="#666"
+                color={colors.icon}
               />
               <Text style={styles.detailLabel}>Request Type</Text>
             </View>
@@ -248,7 +250,7 @@ export const RequestDetailsScreen: React.FC = () => {
               <MaterialCommunityIcons
                 name="calendar-range"
                 size={20}
-                color="#666"
+                color={colors.icon}
               />
               <Text style={styles.detailLabel}>Start Date</Text>
             </View>
@@ -258,7 +260,7 @@ export const RequestDetailsScreen: React.FC = () => {
           {/* Request ID */}
           <View style={styles.detailRow}>
             <View style={styles.detailLabelContainer}>
-              <MaterialCommunityIcons name="identifier" size={20} color="#666" />
+              <MaterialCommunityIcons name="identifier" size={20} color={colors.icon} />
               <Text style={styles.detailLabel}>Request ID</Text>
             </View>
             <Text style={styles.detailValue}>{request.id}</Text>
@@ -268,7 +270,7 @@ export const RequestDetailsScreen: React.FC = () => {
           {request.employeeCode && (
             <View style={styles.detailRow}>
               <View style={styles.detailLabelContainer}>
-                <MaterialCommunityIcons name="badge-account-outline" size={20} color="#666" />
+                <MaterialCommunityIcons name="badge-account-outline" size={20} color={colors.icon} />
                 <Text style={styles.detailLabel}>Employee Code</Text>
               </View>
               <Text style={styles.detailValue}>{request.employeeCode}</Text>
@@ -279,7 +281,7 @@ export const RequestDetailsScreen: React.FC = () => {
           {request.notes && (
             <View style={styles.detailRow}>
               <View style={styles.detailLabelContainer}>
-                <MaterialCommunityIcons name="note-text-outline" size={20} color="#666" />
+                <MaterialCommunityIcons name="note-text-outline" size={20} color={colors.icon} />
                 <Text style={styles.detailLabel}>Notes</Text>
               </View>
               <Text style={styles.detailValue}>{request.notes}</Text>
@@ -302,7 +304,7 @@ export const RequestDetailsScreen: React.FC = () => {
           {/* Submitted Date */}
           <View style={styles.detailRow}>
             <View style={styles.detailLabelContainer}>
-              <MaterialCommunityIcons name="clock-outline" size={20} color="#666" />
+              <MaterialCommunityIcons name="clock-outline" size={20} color={colors.icon} />
               <Text style={styles.detailLabel}>Submitted</Text>
             </View>
             <Text style={styles.detailValue}>{formatDate(request.createdAt)}</Text>
@@ -379,7 +381,8 @@ export const RequestDetailsScreen: React.FC = () => {
             </Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="Enter rejection reason..."
+              placeholderTextColor={colors.textTertiary}
+                  placeholder="Enter rejection reason..."
               placeholderTextColor="#999"
               multiline
               numberOfLines={4}
@@ -417,10 +420,10 @@ export const RequestDetailsScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   safeAreaTop: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   scrollView: {
     flex: 1,
@@ -451,7 +454,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   detailsCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 20,
     marginBottom: 20,
@@ -475,7 +478,7 @@ const styles = StyleSheet.create({
   avatarInitial: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#666',
+    color: colors.textSecondary,
   },
   userInfo: {
     flex: 1,
@@ -483,12 +486,12 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 4,
   },
   daysAgo: {
     fontSize: 14,
-    color: '#999',
+    color: colors.textTertiary,
   },
   divider: {
     height: 1,
@@ -507,12 +510,12 @@ const styles = StyleSheet.create({
   detailLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
   },
   detailValue: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#000',
+    color: colors.text,
     marginLeft: 28,
   },
   actionButtonsContainer: {
@@ -533,7 +536,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   approveButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: colors.success,
   },
   rejectButton: {
     backgroundColor: '#FF5252',
@@ -555,7 +558,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   modalContent: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 24,
     width: '100%',
@@ -564,22 +567,22 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 8,
   },
   modalSubtitle: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 16,
   },
   modalInput: {
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: colors.border,
     fontSize: 16,
-    color: '#000',
+    color: colors.text,
     minHeight: 100,
     marginBottom: 16,
   },
@@ -592,12 +595,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   modalCancelText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
   },
   modalRejectButton: {
     paddingHorizontal: 20,

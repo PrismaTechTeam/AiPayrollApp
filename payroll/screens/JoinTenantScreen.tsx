@@ -21,6 +21,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import companyService from '../api/services/companyService';
+import { useTheme } from '../context/ThemeContext';
 
 type TabType = 'scanQR' | 'joinViaLink';
 
@@ -102,6 +103,7 @@ function parseLinkOrCode(input: string): { type: 'url'; tenantId: string; code?:
 
 export const JoinTenantScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const [activeTab, setActiveTab] = useState<TabType>('scanQR');
 
   // QR Scanner state
@@ -207,7 +209,7 @@ export const JoinTenantScreen: React.FC = () => {
       // Permissions still loading
       return (
         <View style={styles.centeredContent}>
-          <ActivityIndicator size="large" color="#4285F4" />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.permissionText}>Loading camera...</Text>
         </View>
       );
@@ -217,7 +219,7 @@ export const JoinTenantScreen: React.FC = () => {
       return (
         <View style={styles.centeredContent}>
           <View style={styles.permissionIconContainer}>
-            <MaterialCommunityIcons name="camera-off" size={64} color="#CCC" />
+            <MaterialCommunityIcons name="camera-off" size={64} color={colors.textTertiary} />
           </View>
           <Text style={styles.permissionTitle}>Camera Access Required</Text>
           <Text style={styles.permissionText}>
@@ -234,7 +236,7 @@ export const JoinTenantScreen: React.FC = () => {
     if (scanSubmitting) {
       return (
         <View style={styles.centeredContent}>
-          <ActivityIndicator size="large" color="#4285F4" />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.submittingText}>Submitting join request...</Text>
         </View>
       );
@@ -272,7 +274,7 @@ export const JoinTenantScreen: React.FC = () => {
             style={styles.rescanButton}
             onPress={() => setScanned(false)}
           >
-            <MaterialCommunityIcons name="refresh" size={18} color="#4285F4" />
+            <MaterialCommunityIcons name="refresh" size={18} color={colors.primary} />
             <Text style={styles.rescanButtonText}>Scan Again</Text>
           </TouchableOpacity>
         )}
@@ -283,7 +285,7 @@ export const JoinTenantScreen: React.FC = () => {
   const renderJoinViaLinkTab = () => (
     <View style={styles.linkContainer}>
       <View style={styles.linkIconContainer}>
-        <MaterialCommunityIcons name="link-variant" size={48} color="#4285F4" />
+        <MaterialCommunityIcons name="link-variant" size={48} color={colors.primary} />
       </View>
 
       <Text style={styles.linkTitle}>Enter Invitation Code or Link</Text>
@@ -292,10 +294,11 @@ export const JoinTenantScreen: React.FC = () => {
       </Text>
 
       <View style={styles.linkInputContainer}>
-        <MaterialCommunityIcons name="code-tags" size={20} color="#999" />
+        <MaterialCommunityIcons name="code-tags" size={20} color={colors.textTertiary} />
         <TextInput
           style={styles.linkInput}
-          placeholder="Enter invitation code or link"
+          placeholderTextColor={colors.textTertiary}
+                  placeholder="Enter invitation code or link"
           placeholderTextColor="#BBB"
           value={linkInput}
           onChangeText={setLinkInput}
@@ -305,7 +308,7 @@ export const JoinTenantScreen: React.FC = () => {
         />
         {linkInput.length > 0 && !linkSubmitting && (
           <TouchableOpacity onPress={() => setLinkInput('')}>
-            <MaterialCommunityIcons name="close-circle" size={20} color="#999" />
+            <MaterialCommunityIcons name="close-circle" size={20} color={colors.textTertiary} />
           </TouchableOpacity>
         )}
       </View>
@@ -329,7 +332,7 @@ export const JoinTenantScreen: React.FC = () => {
       </TouchableOpacity>
 
       <View style={styles.helperContainer}>
-        <MaterialCommunityIcons name="information-outline" size={16} color="#999" />
+        <MaterialCommunityIcons name="information-outline" size={16} color={colors.textTertiary} />
         <Text style={styles.helperText}>
           Your HR admin can provide you with an invitation code or link.
           You can also ask them for a QR code to scan.
@@ -340,7 +343,7 @@ export const JoinTenantScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#4285F4" />
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         {/* Header */}
@@ -407,7 +410,7 @@ export const JoinTenantScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
   },
   safeArea: {
     flex: 1,
@@ -442,7 +445,7 @@ const styles = StyleSheet.create({
   // Content
   contentContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     paddingTop: 24,
@@ -467,12 +470,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   tabActive: {
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
   },
   tabText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#555',
+    color: colors.textSecondary,
   },
   tabTextActive: {
     color: '#FFFFFF',
@@ -494,7 +497,7 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
@@ -502,13 +505,13 @@ const styles = StyleSheet.create({
   permissionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#333',
+    color: colors.text,
     marginBottom: 8,
     textAlign: 'center',
   },
   permissionText: {
     fontSize: 14,
-    color: '#999',
+    color: colors.textTertiary,
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: 24,
@@ -516,7 +519,7 @@ const styles = StyleSheet.create({
   },
   permissionButton: {
     flexDirection: 'row',
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
     borderRadius: 12,
     paddingHorizontal: 24,
     paddingVertical: 14,
@@ -530,7 +533,7 @@ const styles = StyleSheet.create({
   },
   submittingText: {
     fontSize: 15,
-    color: '#666',
+    color: colors.textSecondary,
     marginTop: 16,
   },
   scannerContainer: {
@@ -564,7 +567,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 30,
     height: 30,
-    borderColor: '#4285F4',
+    borderColor: colors.primary,
   },
   cornerTopLeft: {
     top: 0,
@@ -596,7 +599,7 @@ const styles = StyleSheet.create({
   },
   scanInstructions: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     textAlign: 'center',
     marginTop: 20,
     lineHeight: 20,
@@ -610,13 +613,13 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#4285F4',
+    borderColor: colors.primary,
     gap: 6,
   },
   rescanButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#4285F4',
+    color: colors.primary,
   },
 
   // Join via Link Tab
@@ -638,13 +641,13 @@ const styles = StyleSheet.create({
   linkTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#333',
+    color: colors.text,
     marginBottom: 8,
     textAlign: 'center',
   },
   linkDescription: {
     fontSize: 14,
-    color: '#999',
+    color: colors.textTertiary,
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: 28,
@@ -652,7 +655,7 @@ const styles = StyleSheet.create({
   linkInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
     borderRadius: 12,
     paddingHorizontal: 16,
     height: 56,
@@ -662,12 +665,12 @@ const styles = StyleSheet.create({
   linkInput: {
     flex: 1,
     fontSize: 15,
-    color: '#000',
+    color: colors.text,
     marginLeft: 12,
   },
   joinButton: {
     flexDirection: 'row',
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
     borderRadius: 12,
     height: 52,
     justifyContent: 'center',
@@ -693,7 +696,7 @@ const styles = StyleSheet.create({
   helperText: {
     flex: 1,
     fontSize: 13,
-    color: '#999',
+    color: colors.textTertiary,
     lineHeight: 20,
   },
 });

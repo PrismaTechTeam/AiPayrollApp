@@ -8,9 +8,11 @@ import { View, Text, StyleSheet, TouchableOpacity, Modal, Alert } from 'react-na
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
+import { useTheme } from '../context/ThemeContext';
 
 export const CompanySwitcher: React.FC = () => {
   const { currentCompany, availableCompanies, switchCompany, user } = usePayrollAuth();
+  const { colors } = useTheme();
   const navigation = useNavigation();
   const [modalVisible, setModalVisible] = useState(false);
   const [switching, setSwitching] = useState(false);
@@ -82,11 +84,11 @@ export const CompanySwitcher: React.FC = () => {
           activeOpacity={1}
           onPress={() => setModalVisible(false)}
         >
-          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Current Tenant</Text>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]} onStartShouldSetResponder={() => true}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.borderLight }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Current Tenant</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <MaterialCommunityIcons name="close" size={24} color="#666" />
+                <MaterialCommunityIcons name="close" size={24} color={colors.icon} />
               </TouchableOpacity>
             </View>
 
@@ -100,13 +102,14 @@ export const CompanySwitcher: React.FC = () => {
                       key={tenant.id}
                       style={[
                         styles.companyItem,
-                        isActive && styles.companyItemActive,
+                        { backgroundColor: colors.background },
+                        isActive && { backgroundColor: colors.primary + '15', borderWidth: 2, borderColor: colors.primary },
                       ]}
                       onPress={() => handleSwitchCompany(tenant.id, tenant.name)}
                       disabled={switching}
                     >
                       <View style={styles.companyItemLeft}>
-                        <View style={styles.companyIconContainer}>
+                        <View style={[styles.companyIconContainer, { backgroundColor: colors.primary }]}>
                           <Text style={styles.companyIconText}>
                             {getCompanyInitials(tenant.name)}
                           </Text>
@@ -114,17 +117,18 @@ export const CompanySwitcher: React.FC = () => {
                         <View>
                           <Text style={[
                             styles.companyItemTitle,
-                            isActive && styles.companyItemTitleActive,
+                            { color: colors.text },
+                            isActive && { color: colors.primary },
                           ]}>
                             {tenant.name}
                           </Text>
-                          <Text style={styles.companyItemSubtitle}>
+                          <Text style={[styles.companyItemSubtitle, { color: colors.textSecondary }]}>
                             {isActive ? 'Current tenant' : 'Tap to switch'}
                           </Text>
                         </View>
                       </View>
                       {isActive && (
-                        <View style={styles.activeIndicator}>
+                        <View style={[styles.activeIndicator, { backgroundColor: colors.primary }]}>
                           <MaterialCommunityIcons name="check" size={16} color="#FFFFFF" />
                         </View>
                       )}
@@ -132,21 +136,21 @@ export const CompanySwitcher: React.FC = () => {
                   );
                 })
               ) : (
-                <View style={[styles.companyItem, styles.companyItemActive]}>
+                <View style={[styles.companyItem, { backgroundColor: colors.primary + '15', borderWidth: 2, borderColor: colors.primary }]}>
                   <View style={styles.companyItemLeft}>
-                    <View style={styles.companyIconContainer}>
+                    <View style={[styles.companyIconContainer, { backgroundColor: colors.primary }]}>
                       <Text style={styles.companyIconText}>
                         {getCompanyInitials(currentCompany)}
                       </Text>
                     </View>
                     <View>
-                      <Text style={[styles.companyItemTitle, styles.companyItemTitleActive]}>
+                      <Text style={[styles.companyItemTitle, { color: colors.primary }]}>
                         {currentCompany}
                       </Text>
-                      <Text style={styles.companyItemSubtitle}>Current tenant</Text>
+                      <Text style={[styles.companyItemSubtitle, { color: colors.textSecondary }]}>Current tenant</Text>
                     </View>
                   </View>
-                  <View style={styles.activeIndicator}>
+                  <View style={[styles.activeIndicator, { backgroundColor: colors.primary }]}>
                     <MaterialCommunityIcons name="check" size={16} color="#FFFFFF" />
                   </View>
                 </View>
@@ -154,12 +158,12 @@ export const CompanySwitcher: React.FC = () => {
 
               {/* Go to Tenant Hub */}
               <TouchableOpacity
-                style={styles.tenantHubButton}
+                style={[styles.tenantHubButton, { backgroundColor: colors.primary + '15' }]}
                 onPress={handleGoToTenantHub}
               >
-                <MaterialCommunityIcons name="office-building" size={20} color="#4285F4" />
-                <Text style={styles.tenantHubText}>Go to Tenant Hub</Text>
-                <MaterialCommunityIcons name="chevron-right" size={18} color="#4285F4" />
+                <MaterialCommunityIcons name="office-building" size={20} color={colors.primary} />
+                <Text style={[styles.tenantHubText, { color: colors.primary }]}>Go to Tenant Hub</Text>
+                <MaterialCommunityIcons name="chevron-right" size={18} color={colors.primary} />
               </TouchableOpacity>
             </View>
           </View>
@@ -205,7 +209,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     width: '85%',
     maxWidth: 400,
@@ -216,12 +219,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#000',
   },
   companyList: {
     padding: 16,
@@ -233,12 +234,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     marginBottom: 12,
-    backgroundColor: '#F9F9F9',
-  },
-  companyItemActive: {
-    backgroundColor: '#E3F2FD',
-    borderWidth: 2,
-    borderColor: '#4285F4',
   },
   companyItemLeft: {
     flexDirection: 'row',
@@ -251,7 +246,6 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#4285F4',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -263,21 +257,15 @@ const styles = StyleSheet.create({
   companyItemTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#000',
     marginBottom: 2,
-  },
-  companyItemTitleActive: {
-    color: '#4285F4',
   },
   companyItemSubtitle: {
     fontSize: 12,
-    color: '#666',
   },
   activeIndicator: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#4285F4',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -287,13 +275,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 14,
     borderRadius: 12,
-    backgroundColor: '#E8F0FE',
     marginTop: 4,
     gap: 8,
   },
   tenantHubText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#4285F4',
   },
 });

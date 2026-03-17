@@ -23,9 +23,11 @@ import { useNavigation } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import claimService, { ClaimType, ClaimBalance } from '../api/services/claimService';
+import { useTheme } from '../context/ThemeContext';
 
 export const CreateClaimScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
 
   const [claimTypes, setClaimTypes] = useState<ClaimType[]>([]);
   const [selectedType, setSelectedType] = useState<ClaimType | null>(null);
@@ -289,12 +291,12 @@ export const CreateClaimScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
 
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Create Claim</Text>
           <View style={{ width: 40 }} />
@@ -312,7 +314,7 @@ export const CreateClaimScreen: React.FC = () => {
             Claim Type <Text style={styles.required}>*</Text>
           </Text>
           {loadingTypes ? (
-            <ActivityIndicator size="small" color="#4285F4" style={{ padding: 16 }} />
+            <ActivityIndicator size="small" color={colors.primary} style={{ padding: 16 }} />
           ) : (
             <>
               <TouchableOpacity
@@ -325,7 +327,7 @@ export const CreateClaimScreen: React.FC = () => {
                 <MaterialCommunityIcons
                   name={showTypeDropdown ? 'chevron-up' : 'chevron-down'}
                   size={24}
-                  color="#666"
+                  color={colors.icon}
                 />
               </TouchableOpacity>
 
@@ -347,7 +349,7 @@ export const CreateClaimScreen: React.FC = () => {
                         )}
                       </View>
                       {selectedType?.id === type.id && (
-                        <MaterialCommunityIcons name="check" size={20} color="#4285F4" />
+                        <MaterialCommunityIcons name="check" size={20} color={colors.primary} />
                       )}
                     </TouchableOpacity>
                   ))}
@@ -412,7 +414,7 @@ export const CreateClaimScreen: React.FC = () => {
               )}
               {hasPending && (
                 <View style={styles.balancePendingRow}>
-                  <MaterialCommunityIcons name="information-outline" size={14} color="#666" />
+                  <MaterialCommunityIcons name="information-outline" size={14} color={colors.icon} />
                   <Text style={styles.balancePendingText}>
                     Includes RM {formatCurrency(Math.max(bal.ytdPending, bal.mtdPending))} pending approval
                   </Text>
@@ -433,7 +435,8 @@ export const CreateClaimScreen: React.FC = () => {
               style={styles.amountInput}
               value={amount}
               onChangeText={setAmount}
-              placeholder="0.00"
+              placeholderTextColor={colors.textTertiary}
+                  placeholder="0.00"
               placeholderTextColor="#999"
               keyboardType="decimal-pad"
             />
@@ -449,7 +452,7 @@ export const CreateClaimScreen: React.FC = () => {
             style={styles.dateButton}
             onPress={() => setShowDatePicker(true)}
           >
-            <MaterialCommunityIcons name="calendar" size={20} color="#4285F4" />
+            <MaterialCommunityIcons name="calendar" size={20} color={colors.primary} />
             <Text style={styles.dateText}>{formatDate(transDate)}</Text>
           </TouchableOpacity>
         </View>
@@ -473,7 +476,8 @@ export const CreateClaimScreen: React.FC = () => {
             style={styles.input}
             value={receiptNo}
             onChangeText={setReceiptNo}
-            placeholder="Enter receipt number (optional)"
+            placeholderTextColor={colors.textTertiary}
+                  placeholder="Enter receipt number (optional)"
             placeholderTextColor="#999"
           />
         </View>
@@ -487,7 +491,8 @@ export const CreateClaimScreen: React.FC = () => {
             style={[styles.input, styles.textArea]}
             value={description}
             onChangeText={setDescription}
-            placeholder="Enter claim description and additional details"
+            placeholderTextColor={colors.textTertiary}
+                  placeholder="Enter claim description and additional details"
             placeholderTextColor="#999"
             multiline
             numberOfLines={4}
@@ -517,7 +522,7 @@ export const CreateClaimScreen: React.FC = () => {
             </View>
           ) : (
             <TouchableOpacity style={styles.uploadButton} onPress={handlePickImage}>
-              <MaterialCommunityIcons name="camera-outline" size={24} color="#4285F4" />
+              <MaterialCommunityIcons name="camera-outline" size={24} color={colors.primary} />
               <Text style={styles.uploadButtonText}>Upload Receipt</Text>
             </TouchableOpacity>
           )}
@@ -557,58 +562,58 @@ export const CreateClaimScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
-  safeAreaTop: { backgroundColor: '#FFFFFF' },
+  container: { flex: 1, backgroundColor: colors.background },
+  safeAreaTop: { backgroundColor: colors.surface },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1, borderBottomColor: '#F0F0F0',
+    paddingHorizontal: 20, paddingVertical: 16, backgroundColor: colors.surface,
+    borderBottomWidth: 1, borderBottomColor: colors.borderLight,
   },
   backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: '#000' },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: colors.text },
   scrollView: { flex: 1 },
   scrollContent: { padding: 20 },
   section: { marginBottom: 24 },
-  label: { fontSize: 15, fontWeight: '600', color: '#000', marginBottom: 8 },
+  label: { fontSize: 15, fontWeight: '600', color: colors.text, marginBottom: 8 },
   required: { color: '#EA4335' },
-  input: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, fontSize: 15, color: '#000', borderWidth: 1, borderColor: '#E0E0E0' },
+  input: { backgroundColor: colors.surface, borderRadius: 12, padding: 16, fontSize: 15, color: colors.text, borderWidth: 1, borderColor: colors.border },
   textArea: { height: 100, paddingTop: 16 },
-  dropdown: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#E0E0E0' },
-  dropdownText: { fontSize: 15, color: '#000' },
-  placeholder: { color: '#999' },
-  dropdownMenu: { backgroundColor: '#FFFFFF', borderRadius: 12, marginTop: 8, borderWidth: 1, borderColor: '#E0E0E0', maxHeight: 300 },
-  dropdownItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
-  dropdownItemText: { fontSize: 15, color: '#000' },
-  dropdownItemHint: { fontSize: 12, color: '#999', marginTop: 2 },
-  amountInputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 12, paddingHorizontal: 16, borderWidth: 1, borderColor: '#E0E0E0' },
-  currencySymbol: { fontSize: 16, fontWeight: '600', color: '#000', marginRight: 8 },
-  amountInput: { flex: 1, fontSize: 15, color: '#000', paddingVertical: 16 },
-  dateButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, gap: 12, borderWidth: 1, borderColor: '#E0E0E0' },
-  dateText: { fontSize: 15, color: '#000', flex: 1 },
-  hint: { fontSize: 13, color: '#999', marginTop: 6 },
-  uploadButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#E8F0FE', borderRadius: 12, padding: 16, gap: 12, borderWidth: 2, borderColor: '#4285F4', borderStyle: 'dashed' },
-  uploadButtonText: { fontSize: 15, fontWeight: '600', color: '#4285F4' },
-  previewContainer: { alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#E0E0E0' },
+  dropdown: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.border },
+  dropdownText: { fontSize: 15, color: colors.text },
+  placeholder: { color: colors.textTertiary },
+  dropdownMenu: { backgroundColor: colors.surface, borderRadius: 12, marginTop: 8, borderWidth: 1, borderColor: colors.border, maxHeight: 300 },
+  dropdownItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: colors.borderLight },
+  dropdownItemText: { fontSize: 15, color: colors.text },
+  dropdownItemHint: { fontSize: 12, color: colors.textTertiary, marginTop: 2 },
+  amountInputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderRadius: 12, paddingHorizontal: 16, borderWidth: 1, borderColor: colors.border },
+  currencySymbol: { fontSize: 16, fontWeight: '600', color: colors.text, marginRight: 8 },
+  amountInput: { flex: 1, fontSize: 15, color: colors.text, paddingVertical: 16 },
+  dateButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderRadius: 12, padding: 16, gap: 12, borderWidth: 1, borderColor: colors.border },
+  dateText: { fontSize: 15, color: colors.text, flex: 1 },
+  hint: { fontSize: 13, color: colors.textTertiary, marginTop: 6 },
+  uploadButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight + '30', borderRadius: 12, padding: 16, gap: 12, borderWidth: 2, borderColor: colors.primary, borderStyle: 'dashed' },
+  uploadButtonText: { fontSize: 15, fontWeight: '600', color: colors.primary },
+  previewContainer: { alignItems: 'center', backgroundColor: colors.surface, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border },
   previewImage: { width: '100%', height: 200, borderRadius: 8, resizeMode: 'contain' },
-  removeButton: { position: 'absolute', top: 4, right: 4, backgroundColor: '#FFFFFF', borderRadius: 14 },
-  fileName: { fontSize: 13, color: '#666', marginTop: 8 },
+  removeButton: { position: 'absolute', top: 4, right: 4, backgroundColor: colors.surface, borderRadius: 14 },
+  fileName: { fontSize: 13, color: colors.textSecondary, marginTop: 8 },
   buttonContainer: { flexDirection: 'row', gap: 12, marginTop: 8 },
-  draftButton: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: '#4285F4' },
-  draftButtonText: { fontSize: 16, fontWeight: '600', color: '#4285F4' },
-  submitButton: { flex: 1, backgroundColor: '#4285F4', borderRadius: 12, padding: 16, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
+  draftButton: { flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: colors.primary },
+  draftButtonText: { fontSize: 16, fontWeight: '600', color: colors.primary },
+  submitButton: { flex: 1, backgroundColor: colors.primary, borderRadius: 12, padding: 16, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
   submitButtonDisabled: { opacity: 0.6 },
   submitButtonText: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
-  balanceCard: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, marginBottom: 24, borderWidth: 1, borderColor: '#E0E0E0' },
-  balanceTitle: { fontSize: 16, fontWeight: '700', color: '#000', marginBottom: 12 },
+  balanceCard: { backgroundColor: colors.surface, borderRadius: 12, padding: 16, marginBottom: 24, borderWidth: 1, borderColor: colors.border },
+  balanceTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 12 },
   balanceRow: { marginBottom: 12 },
   balanceLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  balanceLabel: { fontSize: 13, fontWeight: '600', color: '#666' },
-  balanceValue: { fontSize: 13, color: '#333' },
+  balanceLabel: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
+  balanceValue: { fontSize: 13, color: colors.text },
   progressBarBg: { height: 8, backgroundColor: '#E8E8E8', borderRadius: 4, overflow: 'hidden' },
   progressBarFill: { height: 8, borderRadius: 4 },
-  balanceRemaining: { fontSize: 12, color: '#666', marginTop: 4 },
-  balancePendingRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
-  balancePendingText: { fontSize: 12, color: '#666' },
+  balanceRemaining: { fontSize: 12, color: colors.textSecondary, marginTop: 4 },
+  balancePendingRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.borderLight },
+  balancePendingText: { fontSize: 12, color: colors.textSecondary },
 });
 
 export default CreateClaimScreen;

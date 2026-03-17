@@ -22,6 +22,7 @@ import { Header } from '../components/leaves';
 import { BottomNavBar } from '../components/BottomNavBar';
 import leaveService, { LeaveApplication } from '../api/services/leaveService';
 import { STATUSES, STATUS_COLORS } from '../constants/statuses';
+import { useTheme } from '../context/ThemeContext';
 
 type StatusFilter = 'ALL' | 'DRAFT' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'WITHDRAWN';
 
@@ -67,6 +68,7 @@ const formatDateRange = (start: string, end: string) => {
 
 export const MyLeavesScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const [activeTab, setActiveTab] = useState<StatusFilter>('ALL');
   const [leaves, setLeaves] = useState<LeaveApplication[]>([]);
   const [loading, setLoading] = useState(true);
@@ -160,13 +162,13 @@ export const MyLeavesScreen: React.FC = () => {
 
         <View style={styles.cardDetails}>
           <View style={styles.detailItem}>
-            <MaterialCommunityIcons name="clock-outline" size={14} color="#999" />
+            <MaterialCommunityIcons name="clock-outline" size={14} color={colors.textTertiary} />
             <Text style={styles.detailText}>
               {item.totalDays} {item.totalDays === 1 ? 'day' : 'days'}
             </Text>
           </View>
           <View style={styles.detailItem}>
-            <MaterialCommunityIcons name="calendar-check" size={14} color="#999" />
+            <MaterialCommunityIcons name="calendar-check" size={14} color={colors.textTertiary} />
             <Text style={styles.detailText}>Submitted {formatDate(item.createdAt)}</Text>
           </View>
         </View>
@@ -192,7 +194,7 @@ export const MyLeavesScreen: React.FC = () => {
               style={styles.withdrawButton}
               onPress={() => handleWithdraw(item.id)}
             >
-              <MaterialCommunityIcons name="undo-variant" size={16} color="#FF5252" />
+              <MaterialCommunityIcons name="undo-variant" size={16} color={colors.error} />
               <Text style={styles.withdrawButtonText}>Withdraw</Text>
             </TouchableOpacity>
           </View>
@@ -203,7 +205,7 @@ export const MyLeavesScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
 
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <Header
@@ -247,12 +249,12 @@ export const MyLeavesScreen: React.FC = () => {
         <View style={styles.listContainer}>
           {loading ? (
             <View style={styles.centerContainer}>
-              <ActivityIndicator size="large" color="#4285F4" />
+              <ActivityIndicator size="large" color={colors.primary} />
               <Text style={styles.loadingText}>Loading leave applications...</Text>
             </View>
           ) : filteredLeaves.length === 0 ? (
             <View style={styles.centerContainer}>
-              <MaterialCommunityIcons name="calendar-blank-outline" size={48} color="#CCC" />
+              <MaterialCommunityIcons name="calendar-blank-outline" size={48} color={colors.textTertiary} />
               <Text style={styles.emptyText}>No leave applications found</Text>
               <Text style={styles.emptySubtext}>
                 {activeTab === 'ALL'
@@ -272,7 +274,7 @@ export const MyLeavesScreen: React.FC = () => {
                   refreshing={refreshing}
                   onRefresh={() => fetchLeaves(true)}
                   colors={['#4285F4']}
-                  tintColor="#4285F4"
+                  tintColor={colors.primary}
                 />
               }
             />
@@ -296,20 +298,20 @@ export const MyLeavesScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   safeAreaTop: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   content: {
     flex: 1,
     paddingBottom: 80,
   },
   filterContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: colors.borderLight,
   },
   filterList: {
     paddingHorizontal: 16,
@@ -319,16 +321,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
     marginRight: 8,
   },
   filterTabActive: {
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
   },
   filterTabText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#666',
+    color: colors.textSecondary,
   },
   filterTabTextActive: {
     color: '#FFFFFF',
@@ -345,18 +347,18 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 14,
-    color: '#999',
+    color: colors.textTertiary,
   },
   emptyText: {
     marginTop: 12,
     fontSize: 16,
     fontWeight: '600',
-    color: '#999',
+    color: colors.textTertiary,
   },
   emptySubtext: {
     marginTop: 4,
     fontSize: 13,
-    color: '#CCC',
+    color: colors.textTertiary,
     textAlign: 'center',
     paddingHorizontal: 40,
   },
@@ -365,7 +367,7 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   leaveCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -393,11 +395,11 @@ const styles = StyleSheet.create({
   leaveType: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#000',
+    color: colors.text,
   },
   dateRange: {
     fontSize: 13,
-    color: '#666',
+    color: colors.textSecondary,
     marginTop: 2,
   },
   statusBadge: {
@@ -421,11 +423,11 @@ const styles = StyleSheet.create({
   },
   detailText: {
     fontSize: 12,
-    color: '#999',
+    color: colors.textTertiary,
   },
   reasonText: {
     fontSize: 13,
-    color: '#666',
+    color: colors.textSecondary,
     marginTop: 8,
     lineHeight: 18,
   },
@@ -447,7 +449,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
+    borderTopColor: colors.borderLight,
   },
   withdrawButton: {
     flexDirection: 'row',
@@ -461,7 +463,7 @@ const styles = StyleSheet.create({
   withdrawButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#FF5252',
+    color: colors.error,
   },
   fab: {
     position: 'absolute',
@@ -470,7 +472,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 8,

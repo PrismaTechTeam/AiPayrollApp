@@ -16,9 +16,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
+import { useTheme } from '../context/ThemeContext';
 
 export const UserHomeScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const { user, logout } = usePayrollAuth();
 
   const firstName = user?.firstName || user?.name?.split(' ')[0] || 'User';
@@ -35,7 +37,7 @@ export const UserHomeScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#4285F4" />
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         {/* Header */}
@@ -78,7 +80,7 @@ export const UserHomeScreen: React.FC = () => {
 
           {/* Bottom Helper Text */}
           <View style={styles.helperContainer}>
-            <MaterialCommunityIcons name="information-outline" size={18} color="#999" />
+            <MaterialCommunityIcons name="information-outline" size={18} color={colors.textTertiary} />
             <Text style={styles.helperText}>
               Contact your HR if you need an invitation code or QR
             </Text>
@@ -92,7 +94,7 @@ export const UserHomeScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
   },
   safeArea: {
     flex: 1,
@@ -149,7 +151,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     paddingHorizontal: 24,
@@ -189,7 +191,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#4285F4',
@@ -201,7 +203,7 @@ const styles = StyleSheet.create({
   },
   joinHint: {
     fontSize: 14,
-    color: '#999999',
+    color: colors.textTertiary,
     fontWeight: '500',
   },
   helperContainer: {
@@ -213,7 +215,7 @@ const styles = StyleSheet.create({
   helperText: {
     flex: 1,
     fontSize: 13,
-    color: '#999999',
+    color: colors.textTertiary,
     lineHeight: 20,
     textAlign: 'center',
   },

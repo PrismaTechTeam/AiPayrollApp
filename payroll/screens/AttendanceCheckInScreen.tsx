@@ -20,12 +20,16 @@ import { useNavigation } from '@react-navigation/native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as Location from 'expo-location';
 import attendanceService from '../api/services/attendanceService';
+import { useTheme } from '../context/ThemeContext';
 
 interface AttendanceCheckInScreenProps {
   navigation?: any;
 }
 
-const AttendanceCheckInScreen: React.FC<AttendanceCheckInScreenProps> = ({ navigation: navProp }) => {
+const AttendanceCheckInScreen: React.FC<AttendanceCheckInScreenProps> = ({
+  navigation: navProp }) => {
+
+  const { colors } = useTheme();
   const navigation = navProp || useNavigation();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isAuthenticating, setIsAuthenticating] = useState(false);
@@ -178,12 +182,12 @@ const AttendanceCheckInScreen: React.FC<AttendanceCheckInScreenProps> = ({ navig
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
 
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.backButton}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Attendance</Text>
           <View style={styles.placeholder} />
@@ -276,15 +280,15 @@ const AttendanceCheckInScreen: React.FC<AttendanceCheckInScreenProps> = ({ navig
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
-  safeAreaTop: { backgroundColor: '#FFFFFF' },
+  container: { flex: 1, backgroundColor: colors.background },
+  safeAreaTop: { backgroundColor: colors.surface },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1, borderBottomColor: '#F0F0F0',
+    paddingHorizontal: 20, paddingVertical: 16, backgroundColor: colors.surface,
+    borderBottomWidth: 1, borderBottomColor: colors.borderLight,
   },
   backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: '#000' },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: colors.text },
   placeholder: { width: 40 },
   content: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20, paddingBottom: 60 },
   punchTypeIndicator: {
@@ -297,20 +301,20 @@ const styles = StyleSheet.create({
   dualBiometricContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20 },
   biometricOption: { alignItems: 'center' },
   biometricCircle: {
-    width: 140, height: 140, borderRadius: 70, borderWidth: 3, borderColor: '#4285F4',
-    backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center',
+    width: 140, height: 140, borderRadius: 70, borderWidth: 3, borderColor: colors.primary,
+    backgroundColor: colors.surface, justifyContent: 'center', alignItems: 'center',
     shadowColor: '#4285F4', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4,
   },
   biometricCircleDisabled: { borderColor: '#B0BEC5', opacity: 0.6 },
   largeBiometricCircle: {
-    width: 200, height: 200, borderRadius: 100, borderWidth: 3, borderColor: '#4285F4',
-    backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center',
+    width: 200, height: 200, borderRadius: 100, borderWidth: 3, borderColor: colors.primary,
+    backgroundColor: colors.surface, justifyContent: 'center', alignItems: 'center',
     shadowColor: '#4285F4', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4,
   },
-  biometricLabel: { fontSize: 14, fontWeight: '600', color: '#666', marginTop: 12 },
-  orText: { fontSize: 16, fontWeight: '600', color: '#999' },
-  instructionText: { fontSize: 16, color: '#999', marginBottom: 8, textAlign: 'center' },
-  timeDisplay: { fontSize: 48, fontWeight: '700', color: '#4285F4', marginBottom: 40 },
+  biometricLabel: { fontSize: 14, fontWeight: '600', color: colors.textSecondary, marginTop: 12 },
+  orText: { fontSize: 16, fontWeight: '600', color: colors.textTertiary },
+  instructionText: { fontSize: 16, color: colors.textTertiary, marginBottom: 8, textAlign: 'center' },
+  timeDisplay: { fontSize: 48, fontWeight: '700', color: colors.primary, marginBottom: 40 },
   warningContainer: {
     flexDirection: 'row', alignItems: 'center', marginTop: 24, paddingHorizontal: 20,
     paddingVertical: 12, backgroundColor: '#FFF3E0', borderRadius: 8, maxWidth: '90%',

@@ -6,12 +6,16 @@ import { Header } from '../components/payslips';
 import { BottomNavBar } from '../components/BottomNavBar';
 import payslipService, { PayslipListItem } from '../api/services/payslipService';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { useTheme } from '../context/ThemeContext';
 
 interface PayslipScreenProps {
   navigation?: any;
 }
 
-export const PayslipScreen: React.FC<PayslipScreenProps> = ({ navigation: navProp }) => {
+export const PayslipScreen: React.FC<PayslipScreenProps> = ({
+  navigation: navProp }) => {
+
+  const { colors } = useTheme();
   const navigation = navProp || useNavigation();
   const [payslips, setPayslips] = useState<PayslipListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,7 +83,7 @@ export const PayslipScreen: React.FC<PayslipScreenProps> = ({ navigation: navPro
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
 
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <Header
@@ -105,11 +109,11 @@ export const PayslipScreen: React.FC<PayslipScreenProps> = ({ navigation: navPro
       <View style={styles.content}>
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#4285F4" />
+            <ActivityIndicator size="large" color={colors.primary} />
           </View>
         ) : payslips.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <MaterialCommunityIcons name="file-document-outline" size={64} color="#CCC" />
+            <MaterialCommunityIcons name="file-document-outline" size={64} color={colors.textTertiary} />
             <Text style={styles.emptyText}>No payslips for {selectedYear}</Text>
           </View>
         ) : (
@@ -129,26 +133,26 @@ export const PayslipScreen: React.FC<PayslipScreenProps> = ({ navigation: navPro
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
-  safeAreaTop: { backgroundColor: '#FFFFFF' },
-  yearFilter: { flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, gap: 8, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E0E0E0' },
-  yearButton: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F5F5F5' },
-  yearButtonActive: { backgroundColor: '#4285F4' },
-  yearText: { fontSize: 14, fontWeight: '600', color: '#666' },
+  container: { flex: 1, backgroundColor: colors.background },
+  safeAreaTop: { backgroundColor: colors.surface },
+  yearFilter: { flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, gap: 8, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border },
+  yearButton: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: colors.background },
+  yearButtonActive: { backgroundColor: colors.primary },
+  yearText: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
   yearTextActive: { color: '#FFFFFF' },
   content: { flex: 1 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  emptyText: { fontSize: 16, color: '#999', marginTop: 12 },
-  payslipCard: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, marginBottom: 12 },
+  emptyText: { fontSize: 16, color: colors.textTertiary, marginTop: 12 },
+  payslipCard: { backgroundColor: colors.surface, borderRadius: 12, padding: 16, marginBottom: 12 },
   payslipHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  payslipPeriod: { fontSize: 16, fontWeight: '700', color: '#000' },
+  payslipPeriod: { fontSize: 16, fontWeight: '700', color: colors.text },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   statusText: { fontSize: 12, fontWeight: '600' },
-  processedDate: { fontSize: 12, color: '#999', marginBottom: 12 },
+  processedDate: { fontSize: 12, color: colors.textTertiary, marginBottom: 12 },
   amountRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  amountLabel: { fontSize: 12, color: '#666' },
-  amountValue: { fontSize: 18, fontWeight: '700', color: '#000', marginTop: 2 },
+  amountLabel: { fontSize: 12, color: colors.textSecondary },
+  amountValue: { fontSize: 18, fontWeight: '700', color: colors.text, marginTop: 2 },
 });
 
 export default PayslipScreen;

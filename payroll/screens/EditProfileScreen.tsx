@@ -22,9 +22,11 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
 import profileService from '../api/services/profileService';
+import { useTheme } from '../context/ThemeContext';
 
 export const EditProfileScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const { currentRole } = usePayrollAuth();
 
   const [loading, setLoading] = useState(true);
@@ -109,7 +111,7 @@ export const EditProfileScreen: React.FC = () => {
   if (loading) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color="#4285F4" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -120,12 +122,12 @@ export const EditProfileScreen: React.FC = () => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
 
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Edit Profile</Text>
           <View style={{ width: 40 }} />
@@ -153,7 +155,7 @@ export const EditProfileScreen: React.FC = () => {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Full Name</Text>
             <View style={[styles.inputContainer, styles.readOnly]}>
-              <MaterialCommunityIcons name="account-outline" size={20} color="#999" />
+              <MaterialCommunityIcons name="account-outline" size={20} color={colors.textTertiary} />
               <Text style={styles.readOnlyText}>{fullName || '-'}</Text>
             </View>
           </View>
@@ -161,7 +163,7 @@ export const EditProfileScreen: React.FC = () => {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Email</Text>
             <View style={[styles.inputContainer, styles.readOnly]}>
-              <MaterialCommunityIcons name="email-outline" size={20} color="#999" />
+              <MaterialCommunityIcons name="email-outline" size={20} color={colors.textTertiary} />
               <Text style={styles.readOnlyText}>{email || '-'}</Text>
             </View>
           </View>
@@ -169,7 +171,7 @@ export const EditProfileScreen: React.FC = () => {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Department</Text>
             <View style={[styles.inputContainer, styles.readOnly]}>
-              <MaterialCommunityIcons name="office-building-outline" size={20} color="#999" />
+              <MaterialCommunityIcons name="office-building-outline" size={20} color={colors.textTertiary} />
               <Text style={styles.readOnlyText}>{department || '-'}</Text>
             </View>
           </View>
@@ -177,7 +179,7 @@ export const EditProfileScreen: React.FC = () => {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Position</Text>
             <View style={[styles.inputContainer, styles.readOnly]}>
-              <MaterialCommunityIcons name="briefcase-outline" size={20} color="#999" />
+              <MaterialCommunityIcons name="briefcase-outline" size={20} color={colors.textTertiary} />
               <Text style={styles.readOnlyText}>{position || '-'}</Text>
             </View>
           </View>
@@ -190,12 +192,13 @@ export const EditProfileScreen: React.FC = () => {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Phone</Text>
             <View style={styles.inputContainer}>
-              <MaterialCommunityIcons name="phone-outline" size={20} color="#666" />
+              <MaterialCommunityIcons name="phone-outline" size={20} color={colors.icon} />
               <TextInput
                 style={styles.input}
                 value={phone}
                 onChangeText={setPhone}
-                placeholder="Enter phone number"
+                placeholderTextColor={colors.textTertiary}
+                  placeholder="Enter phone number"
                 placeholderTextColor="#999"
                 keyboardType="phone-pad"
               />
@@ -205,12 +208,13 @@ export const EditProfileScreen: React.FC = () => {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Mobile</Text>
             <View style={styles.inputContainer}>
-              <MaterialCommunityIcons name="cellphone" size={20} color="#666" />
+              <MaterialCommunityIcons name="cellphone" size={20} color={colors.icon} />
               <TextInput
                 style={styles.input}
                 value={mobile}
                 onChangeText={setMobile}
-                placeholder="Enter mobile number"
+                placeholderTextColor={colors.textTertiary}
+                  placeholder="Enter mobile number"
                 placeholderTextColor="#999"
                 keyboardType="phone-pad"
               />
@@ -220,12 +224,13 @@ export const EditProfileScreen: React.FC = () => {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Address</Text>
             <View style={[styles.inputContainer, styles.textAreaContainer]}>
-              <MaterialCommunityIcons name="map-marker-outline" size={20} color="#666" style={{ marginTop: 4 }} />
+              <MaterialCommunityIcons name="map-marker-outline" size={20} color={colors.icon} style={{ marginTop: 4 }} />
               <TextInput
                 style={[styles.input, styles.textArea]}
                 value={address}
                 onChangeText={setAddress}
-                placeholder="Enter your address"
+                placeholderTextColor={colors.textTertiary}
+                  placeholder="Enter your address"
                 placeholderTextColor="#999"
                 multiline
                 numberOfLines={3}
@@ -242,6 +247,7 @@ export const EditProfileScreen: React.FC = () => {
                   style={[styles.input, { marginLeft: 0 }]}
                   value={city}
                   onChangeText={setCity}
+                  placeholderTextColor={colors.textTertiary}
                   placeholder="City"
                   placeholderTextColor="#999"
                 />
@@ -255,6 +261,7 @@ export const EditProfileScreen: React.FC = () => {
                   style={[styles.input, { marginLeft: 0 }]}
                   value={state}
                   onChangeText={setState}
+                  placeholderTextColor={colors.textTertiary}
                   placeholder="State"
                   placeholderTextColor="#999"
                 />
@@ -269,7 +276,8 @@ export const EditProfileScreen: React.FC = () => {
                 style={[styles.input, { marginLeft: 0 }]}
                 value={postcode}
                 onChangeText={setPostcode}
-                placeholder="Postcode"
+                placeholderTextColor={colors.textTertiary}
+                  placeholder="Postcode"
                 placeholderTextColor="#999"
                 keyboardType="number-pad"
               />
@@ -300,37 +308,37 @@ export const EditProfileScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
-  safeAreaTop: { backgroundColor: '#FFFFFF' },
+  container: { flex: 1, backgroundColor: colors.background },
+  safeAreaTop: { backgroundColor: colors.surface },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1, borderBottomColor: '#F0F0F0',
+    paddingHorizontal: 20, paddingVertical: 16, backgroundColor: colors.surface,
+    borderBottomWidth: 1, borderBottomColor: colors.borderLight,
   },
   backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: '#000' },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: colors.text },
   content: { flex: 1 },
   scrollContent: { paddingBottom: 20 },
-  avatarSection: { alignItems: 'center', paddingVertical: 24, backgroundColor: '#FFFFFF', marginBottom: 16 },
+  avatarSection: { alignItems: 'center', paddingVertical: 24, backgroundColor: colors.surface, marginBottom: 16 },
   avatar: { width: 100, height: 100, borderRadius: 50, justifyContent: 'center', alignItems: 'center' },
-  formSection: { backgroundColor: '#FFFFFF', paddingHorizontal: 20, paddingVertical: 24, marginBottom: 16 },
-  sectionLabel: { fontSize: 16, fontWeight: '700', color: '#333', marginBottom: 16 },
+  formSection: { backgroundColor: colors.surface, paddingHorizontal: 20, paddingVertical: 24, marginBottom: 16 },
+  sectionLabel: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 16 },
   inputGroup: { marginBottom: 20 },
-  label: { fontSize: 14, fontWeight: '600', color: '#000', marginBottom: 8 },
+  label: { fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 8 },
   inputContainer: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F5F5',
+    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.background,
     borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12,
-    borderWidth: 1, borderColor: '#E0E0E0',
+    borderWidth: 1, borderColor: colors.border,
   },
-  readOnly: { backgroundColor: '#FAFAFA', borderColor: '#F0F0F0' },
-  readOnlyText: { flex: 1, fontSize: 16, color: '#666', marginLeft: 12 },
-  input: { flex: 1, fontSize: 16, color: '#000', marginLeft: 12, padding: 0 },
+  readOnly: { backgroundColor: '#FAFAFA', borderColor: colors.borderLight },
+  readOnlyText: { flex: 1, fontSize: 16, color: colors.textSecondary, marginLeft: 12 },
+  input: { flex: 1, fontSize: 16, color: colors.text, marginLeft: 12, padding: 0 },
   textAreaContainer: { alignItems: 'flex-start', paddingVertical: 12 },
   textArea: { minHeight: 80, textAlignVertical: 'top' },
   row: { flexDirection: 'row' },
   saveButton: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#4285F4', marginHorizontal: 20, paddingVertical: 16,
+    backgroundColor: colors.primary, marginHorizontal: 20, paddingVertical: 16,
     borderRadius: 12, gap: 8,
   },
   saveButtonDisabled: { opacity: 0.6 },

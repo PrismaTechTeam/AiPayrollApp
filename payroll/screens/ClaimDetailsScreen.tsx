@@ -26,9 +26,11 @@ import { shareAsync } from 'expo-sharing';
 import type { Claim } from '../components/claims';
 import { STATUS_COLORS, STATUS_LABELS, STATUSES } from '../constants/statuses';
 import claimService from '../api/services/claimService';
+import { useTheme } from '../context/ThemeContext';
 
 export const ClaimDetailsScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const route = useRoute();
   const { claim, isOwner = false } = (route.params as { claim: Claim; isOwner?: boolean }) || {};
 
@@ -187,12 +189,12 @@ export const ClaimDetailsScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
 
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Claim Details</Text>
           {!isOwner ? (
@@ -228,7 +230,7 @@ export const ClaimDetailsScreen: React.FC = () => {
 
           <View style={styles.detailRow}>
             <View style={styles.iconLabel}>
-              <MaterialCommunityIcons name="calendar" size={20} color="#666" />
+              <MaterialCommunityIcons name="calendar" size={20} color={colors.icon} />
               <Text style={styles.detailLabel}>Transaction Date</Text>
             </View>
             <Text style={styles.detailValue}>{formatDate(claim.transDate)}</Text>
@@ -240,7 +242,7 @@ export const ClaimDetailsScreen: React.FC = () => {
             <>
               <View style={styles.detailRow}>
                 <View style={styles.iconLabel}>
-                  <MaterialCommunityIcons name="receipt" size={20} color="#666" />
+                  <MaterialCommunityIcons name="receipt" size={20} color={colors.icon} />
                   <Text style={styles.detailLabel}>Receipt No</Text>
                 </View>
                 <Text style={styles.detailValue}>{claim.receiptNo}</Text>
@@ -253,7 +255,7 @@ export const ClaimDetailsScreen: React.FC = () => {
             <>
               <View style={styles.detailRow}>
                 <View style={styles.iconLabel}>
-                  <MaterialCommunityIcons name="calendar-check" size={20} color="#666" />
+                  <MaterialCommunityIcons name="calendar-check" size={20} color={colors.icon} />
                   <Text style={styles.detailLabel}>Submitted Date</Text>
                 </View>
                 <Text style={styles.detailValue}>{formatDate(claim.createdAt)}</Text>
@@ -265,7 +267,7 @@ export const ClaimDetailsScreen: React.FC = () => {
           {claim.approvedAt && (
             <View style={styles.detailRow}>
               <View style={styles.iconLabel}>
-                <MaterialCommunityIcons name="account-check" size={20} color="#666" />
+                <MaterialCommunityIcons name="account-check" size={20} color={colors.icon} />
                 <Text style={styles.detailLabel}>Reviewed Date</Text>
               </View>
               <Text style={styles.detailValue}>{formatDate(claim.approvedAt)}</Text>
@@ -301,17 +303,17 @@ export const ClaimDetailsScreen: React.FC = () => {
               onPress={handleDownloadReceipt}
               disabled={downloading}
             >
-              <MaterialCommunityIcons name="file-document" size={24} color="#4285F4" />
+              <MaterialCommunityIcons name="file-document" size={24} color={colors.primary} />
               <Text style={styles.receiptName} numberOfLines={1}>{claim.attachmentFileName}</Text>
               {downloading ? (
-                <ActivityIndicator size="small" color="#4285F4" />
+                <ActivityIndicator size="small" color={colors.primary} />
               ) : (
-                <MaterialCommunityIcons name="download" size={20} color="#666" />
+                <MaterialCommunityIcons name="download" size={20} color={colors.icon} />
               )}
             </TouchableOpacity>
           ) : (
             <View style={styles.emptyReceipts}>
-              <MaterialCommunityIcons name="file-document-outline" size={48} color="#CCC" />
+              <MaterialCommunityIcons name="file-document-outline" size={48} color={colors.textTertiary} />
               <Text style={styles.emptyReceiptsText}>No receipts attached</Text>
             </View>
           )}
@@ -321,7 +323,7 @@ export const ClaimDetailsScreen: React.FC = () => {
         {claim.status === STATUSES.DRAFT && !isOwner && (
           <View style={styles.actionButtons}>
             <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
-              <MaterialCommunityIcons name="pencil" size={20} color="#4285F4" />
+              <MaterialCommunityIcons name="pencil" size={20} color={colors.primary} />
               <Text style={styles.editButtonText}>Edit Claim</Text>
             </TouchableOpacity>
           </View>
@@ -379,7 +381,8 @@ export const ClaimDetailsScreen: React.FC = () => {
             </Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="Enter rejection reason..."
+              placeholderTextColor={colors.textTertiary}
+                  placeholder="Enter rejection reason..."
               placeholderTextColor="#999"
               multiline
               numberOfLines={4}
@@ -412,15 +415,15 @@ export const ClaimDetailsScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
-  safeAreaTop: { backgroundColor: '#FFFFFF' },
+  container: { flex: 1, backgroundColor: colors.background },
+  safeAreaTop: { backgroundColor: colors.surface },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1, borderBottomColor: '#F0F0F0',
+    paddingHorizontal: 20, paddingVertical: 16, backgroundColor: colors.surface,
+    borderBottomWidth: 1, borderBottomColor: colors.borderLight,
   },
   backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: '#000' },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: colors.text },
   deleteButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   scrollView: { flex: 1 },
   scrollContent: { padding: 20 },
@@ -429,37 +432,37 @@ const styles = StyleSheet.create({
     padding: 16, borderRadius: 12, marginBottom: 20, gap: 12,
   },
   statusBannerText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
-  card: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 20, marginBottom: 16 },
-  claimType: { fontSize: 24, fontWeight: '700', color: '#000', marginBottom: 8 },
+  card: { backgroundColor: colors.surface, borderRadius: 12, padding: 20, marginBottom: 16 },
+  claimType: { fontSize: 24, fontWeight: '700', color: colors.text, marginBottom: 8 },
   amount: { fontSize: 32, fontWeight: '700', color: '#EA4335' },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#000', marginBottom: 16 },
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 16 },
   detailRow: { paddingVertical: 12 },
   iconLabel: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 8 },
-  detailLabel: { fontSize: 14, color: '#666', fontWeight: '500' },
-  detailValue: { fontSize: 15, color: '#000', fontWeight: '600' },
+  detailLabel: { fontSize: 14, color: colors.textSecondary, fontWeight: '500' },
+  detailValue: { fontSize: 15, color: colors.text, fontWeight: '600' },
   divider: { height: 1, backgroundColor: '#F0F0F0' },
-  description: { fontSize: 15, lineHeight: 24, color: '#333' },
+  description: { fontSize: 15, lineHeight: 24, color: colors.text },
   rejectionCard: { backgroundColor: '#FFEBEE', borderWidth: 1, borderColor: '#EA4335' },
   rejectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
   rejectionTitle: { fontSize: 18, fontWeight: '700', color: '#EA4335' },
-  rejectionReason: { fontSize: 15, lineHeight: 24, color: '#333' },
+  rejectionReason: { fontSize: 15, lineHeight: 24, color: colors.text },
   receiptItem: { flexDirection: 'row', alignItems: 'center', padding: 12, backgroundColor: '#F9F9F9', borderRadius: 8, gap: 12 },
-  receiptName: { flex: 1, fontSize: 15, color: '#000', fontWeight: '500' },
+  receiptName: { flex: 1, fontSize: 15, color: colors.text, fontWeight: '500' },
   emptyReceipts: { alignItems: 'center', paddingVertical: 40 },
-  emptyReceiptsText: { fontSize: 14, color: '#999', marginTop: 12 },
+  emptyReceiptsText: { fontSize: 14, color: colors.textTertiary, marginTop: 12 },
   actionButtons: { marginBottom: 16 },
   editButton: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, gap: 8,
-    borderWidth: 2, borderColor: '#4285F4',
+    backgroundColor: colors.surface, borderRadius: 12, padding: 16, gap: 8,
+    borderWidth: 2, borderColor: colors.primary,
   },
-  editButtonText: { fontSize: 16, fontWeight: '600', color: '#4285F4' },
+  editButtonText: { fontSize: 16, fontWeight: '600', color: colors.primary },
   approveRejectContainer: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   actionBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     paddingVertical: 14, borderRadius: 12, gap: 8,
   },
-  approveBtn: { backgroundColor: '#4CAF50' },
+  approveBtn: { backgroundColor: colors.success },
   rejectBtn: { backgroundColor: '#FF5252' },
   actionBtnText: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
   modalOverlay: {
@@ -467,17 +470,17 @@ const styles = StyleSheet.create({
     alignItems: 'center', padding: 20,
   },
   modalContent: {
-    backgroundColor: '#FFFFFF', borderRadius: 16, padding: 24, width: '100%', maxWidth: 400,
+    backgroundColor: colors.surface, borderRadius: 16, padding: 24, width: '100%', maxWidth: 400,
   },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: '#000', marginBottom: 8 },
-  modalSubtitle: { fontSize: 14, color: '#666', marginBottom: 16 },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 8 },
+  modalSubtitle: { fontSize: 14, color: colors.textSecondary, marginBottom: 16 },
   modalInput: {
-    backgroundColor: '#F5F5F5', borderRadius: 12, padding: 16, borderWidth: 1,
-    borderColor: '#E0E0E0', fontSize: 16, color: '#000', minHeight: 100, marginBottom: 16,
+    backgroundColor: colors.background, borderRadius: 12, padding: 16, borderWidth: 1,
+    borderColor: colors.border, fontSize: 16, color: colors.text, minHeight: 100, marginBottom: 16,
   },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12 },
-  modalCancelButton: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, backgroundColor: '#F5F5F5' },
-  modalCancelText: { fontSize: 14, fontWeight: '600', color: '#666' },
+  modalCancelButton: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, backgroundColor: colors.background },
+  modalCancelText: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
   modalRejectButton: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, backgroundColor: '#FF5252' },
   modalRejectText: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
 });

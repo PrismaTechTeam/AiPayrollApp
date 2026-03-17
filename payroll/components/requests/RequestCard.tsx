@@ -9,6 +9,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { RequestCardProps } from '../../types/request.types';
 import { usePayrollAuth } from '../../context/PayrollAuthContext';
 import { hasRoleAccess, ROLE_GROUPS } from '../../constants/userRoles';
+import { useTheme } from '../../context/ThemeContext';
 
 export const RequestCard: React.FC<RequestCardProps> = ({
   request,
@@ -19,6 +20,7 @@ export const RequestCard: React.FC<RequestCardProps> = ({
   onRestore,
   onViewDetails,
 }) => {
+  const { colors } = useTheme();
   // Check user role for permissions
   const { currentRole } = usePayrollAuth();
   const canApprove = hasRoleAccess(currentRole || undefined, ROLE_GROUPS.CAN_APPROVE_REQUESTS);
@@ -103,7 +105,7 @@ export const RequestCard: React.FC<RequestCardProps> = ({
                 style={styles.cancelButton}
                 onPress={() => onCancel(request.id)}
               >
-                <MaterialCommunityIcons name="close-circle" size={18} color="#FF5252" />
+                <MaterialCommunityIcons name="close-circle" size={18} color={colors.error} />
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
             )}
@@ -114,7 +116,7 @@ export const RequestCard: React.FC<RequestCardProps> = ({
                 style={styles.restoreButton}
                 onPress={() => onRestore(request.id)}
               >
-                <MaterialCommunityIcons name="restore" size={18} color="#4285F4" />
+                <MaterialCommunityIcons name="restore" size={18} color={colors.primary} />
                 <Text style={styles.restoreButtonText}>Restore</Text>
               </TouchableOpacity>
             )}
@@ -125,7 +127,7 @@ export const RequestCard: React.FC<RequestCardProps> = ({
                 style={styles.viewDetailsButton}
                 onPress={() => onViewDetails(request.id)}
               >
-                <MaterialCommunityIcons name="eye" size={16} color="#666" />
+                <MaterialCommunityIcons name="eye" size={16} color={colors.icon} />
               </TouchableOpacity>
             )}
           </View>
@@ -138,7 +140,7 @@ export const RequestCard: React.FC<RequestCardProps> = ({
 const styles = StyleSheet.create({
   requestCard: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -156,12 +158,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   avatarImage: {
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
   },
   avatarInitial: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#666',
+    color: colors.textSecondary,
   },
   requestDetails: {
     flex: 1,
@@ -170,17 +172,17 @@ const styles = StyleSheet.create({
   requestName: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 4,
   },
   requestDate: {
     fontSize: 13,
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 4,
   },
   requestType: {
     fontSize: 13,
-    color: '#4285F4',
+    color: colors.primary,
     fontWeight: '600',
   },
   rightSection: {
@@ -189,7 +191,7 @@ const styles = StyleSheet.create({
   },
   daysAgo: {
     fontSize: 12,
-    color: '#999',
+    color: colors.textTertiary,
     marginBottom: 8,
   },
   actionButtons: {
@@ -208,7 +210,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#4CAF50',
+    backgroundColor: colors.success,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -220,12 +222,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   statusText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
   },
   cancelButton: {
     flexDirection: 'row',
@@ -239,7 +241,7 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#FF5252',
+    color: colors.error,
   },
   restoreButton: {
     flexDirection: 'row',
@@ -247,19 +249,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: '#E3F2FD',
+    backgroundColor: colors.primaryLight + '30',
     gap: 4,
   },
   restoreButtonText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#4285F4',
+    color: colors.primary,
   },
   viewDetailsButton: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
   },

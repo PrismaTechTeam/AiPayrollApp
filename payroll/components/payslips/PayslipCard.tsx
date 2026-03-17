@@ -7,6 +7,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { PayslipCardProps } from '../../types/payslip.types';
+import { useTheme } from '../../context/ThemeContext';
 
 export const PayslipCard: React.FC<PayslipCardProps> = ({
   payslip,
@@ -16,6 +17,7 @@ export const PayslipCard: React.FC<PayslipCardProps> = ({
   onCancel,
   onViewDetails,
 }) => {
+  const { colors } = useTheme();
   // Determine if action buttons should be shown based on status
   const showActions = payslip.status === 'requested';
   const isCompleted = payslip.status === 'completed';
@@ -65,7 +67,7 @@ export const PayslipCard: React.FC<PayslipCardProps> = ({
       <View style={styles.rightSection}>
         <Text style={styles.date}>{payslip.date}</Text>
         <View style={styles.amountContainer}>
-          <MaterialCommunityIcons name="paperclip" size={16} color="#4285F4" />
+          <MaterialCommunityIcons name="paperclip" size={16} color={colors.primary} />
           <Text style={styles.amount}>{payslip.amount}</Text>
         </View>
         {showActions && (
@@ -99,7 +101,7 @@ export const PayslipCard: React.FC<PayslipCardProps> = ({
                 style={styles.viewDetailsButton}
                 onPress={() => onViewDetails(payslip.id)}
               >
-                <MaterialCommunityIcons name="eye" size={16} color="#666" />
+                <MaterialCommunityIcons name="eye" size={16} color={colors.icon} />
               </TouchableOpacity>
             )}
           </View>
@@ -112,7 +114,7 @@ export const PayslipCard: React.FC<PayslipCardProps> = ({
 const styles = StyleSheet.create({
   payslipCard: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -130,12 +132,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   avatarImage: {
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
   },
   avatarInitial: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#666',
+    color: colors.textSecondary,
   },
   payslipDetails: {
     flex: 1,
@@ -144,17 +146,17 @@ const styles = StyleSheet.create({
   payslipName: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 4,
   },
   payslipDateRange: {
     fontSize: 13,
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 4,
   },
   payslipType: {
     fontSize: 13,
-    color: '#4285F4',
+    color: colors.primary,
     fontWeight: '600',
   },
   rightSection: {
@@ -163,7 +165,7 @@ const styles = StyleSheet.create({
   },
   date: {
     fontSize: 12,
-    color: '#999',
+    color: colors.textTertiary,
     marginBottom: 8,
   },
   amountContainer: {
@@ -193,7 +195,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#4CAF50',
+    backgroundColor: colors.success,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -205,18 +207,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   statusText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
   },
   viewDetailsButton: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
   },

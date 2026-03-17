@@ -16,9 +16,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { useLanguage, Language, LanguageCode } from '../context/LanguageContext';
+import { useTheme } from '../context/ThemeContext';
 
 export const LanguageScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const { language, currentLanguage, setLanguage, availableLanguages } = useLanguage();
 
   const handleLanguageSelect = (selectedLanguage: LanguageCode) => {
@@ -27,13 +29,13 @@ export const LanguageScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
       
       {/* Header */}
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Language</Text>
           <View style={{ width: 40 }} />
@@ -49,7 +51,7 @@ export const LanguageScreen: React.FC = () => {
         >
           {/* Info Section */}
           <View style={styles.infoSection}>
-            <MaterialCommunityIcons name="translate" size={32} color="#4285F4" />
+            <MaterialCommunityIcons name="translate" size={32} color={colors.primary} />
             <Text style={styles.infoTitle}>Choose Your Language</Text>
             <Text style={styles.infoDescription}>
               Select your preferred language for the app interface. Your choice will be saved automatically.
@@ -67,7 +69,7 @@ export const LanguageScreen: React.FC = () => {
                 </Text>
               </View>
             </View>
-            <MaterialCommunityIcons name="check-circle" size={24} color="#4CAF50" />
+            <MaterialCommunityIcons name="check-circle" size={24} color={colors.success} />
           </View>
 
           {/* Language Options */}
@@ -99,7 +101,7 @@ export const LanguageScreen: React.FC = () => {
                   {/* Selected Indicator */}
                   {isSelected && (
                     <View style={styles.selectedIndicator}>
-                      <MaterialCommunityIcons name="check-circle" size={24} color="#4285F4" />
+                      <MaterialCommunityIcons name="check-circle" size={24} color={colors.primary} />
                     </View>
                   )}
                 </TouchableOpacity>
@@ -109,7 +111,7 @@ export const LanguageScreen: React.FC = () => {
 
           {/* Info Note */}
           <View style={styles.noteSection}>
-            <MaterialCommunityIcons name="information-outline" size={20} color="#666" />
+            <MaterialCommunityIcons name="information-outline" size={20} color={colors.icon} />
             <View style={styles.noteContent}>
               <Text style={styles.noteTitle}>Note</Text>
               <Text style={styles.noteText}>
@@ -128,10 +130,10 @@ export const LanguageScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   safeAreaTop: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   header: {
     flexDirection: 'row',
@@ -139,9 +141,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: colors.borderLight,
   },
   backButton: {
     width: 40,
@@ -152,7 +154,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
   },
   content: {
     flex: 1,
@@ -162,7 +164,7 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   infoSection: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     padding: 24,
     borderRadius: 12,
     alignItems: 'center',
@@ -171,13 +173,13 @@ const styles = StyleSheet.create({
   infoTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginTop: 12,
     marginBottom: 8,
   },
   infoDescription: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -216,14 +218,14 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 12,
     paddingHorizontal: 4,
   },
   languageCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -231,7 +233,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   languageCardSelected: {
-    borderColor: '#4285F4',
+    borderColor: colors.primary,
     backgroundColor: '#F0F8FF',
   },
   flag: {
@@ -244,12 +246,12 @@ const styles = StyleSheet.create({
   languageName: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 4,
   },
   languageNativeName: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
   },
   selectedIndicator: {
     marginLeft: 12,
@@ -269,12 +271,12 @@ const styles = StyleSheet.create({
   noteTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 4,
   },
   noteText: {
     fontSize: 13,
-    color: '#666',
+    color: colors.textSecondary,
     lineHeight: 18,
   },
 });

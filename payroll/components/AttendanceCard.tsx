@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useTheme } from '../context/ThemeContext';
 
 interface AttendanceCardProps {
   label: string;
@@ -9,9 +10,11 @@ interface AttendanceCardProps {
 }
 
 export const AttendanceCard: React.FC<AttendanceCardProps> = ({ label, count, color, onPress }) => {
+  const { colors } = useTheme();
+
   return (
     <TouchableOpacity
-      style={[styles.card, { borderLeftColor: color, shadowColor: color }]}
+      style={[styles.card, { backgroundColor: colors.surface, borderLeftColor: color, shadowColor: color }]}
       onPress={onPress}
       activeOpacity={onPress ? 0.7 : 1}
       disabled={!onPress}
@@ -19,14 +22,13 @@ export const AttendanceCard: React.FC<AttendanceCardProps> = ({ label, count, co
       <View style={[styles.circle, { backgroundColor: color + '25' }]}>
         <Text style={[styles.count, { color }]}>{count}</Text>
       </View>
-      <Text style={styles.label}>{label.toUpperCase()}</Text>
+      <Text style={[styles.label, { color: colors.textSecondary }]}>{label.toUpperCase()}</Text>
     </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
     alignItems: 'center',
@@ -53,7 +55,6 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#555',
     letterSpacing: 1,
   },
 });

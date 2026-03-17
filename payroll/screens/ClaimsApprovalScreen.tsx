@@ -23,9 +23,11 @@ import { Header, ClaimCard, FilterTabs } from '../components/claims';
 import type { Claim } from '../components/claims';
 import claimService, { ClaimApplication } from '../api/services/claimService';
 import { CLAIM_FILTERS } from '../constants/statuses';
+import { useTheme } from '../context/ThemeContext';
 
 export const ClaimsApprovalScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const [selectedFilter, setSelectedFilter] = useState<string>('PENDING');
   const [claims, setClaims] = useState<Claim[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,7 +129,7 @@ export const ClaimsApprovalScreen: React.FC = () => {
 
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
-      <MaterialCommunityIcons name="file-document-outline" size={64} color="#CCC" />
+      <MaterialCommunityIcons name="file-document-outline" size={64} color={colors.textTertiary} />
       <Text style={styles.emptyStateText}>No claims found</Text>
       <Text style={styles.emptyStateSubtext}>
         {selectedFilter === 'ALL'
@@ -139,7 +141,7 @@ export const ClaimsApprovalScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
 
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <Header
@@ -156,7 +158,7 @@ export const ClaimsApprovalScreen: React.FC = () => {
 
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4285F4" />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : (
         <FlatList
@@ -197,7 +199,7 @@ export const ClaimsApprovalScreen: React.FC = () => {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Reject Claim</Text>
               <TouchableOpacity onPress={() => { setShowRejectModal(false); setRejectionReason(''); }}>
-                <MaterialCommunityIcons name="close" size={24} color="#666" />
+                <MaterialCommunityIcons name="close" size={24} color={colors.icon} />
               </TouchableOpacity>
             </View>
 
@@ -223,7 +225,8 @@ export const ClaimsApprovalScreen: React.FC = () => {
               style={styles.textInput}
               value={rejectionReason}
               onChangeText={setRejectionReason}
-              placeholder="Enter reason for rejecting this claim"
+              placeholderTextColor={colors.textTertiary}
+                  placeholder="Enter reason for rejecting this claim"
               placeholderTextColor="#999"
               multiline
               numberOfLines={4}
@@ -249,26 +252,26 @@ export const ClaimsApprovalScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
-  safeArea: { backgroundColor: '#FFFFFF' },
+  container: { flex: 1, backgroundColor: colors.background },
+  safeArea: { backgroundColor: colors.surface },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   listContent: { padding: 20, paddingBottom: 40 },
   emptyListContent: { flexGrow: 1, justifyContent: 'center' },
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
-  emptyStateText: { fontSize: 18, fontWeight: '600', color: '#999', marginTop: 16 },
-  emptyStateSubtext: { fontSize: 14, color: '#CCC', marginTop: 8, textAlign: 'center', paddingHorizontal: 40 },
+  emptyStateText: { fontSize: 18, fontWeight: '600', color: colors.textTertiary, marginTop: 16 },
+  emptyStateSubtext: { fontSize: 14, color: colors.textTertiary, marginTop: 8, textAlign: 'center', paddingHorizontal: 40 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modalContent: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 24, width: '100%', maxWidth: 400 },
+  modalContent: { backgroundColor: colors.surface, borderRadius: 16, padding: 24, width: '100%', maxWidth: 400 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 20, fontWeight: '700', color: '#000' },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: colors.text },
   claimInfo: { backgroundColor: '#F9F9F9', borderRadius: 12, padding: 16, marginBottom: 20 },
-  claimInfoText: { fontSize: 14, color: '#333', marginBottom: 6 },
-  claimInfoLabel: { fontWeight: '600', color: '#666' },
-  inputLabel: { fontSize: 15, fontWeight: '600', color: '#000', marginBottom: 8 },
-  textInput: { backgroundColor: '#F9F9F9', borderRadius: 12, padding: 16, fontSize: 15, color: '#000', height: 100, marginBottom: 20, borderWidth: 1, borderColor: '#E0E0E0' },
+  claimInfoText: { fontSize: 14, color: colors.text, marginBottom: 6 },
+  claimInfoLabel: { fontWeight: '600', color: colors.textSecondary },
+  inputLabel: { fontSize: 15, fontWeight: '600', color: colors.text, marginBottom: 8 },
+  textInput: { backgroundColor: '#F9F9F9', borderRadius: 12, padding: 16, fontSize: 15, color: colors.text, height: 100, marginBottom: 20, borderWidth: 1, borderColor: colors.border },
   modalButtons: { flexDirection: 'row', gap: 12 },
-  cancelButton: { flex: 1, backgroundColor: '#F5F5F5', borderRadius: 12, padding: 16, alignItems: 'center' },
-  cancelButtonText: { fontSize: 16, fontWeight: '600', color: '#666' },
+  cancelButton: { flex: 1, backgroundColor: colors.background, borderRadius: 12, padding: 16, alignItems: 'center' },
+  cancelButtonText: { fontSize: 16, fontWeight: '600', color: colors.textSecondary },
   rejectButton: { flex: 1, backgroundColor: '#EA4335', borderRadius: 12, padding: 16, alignItems: 'center' },
   rejectButtonText: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
 });

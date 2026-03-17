@@ -7,6 +7,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, View, Text } from 'react-native';
 import { PayslipListProps } from '../../types/payslip.types';
 import { PayslipCard } from './PayslipCard';
+import { useTheme } from '../../context/ThemeContext';
 
 export const PayslipList: React.FC<PayslipListProps> = ({
   payslips,
@@ -16,6 +17,7 @@ export const PayslipList: React.FC<PayslipListProps> = ({
   onCancel,
   onViewDetails,
 }) => {
+  const { colors } = useTheme();
   if (payslips.length === 0) {
     return (
       <View style={styles.emptyContainer}>
@@ -61,7 +63,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#999',
+    color: colors.textTertiary,
     fontWeight: '500',
   },
 });

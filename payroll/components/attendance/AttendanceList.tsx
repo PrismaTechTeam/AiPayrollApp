@@ -7,11 +7,13 @@ import React from 'react';
 import { ScrollView, StyleSheet, View, Text } from 'react-native';
 import { AttendanceListProps } from '../../types/attendance.types';
 import { AttendanceCard } from './AttendanceCard';
+import { useTheme } from '../../context/ThemeContext';
 
 export const AttendanceList: React.FC<AttendanceListProps> = ({
   attendances,
   onPress,
 }) => {
+  const { colors } = useTheme();
   if (attendances.length === 0) {
     return (
       <View style={styles.emptyContainer}>
@@ -53,7 +55,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#999',
+    color: colors.textTertiary,
     fontWeight: '500',
   },
 });

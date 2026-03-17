@@ -19,6 +19,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import companyService, { JoinRequest } from '../api/services/companyService';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
+import { useTheme } from '../context/ThemeContext';
 
 type JoinRequestPendingParams = {
   JoinRequestPending: {
@@ -32,6 +33,7 @@ type RequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export const JoinRequestPendingScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const route = useRoute<RouteProp<JoinRequestPendingParams, 'JoinRequestPending'>>();
   const { requestId, companyId, companyName } = route.params || { companyId: '', companyName: 'the company' };
   const { refreshAuthState } = usePayrollAuth();
@@ -180,7 +182,7 @@ export const JoinRequestPendingScreen: React.FC = () => {
 
   const renderStatusIcon = () => {
     if (status === 'APPROVED') {
-      return <MaterialCommunityIcons name="check-circle" size={80} color="#4CAF50" />;
+      return <MaterialCommunityIcons name="check-circle" size={80} color={colors.success} />;
     }
     if (status === 'REJECTED') {
       return <MaterialCommunityIcons name="close-circle" size={80} color="#F44336" />;
@@ -263,7 +265,7 @@ export const JoinRequestPendingScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#4285F4" />
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         {/* Header */}
@@ -294,7 +296,7 @@ export const JoinRequestPendingScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
   },
   safeArea: {
     flex: 1,
@@ -326,7 +328,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     padding: 24,
@@ -338,20 +340,20 @@ const styles = StyleSheet.create({
     width: 160,
     height: 160,
     borderRadius: 80,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
   },
   title: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 12,
     textAlign: 'center',
   },
   description: {
     fontSize: 15,
-    color: '#666',
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 24,
@@ -359,7 +361,7 @@ const styles = StyleSheet.create({
   },
   boldText: {
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
   },
   statusBadge: {
     flexDirection: 'row',
@@ -410,11 +412,11 @@ const styles = StyleSheet.create({
   },
   rejectionText: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     lineHeight: 20,
   },
   primaryButton: {
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
     borderRadius: 12,
     height: 56,
     justifyContent: 'center',

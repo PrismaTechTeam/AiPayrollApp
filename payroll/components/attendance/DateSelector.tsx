@@ -6,12 +6,14 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { DateSelectorProps } from '../../types/attendance.types';
+import { useTheme } from '../../context/ThemeContext';
 
 export const DateSelector: React.FC<DateSelectorProps> = ({
   dates,
   selectedDate,
   onDateSelect,
 }) => {
+  const { colors } = useTheme();
   return (
     <View style={styles.container}>
       <Text style={styles.label}>Todays</Text>
@@ -48,14 +50,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#F5F5F5',
+    borderBottomColor: colors.borderLight,
   },
   label: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#000',
+    color: colors.text,
     marginRight: 16,
   },
   scrollContent: {
@@ -72,12 +74,12 @@ const styles = StyleSheet.create({
     minWidth: 50,
   },
   dateItemSelected: {
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
   },
   dayText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 4,
   },
   dayTextSelected: {
@@ -86,7 +88,7 @@ const styles = StyleSheet.create({
   dateText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
   },
   dateTextSelected: {
     color: '#FFFFFF',

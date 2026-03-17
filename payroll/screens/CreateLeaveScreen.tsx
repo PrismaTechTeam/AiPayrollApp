@@ -21,6 +21,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import leaveService, { LeaveBalanceItem, LeaveBalance } from '../api/services/leaveService';
+import { useTheme } from '../context/ThemeContext';
 
 interface LeaveTypeOption {
   id: string;
@@ -32,6 +33,7 @@ interface LeaveTypeOption {
 
 export const CreateLeaveScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const [leaveTypes, setLeaveTypes] = useState<LeaveTypeOption[]>([]);
   const [selectedType, setSelectedType] = useState<LeaveTypeOption | null>(null);
   const [startDate, setStartDate] = useState<Date | null>(null);
@@ -180,12 +182,12 @@ export const CreateLeaveScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
 
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Create a Leave Plan</Text>
           <View style={{ width: 24 }} />
@@ -201,7 +203,7 @@ export const CreateLeaveScreen: React.FC = () => {
         <View style={styles.fieldContainer}>
           <Text style={styles.label}>Leave Type</Text>
           {loadingTypes ? (
-            <ActivityIndicator size="small" color="#4285F4" style={{ padding: 16 }} />
+            <ActivityIndicator size="small" color={colors.primary} style={{ padding: 16 }} />
           ) : (
             <>
               <TouchableOpacity
@@ -211,7 +213,7 @@ export const CreateLeaveScreen: React.FC = () => {
                 <Text style={[styles.dropdownText, !selectedType && styles.placeholder]}>
                   {selectedType?.description || 'Select Leave Type'}
                 </Text>
-                <MaterialCommunityIcons name="chevron-down" size={24} color="#666" />
+                <MaterialCommunityIcons name="chevron-down" size={24} color={colors.icon} />
               </TouchableOpacity>
 
               {showLeaveTypePicker && (
@@ -232,7 +234,7 @@ export const CreateLeaveScreen: React.FC = () => {
                         <Text style={styles.pickerItemText}>{type.description}</Text>
                       </View>
                       {selectedType?.id === type.id && (
-                        <MaterialCommunityIcons name="check" size={20} color="#4285F4" />
+                        <MaterialCommunityIcons name="check" size={20} color={colors.primary} />
                       )}
                     </TouchableOpacity>
                   ))}
@@ -245,7 +247,7 @@ export const CreateLeaveScreen: React.FC = () => {
         {/* Balance Info */}
         {balance && (
           <View style={styles.summaryCard}>
-            <MaterialCommunityIcons name="information" size={20} color="#4285F4" />
+            <MaterialCommunityIcons name="information" size={20} color={colors.primary} />
             <Text style={styles.summaryText}>
               Balance: <Text style={styles.summaryDays}>{balance.balance}</Text> days
               {' '}(Entitled: {balance.entitlement}, Used: {balance.used}, Pending: {balance.pending})
@@ -263,7 +265,7 @@ export const CreateLeaveScreen: React.FC = () => {
             <Text style={[styles.dateText, !startDate && styles.placeholder]}>
               {startDate ? formatDate(startDate) : 'Select Start Date'}
             </Text>
-            <MaterialCommunityIcons name="calendar" size={24} color="#4285F4" />
+            <MaterialCommunityIcons name="calendar" size={24} color={colors.primary} />
           </TouchableOpacity>
           {selectedType?.allowHalfDay && startDate && (
             <TouchableOpacity
@@ -273,7 +275,7 @@ export const CreateLeaveScreen: React.FC = () => {
               <MaterialCommunityIcons
                 name={isHalfDayStart ? 'checkbox-marked' : 'checkbox-blank-outline'}
                 size={20}
-                color="#4285F4"
+                color={colors.primary}
               />
               <Text style={styles.halfDayText}>Half day</Text>
             </TouchableOpacity>
@@ -290,7 +292,7 @@ export const CreateLeaveScreen: React.FC = () => {
             <Text style={[styles.dateText, !endDate && styles.placeholder]}>
               {endDate ? formatDate(endDate) : 'Select End Date'}
             </Text>
-            <MaterialCommunityIcons name="calendar" size={24} color="#4285F4" />
+            <MaterialCommunityIcons name="calendar" size={24} color={colors.primary} />
           </TouchableOpacity>
           {selectedType?.allowHalfDay && endDate && startDate && startDate.getTime() !== endDate.getTime() && (
             <TouchableOpacity
@@ -300,7 +302,7 @@ export const CreateLeaveScreen: React.FC = () => {
               <MaterialCommunityIcons
                 name={isHalfDayEnd ? 'checkbox-marked' : 'checkbox-blank-outline'}
                 size={20}
-                color="#4285F4"
+                color={colors.primary}
               />
               <Text style={styles.halfDayText}>Half day</Text>
             </TouchableOpacity>
@@ -310,7 +312,7 @@ export const CreateLeaveScreen: React.FC = () => {
         {/* Leave Days Summary */}
         {startDate && endDate && (
           <View style={styles.summaryCard}>
-            <MaterialCommunityIcons name="information" size={20} color="#4285F4" />
+            <MaterialCommunityIcons name="information" size={20} color={colors.primary} />
             <Text style={styles.summaryText}>
               Total Leave Days: <Text style={styles.summaryDays}>{calculateLeaveDays()}</Text>
             </Text>
@@ -322,7 +324,8 @@ export const CreateLeaveScreen: React.FC = () => {
           <Text style={styles.label}>Reason / Additional Note</Text>
           <TextInput
             style={styles.textArea}
-            placeholder="Enter reason for leave..."
+            placeholderTextColor={colors.textTertiary}
+                  placeholder="Enter reason for leave..."
             placeholderTextColor="#999"
             multiline
             numberOfLines={4}
@@ -383,10 +386,10 @@ export const CreateLeaveScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   safeAreaTop: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   header: {
     flexDirection: 'row',
@@ -394,14 +397,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: colors.borderLight,
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
   },
   content: {
     flex: 1,
@@ -416,32 +419,32 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#000',
+    color: colors.text,
     marginBottom: 8,
   },
   dropdown: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: colors.border,
   },
   dropdownText: {
     fontSize: 16,
-    color: '#000',
+    color: colors.text,
   },
   placeholder: {
-    color: '#999',
+    color: colors.textTertiary,
   },
   pickerContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     marginTop: 8,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: colors.border,
     overflow: 'hidden',
   },
   pickerItem: {
@@ -450,25 +453,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: colors.borderLight,
   },
   pickerItemText: {
     fontSize: 16,
-    color: '#000',
+    color: colors.text,
   },
   dateInput: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: colors.border,
   },
   dateText: {
     fontSize: 16,
-    color: '#000',
+    color: colors.text,
   },
   halfDayToggle: {
     flexDirection: 'row',
@@ -478,12 +481,12 @@ const styles = StyleSheet.create({
   },
   halfDayText: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
   },
   summaryCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E3F2FD',
+    backgroundColor: colors.primaryLight + '30',
     borderRadius: 12,
     padding: 16,
     marginBottom: 24,
@@ -491,22 +494,22 @@ const styles = StyleSheet.create({
   },
   summaryText: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     flex: 1,
   },
   summaryDays: {
     fontWeight: '700',
-    color: '#4285F4',
+    color: colors.primary,
     fontSize: 16,
   },
   textArea: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: colors.border,
     fontSize: 16,
-    color: '#000',
+    color: colors.text,
     minHeight: 120,
   },
   buttonContainer: {
@@ -516,21 +519,21 @@ const styles = StyleSheet.create({
   },
   draftButton: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 25,
     padding: 18,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#4285F4',
+    borderColor: colors.primary,
   },
   draftButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#4285F4',
+    color: colors.primary,
   },
   submitButton: {
     flex: 1,
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
     borderRadius: 25,
     padding: 18,
     alignItems: 'center',

@@ -19,6 +19,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
+import { useTheme } from '../context/ThemeContext';
 
 interface EmployeeLocation {
   id: string;
@@ -35,7 +36,9 @@ interface EmployeeMapScreenProps {
   route?: any;
 }
 
-const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navProp, route: routeProp }) => {
+const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({
+  navigation: navProp, route: routeProp }) => {
+  const { colors } = useTheme();
   const navigation = navProp || useNavigation();
   const route = routeProp || useRoute();
   const mapRef = useRef<MapView>(null);
@@ -134,7 +137,7 @@ const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navPr
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#4285F4" />
+        <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Loading map...</Text>
       </View>
     );
@@ -142,7 +145,7 @@ const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navPr
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
       
       {/* Header */}
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
@@ -151,7 +154,7 @@ const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navPr
             onPress={() => navigation?.goBack()}
             style={styles.backButton}
           >
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Employee Map</Text>
           <View style={styles.placeholder} />
@@ -228,7 +231,7 @@ const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navPr
                 )}
                 {selectedEmployee.department && (
                   <View style={styles.departmentRow}>
-                    <MaterialCommunityIcons name="office-building" size={14} color="#999" />
+                    <MaterialCommunityIcons name="office-building" size={14} color={colors.textTertiary} />
                     <Text style={styles.employeeDepartment}>{selectedEmployee.department}</Text>
                   </View>
                 )}
@@ -237,12 +240,12 @@ const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navPr
 
             <View style={styles.locationDetails}>
               <View style={styles.detailRow}>
-                <MaterialCommunityIcons name="clock-outline" size={18} color="#4285F4" />
+                <MaterialCommunityIcons name="clock-outline" size={18} color={colors.primary} />
                 <Text style={styles.detailLabel}>Check-in Time:</Text>
                 <Text style={styles.detailValue}>{selectedEmployee.checkInTime}</Text>
               </View>
               <View style={styles.detailRow}>
-                <MaterialCommunityIcons name="map-marker" size={18} color="#4285F4" />
+                <MaterialCommunityIcons name="map-marker" size={18} color={colors.primary} />
                 <Text style={styles.detailLabel}>Location:</Text>
                 <Text style={styles.detailValue}>
                   {selectedEmployee.latitude.toFixed(4)}, {selectedEmployee.longitude.toFixed(4)}
@@ -298,21 +301,21 @@ const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navPr
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   loadingText: {
     marginTop: 16,
     fontSize: 16,
-    color: '#666',
+    color: colors.textSecondary,
   },
   safeAreaTop: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     zIndex: 10,
   },
   header: {
@@ -321,9 +324,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: colors.borderLight,
   },
   backButton: {
     width: 40,
@@ -334,7 +337,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
   },
   placeholder: {
     width: 40,
@@ -343,15 +346,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   employeeMarker: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 20,
     padding: 4,
     borderWidth: 2,
-    borderColor: '#4285F4',
+    borderColor: colors.primary,
   },
   employeeMarkerSelected: {
     borderWidth: 3,
-    borderColor: '#4285F4',
+    borderColor: colors.primary,
     shadowColor: '#4285F4',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.5,
@@ -363,7 +366,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 24,
@@ -383,7 +386,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
@@ -404,7 +407,7 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
   },
   googleIconYellow: {
     position: 'absolute',
@@ -431,12 +434,12 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 8,
   },
   cardDescription: {
     fontSize: 14,
-    color: '#999',
+    color: colors.textTertiary,
     textAlign: 'center',
     marginBottom: 24,
   },
@@ -462,7 +465,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -478,12 +481,12 @@ const styles = StyleSheet.create({
   employeeName: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 4,
   },
   employeePosition: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 4,
   },
   departmentRow: {
@@ -493,11 +496,11 @@ const styles = StyleSheet.create({
   },
   employeeDepartment: {
     fontSize: 12,
-    color: '#999',
+    color: colors.textTertiary,
   },
   locationDetails: {
     width: '100%',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
     borderRadius: 8,
     padding: 12,
     marginBottom: 16,
@@ -510,12 +513,12 @@ const styles = StyleSheet.create({
   },
   detailLabel: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     fontWeight: '500',
   },
   detailValue: {
     fontSize: 14,
-    color: '#333',
+    color: colors.text,
     fontWeight: '600',
     flex: 1,
   },

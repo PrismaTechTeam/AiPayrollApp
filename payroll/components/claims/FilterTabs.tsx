@@ -6,6 +6,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { CLAIM_FILTERS } from '../../constants/statuses';
+import { useTheme } from '../../context/ThemeContext';
 
 interface FilterTabsProps {
   selectedFilter: string;
@@ -18,6 +19,7 @@ export const FilterTabs: React.FC<FilterTabsProps> = ({
   onFilterChange,
   filters = CLAIM_FILTERS,
 }) => {
+  const { colors } = useTheme();
   return (
     <View style={styles.filterContainer}>
       <ScrollView
@@ -51,7 +53,7 @@ export const FilterTabs: React.FC<FilterTabsProps> = ({
 
 const styles = StyleSheet.create({
   filterContainer: {
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
     paddingVertical: 12,
   },
   scrollContent: {
@@ -62,15 +64,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   filterButtonActive: {
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
   },
   filterText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
   },
   filterTextActive: {
     color: '#FFFFFF',

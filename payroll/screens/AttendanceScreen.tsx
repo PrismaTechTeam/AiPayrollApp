@@ -9,9 +9,11 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
 import { isEmployee as checkIsEmployee } from '../constants/userRoles';
 import attendanceService, { TodayAttendance, AttendanceRecord } from '../api/services/attendanceService';
+import { useTheme } from '../context/ThemeContext';
 
 // Generate week dates dynamically
 const generateWeekDates = (): AttendanceDate[] => {
+  const { colors } = useTheme();
   const today = new Date();
   const dates: AttendanceDate[] = [];
   const dayNames = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
@@ -112,7 +114,7 @@ const AttendanceScreen: React.FC<AttendanceScreenProps> = ({ navigation: navProp
         <Text style={styles.todayTitle}>Today's Attendance</Text>
         <View style={styles.todayRow}>
           <View style={styles.todayItem}>
-            <MaterialCommunityIcons name="login" size={20} color="#4285F4" />
+            <MaterialCommunityIcons name="login" size={20} color={colors.primary} />
             <Text style={styles.todayLabel}>Clock In</Text>
             <Text style={styles.todayValue}>{formatTime(todayData.clockIn)}</Text>
           </View>
@@ -149,7 +151,7 @@ const AttendanceScreen: React.FC<AttendanceScreenProps> = ({ navigation: navProp
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
 
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <Header
@@ -191,21 +193,21 @@ const AttendanceScreen: React.FC<AttendanceScreenProps> = ({ navigation: navProp
       <View style={styles.content}>
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#4285F4" />
+            <ActivityIndicator size="large" color={colors.primary} />
           </View>
         ) : (
           <ScrollView contentContainerStyle={{ padding: 20 }}>
             {selectedDate.isToday ? (
               todayData ? renderTodayCard() : (
                 <View style={styles.emptyContainer}>
-                  <MaterialCommunityIcons name="clock-outline" size={48} color="#CCC" />
+                  <MaterialCommunityIcons name="clock-outline" size={48} color={colors.textTertiary} />
                   <Text style={styles.emptyText}>No attendance recorded today</Text>
                   <Text style={styles.emptySubtext}>Use the check-in button to clock in</Text>
                 </View>
               )
             ) : (
               <View style={styles.emptyContainer}>
-                <MaterialCommunityIcons name="calendar" size={48} color="#CCC" />
+                <MaterialCommunityIcons name="calendar" size={48} color={colors.textTertiary} />
                 <Text style={styles.emptyText}>Select today to view attendance</Text>
               </View>
             )}
@@ -229,37 +231,37 @@ const AttendanceScreen: React.FC<AttendanceScreenProps> = ({ navigation: navProp
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
-  safeAreaTop: { backgroundColor: '#FFFFFF' },
-  filterContainer: { backgroundColor: '#F5F5F5', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E0E0E0' },
+  container: { flex: 1, backgroundColor: colors.background },
+  safeAreaTop: { backgroundColor: colors.surface },
+  filterContainer: { backgroundColor: colors.background, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
   filterScrollContent: { paddingHorizontal: 20, gap: 8 },
-  filterButton: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20, backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', gap: 6 },
-  filterButtonActive: { backgroundColor: '#4285F4' },
+  filterButton: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  filterButtonActive: { backgroundColor: colors.primary },
   mapButton: { backgroundColor: '#E0F7F4', borderWidth: 1, borderColor: '#00897B' },
-  filterText: { fontSize: 14, fontWeight: '600', color: '#666' },
+  filterText: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
   filterTextActive: { color: '#FFFFFF' },
   mapButtonText: { color: '#00897B' },
   content: { flex: 1, paddingBottom: 80 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
-  emptyText: { fontSize: 16, color: '#999', marginTop: 12 },
-  emptySubtext: { fontSize: 14, color: '#CCC', marginTop: 4 },
-  todayCard: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 20, marginBottom: 16 },
-  todayTitle: { fontSize: 18, fontWeight: '700', color: '#000', marginBottom: 16 },
+  emptyText: { fontSize: 16, color: colors.textTertiary, marginTop: 12 },
+  emptySubtext: { fontSize: 14, color: colors.textTertiary, marginTop: 4 },
+  todayCard: { backgroundColor: colors.surface, borderRadius: 12, padding: 20, marginBottom: 16 },
+  todayTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 16 },
   todayRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 16 },
   todayItem: { alignItems: 'center', gap: 4 },
-  todayLabel: { fontSize: 12, color: '#666' },
-  todayValue: { fontSize: 16, fontWeight: '700', color: '#000' },
-  punchList: { borderTopWidth: 1, borderTopColor: '#F0F0F0', paddingTop: 12 },
-  punchListTitle: { fontSize: 14, fontWeight: '600', color: '#000', marginBottom: 8 },
+  todayLabel: { fontSize: 12, color: colors.textSecondary },
+  todayValue: { fontSize: 16, fontWeight: '700', color: colors.text },
+  punchList: { borderTopWidth: 1, borderTopColor: colors.borderLight, paddingTop: 12 },
+  punchListTitle: { fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 8 },
   punchItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, gap: 8 },
   punchDot: { width: 8, height: 8, borderRadius: 4 },
-  punchTime: { fontSize: 14, fontWeight: '600', color: '#000', width: 80 },
-  punchType: { fontSize: 14, color: '#666', width: 60 },
-  punchSource: { fontSize: 12, color: '#999' },
+  punchTime: { fontSize: 14, fontWeight: '600', color: colors.text, width: 80 },
+  punchType: { fontSize: 14, color: colors.textSecondary, width: 60 },
+  punchSource: { fontSize: 12, color: colors.textTertiary },
   fab: {
     position: 'absolute', bottom: 100, right: 20, width: 60, height: 60, borderRadius: 30,
-    backgroundColor: '#4285F4', justifyContent: 'center', alignItems: 'center',
+    backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center',
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8,
   },
 });

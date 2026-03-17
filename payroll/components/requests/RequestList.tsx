@@ -7,6 +7,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, View, Text } from 'react-native';
 import { RequestListProps } from '../../types/request.types';
 import { RequestCard } from './RequestCard';
+import { useTheme } from '../../context/ThemeContext';
 
 export const RequestList: React.FC<RequestListProps> = ({
   requests,
@@ -17,6 +18,7 @@ export const RequestList: React.FC<RequestListProps> = ({
   onRestore,
   onViewDetails,
 }) => {
+  const { colors } = useTheme();
   if (requests.length === 0) {
     return (
       <View style={styles.emptyContainer}>
@@ -63,7 +65,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#999',
+    color: colors.textTertiary,
     fontWeight: '500',
   },
 });

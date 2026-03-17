@@ -20,9 +20,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import profileService from '../api/services/profileService';
+import { useTheme } from '../context/ThemeContext';
 
 export const ChangePasswordScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
 
   // Form state
   const [currentPassword, setCurrentPassword] = useState('');
@@ -104,13 +106,13 @@ export const ChangePasswordScreen: React.FC = () => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
       
       {/* Header */}
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Change Password</Text>
           <View style={{ width: 40 }} />
@@ -125,7 +127,7 @@ export const ChangePasswordScreen: React.FC = () => {
       >
         {/* Info Banner */}
         <View style={styles.infoBanner}>
-          <MaterialCommunityIcons name="information" size={24} color="#4285F4" />
+          <MaterialCommunityIcons name="information" size={24} color={colors.primary} />
           <Text style={styles.infoText}>
             Your password must be at least 6 characters long and different from your current password.
           </Text>
@@ -137,12 +139,13 @@ export const ChangePasswordScreen: React.FC = () => {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Current Password *</Text>
             <View style={styles.inputContainer}>
-              <MaterialCommunityIcons name="lock-outline" size={20} color="#666" />
+              <MaterialCommunityIcons name="lock-outline" size={20} color={colors.icon} />
               <TextInput
                 style={styles.input}
                 value={currentPassword}
                 onChangeText={setCurrentPassword}
-                placeholder="Enter your current password"
+                placeholderTextColor={colors.textTertiary}
+                  placeholder="Enter your current password"
                 placeholderTextColor="#999"
                 secureTextEntry={!showCurrentPassword}
                 autoCapitalize="none"
@@ -154,7 +157,7 @@ export const ChangePasswordScreen: React.FC = () => {
                 <MaterialCommunityIcons
                   name={showCurrentPassword ? 'eye-off' : 'eye'}
                   size={20}
-                  color="#666"
+                  color={colors.icon}
                 />
               </TouchableOpacity>
             </View>
@@ -164,12 +167,13 @@ export const ChangePasswordScreen: React.FC = () => {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>New Password *</Text>
             <View style={styles.inputContainer}>
-              <MaterialCommunityIcons name="lock-outline" size={20} color="#666" />
+              <MaterialCommunityIcons name="lock-outline" size={20} color={colors.icon} />
               <TextInput
                 style={styles.input}
                 value={newPassword}
                 onChangeText={setNewPassword}
-                placeholder="Enter your new password"
+                placeholderTextColor={colors.textTertiary}
+                  placeholder="Enter your new password"
                 placeholderTextColor="#999"
                 secureTextEntry={!showNewPassword}
                 autoCapitalize="none"
@@ -181,7 +185,7 @@ export const ChangePasswordScreen: React.FC = () => {
                 <MaterialCommunityIcons
                   name={showNewPassword ? 'eye-off' : 'eye'}
                   size={20}
-                  color="#666"
+                  color={colors.icon}
                 />
               </TouchableOpacity>
             </View>
@@ -192,12 +196,13 @@ export const ChangePasswordScreen: React.FC = () => {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Confirm New Password *</Text>
             <View style={styles.inputContainer}>
-              <MaterialCommunityIcons name="lock-check-outline" size={20} color="#666" />
+              <MaterialCommunityIcons name="lock-check-outline" size={20} color={colors.icon} />
               <TextInput
                 style={styles.input}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
-                placeholder="Confirm your new password"
+                placeholderTextColor={colors.textTertiary}
+                  placeholder="Confirm your new password"
                 placeholderTextColor="#999"
                 secureTextEntry={!showConfirmPassword}
                 autoCapitalize="none"
@@ -209,7 +214,7 @@ export const ChangePasswordScreen: React.FC = () => {
                 <MaterialCommunityIcons
                   name={showConfirmPassword ? 'eye-off' : 'eye'}
                   size={20}
-                  color="#666"
+                  color={colors.icon}
                 />
               </TouchableOpacity>
             </View>
@@ -270,10 +275,10 @@ export const ChangePasswordScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   safeAreaTop: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   header: {
     flexDirection: 'row',
@@ -281,9 +286,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: colors.borderLight,
   },
   backButton: {
     width: 40,
@@ -294,7 +299,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
   },
   content: {
     flex: 1,
@@ -304,7 +309,7 @@ const styles = StyleSheet.create({
   },
   infoBanner: {
     flexDirection: 'row',
-    backgroundColor: '#E3F2FD',
+    backgroundColor: colors.primaryLight + '30',
     padding: 16,
     marginHorizontal: 20,
     marginTop: 20,
@@ -319,7 +324,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   formSection: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     paddingHorizontal: 20,
     paddingVertical: 24,
     marginBottom: 16,
@@ -330,23 +335,23 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#000',
+    color: colors.text,
     marginBottom: 8,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: colors.border,
   },
   input: {
     flex: 1,
     fontSize: 16,
-    color: '#000',
+    color: colors.text,
     marginLeft: 12,
     padding: 0,
   },
@@ -355,12 +360,12 @@ const styles = StyleSheet.create({
   },
   hint: {
     fontSize: 12,
-    color: '#999',
+    color: colors.textTertiary,
     marginTop: 6,
     marginLeft: 4,
   },
   requirementsSection: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     paddingHorizontal: 20,
     paddingVertical: 20,
     marginBottom: 16,
@@ -368,7 +373,7 @@ const styles = StyleSheet.create({
   requirementsTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 12,
   },
   requirementItem: {
@@ -379,13 +384,13 @@ const styles = StyleSheet.create({
   },
   requirementText: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
   },
   changeButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
     marginHorizontal: 20,
     paddingVertical: 16,
     borderRadius: 12,

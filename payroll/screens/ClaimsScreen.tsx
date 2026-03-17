@@ -20,10 +20,12 @@ import { useNavigation } from '@react-navigation/native';
 import { Header, ClaimCard, FilterTabs } from '../components/claims';
 import type { Claim, ClaimStatus } from '../components/claims';
 import claimService, { ClaimApplication } from '../api/services/claimService';
+import { useTheme } from '../context/ThemeContext';
 // CLAIM_FILTERS imported by FilterTabs component internally
 
 export const ClaimsScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const [selectedFilter, setSelectedFilter] = useState<string>('ALL');
   const [claims, setClaims] = useState<Claim[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,7 +93,7 @@ export const ClaimsScreen: React.FC = () => {
 
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
-      <MaterialCommunityIcons name="file-document-outline" size={64} color="#CCC" />
+      <MaterialCommunityIcons name="file-document-outline" size={64} color={colors.textTertiary} />
       <Text style={styles.emptyStateText}>No claims found</Text>
       <Text style={styles.emptyStateSubtext}>
         {selectedFilter === 'ALL'
@@ -103,7 +105,7 @@ export const ClaimsScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
 
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <Header
@@ -120,7 +122,7 @@ export const ClaimsScreen: React.FC = () => {
 
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4285F4" />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : (
         <FlatList
@@ -157,17 +159,17 @@ export const ClaimsScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
-  safeArea: { backgroundColor: '#FFFFFF' },
+  container: { flex: 1, backgroundColor: colors.background },
+  safeArea: { backgroundColor: colors.surface },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   listContent: { padding: 20, paddingBottom: 100 },
   emptyListContent: { flexGrow: 1, justifyContent: 'center' },
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
-  emptyStateText: { fontSize: 18, fontWeight: '600', color: '#999', marginTop: 16 },
-  emptyStateSubtext: { fontSize: 14, color: '#CCC', marginTop: 8, textAlign: 'center', paddingHorizontal: 40 },
+  emptyStateText: { fontSize: 18, fontWeight: '600', color: colors.textTertiary, marginTop: 16 },
+  emptyStateSubtext: { fontSize: 14, color: colors.textTertiary, marginTop: 8, textAlign: 'center', paddingHorizontal: 40 },
   fab: {
     position: 'absolute', right: 20, bottom: 30, width: 60, height: 60, borderRadius: 30,
-    backgroundColor: '#4285F4', justifyContent: 'center', alignItems: 'center',
+    backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center',
     elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4,
   },
 });

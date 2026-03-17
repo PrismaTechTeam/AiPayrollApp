@@ -6,12 +6,16 @@ import { Header, FilterTabs, LeaveList } from '../components/leaves';
 import { BottomNavBar } from '../components/BottomNavBar';
 import leaveService, { LeaveApplication } from '../api/services/leaveService';
 import { STATUSES, LEAVE_FILTERS } from '../constants/statuses';
+import { useTheme } from '../context/ThemeContext';
 
 interface LeavesScreenProps {
   navigation?: any;
 }
 
-export const LeavesScreen: React.FC<LeavesScreenProps> = ({ navigation: navProp }) => {
+export const LeavesScreen: React.FC<LeavesScreenProps> = ({
+  navigation: navProp }) => {
+
+  const { colors } = useTheme();
   const navigation = navProp || useNavigation();
   const [activeTab, setActiveTab] = useState<string>('ALL');
   const [leaves, setLeaves] = useState<any[]>([]);
@@ -124,7 +128,7 @@ export const LeavesScreen: React.FC<LeavesScreenProps> = ({ navigation: navProp 
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
 
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <Header
@@ -140,7 +144,7 @@ export const LeavesScreen: React.FC<LeavesScreenProps> = ({ navigation: navProp 
         <View style={styles.listContainer}>
           {loading ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#4285F4" />
+              <ActivityIndicator size="large" color={colors.primary} />
             </View>
           ) : leaves.length === 0 ? (
             <View style={styles.emptyContainer}>
@@ -167,10 +171,10 @@ export const LeavesScreen: React.FC<LeavesScreenProps> = ({ navigation: navProp 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   safeAreaTop: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   content: {
     flex: 1,
@@ -191,7 +195,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#999',
+    color: colors.textTertiary,
   },
 });
 

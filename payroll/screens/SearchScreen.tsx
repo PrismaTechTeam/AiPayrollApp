@@ -14,6 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import { ServiceCard } from '../components/ServiceCard';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
 import { isOwner as checkIsOwner } from '../constants/userRoles';
+import { useTheme } from '../context/ThemeContext';
 
 interface Service {
   id: string;
@@ -28,7 +29,7 @@ const ownerServices: Service[] = [
     id: '1',
     title: 'Request Approval',
     icon: 'email-outline',
-    color: '#4CAF50',
+    color: colors.success,
     route: 'Requests',
   },
   {
@@ -115,6 +116,7 @@ const employeeServices: Service[] = [
 
 export const SearchScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const { currentRole } = usePayrollAuth();
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -132,7 +134,7 @@ export const SearchScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         {/* Header */}
         <View style={styles.header}>
@@ -140,7 +142,7 @@ export const SearchScreen: React.FC = () => {
             style={styles.backButton}
             onPress={() => navigation.goBack()}
           >
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{screenTitle}</Text>
           <View style={styles.placeholder} />
@@ -156,7 +158,8 @@ export const SearchScreen: React.FC = () => {
           />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search for services..."
+            placeholderTextColor={colors.textTertiary}
+                  placeholder="Search for services..."
             placeholderTextColor="#9E9E9E"
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -237,7 +240,7 @@ export const SearchScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   safeArea: {
     flex: 1,
@@ -248,9 +251,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#F5F5F5',
+    borderBottomColor: colors.borderLight,
   },
   backButton: {
     width: 40,
@@ -261,7 +264,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
   },
   placeholder: {
     width: 40,
@@ -269,7 +272,7 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
     borderRadius: 12,
     marginHorizontal: 20,
     marginTop: 16,
@@ -283,7 +286,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 16,
-    color: '#333',
+    color: colors.text,
   },
   clearButton: {
     padding: 4,
@@ -303,12 +306,12 @@ const styles = StyleSheet.create({
   emptyStateText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
     marginTop: 16,
   },
   emptyStateSubtext: {
     fontSize: 14,
-    color: '#9E9E9E',
+    color: colors.textTertiary,
     marginTop: 8,
   },
   resultsContainer: {
@@ -317,7 +320,7 @@ const styles = StyleSheet.create({
   resultsTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 16,
   },
   servicesScroll: {

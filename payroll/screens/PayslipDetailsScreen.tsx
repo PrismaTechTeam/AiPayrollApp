@@ -23,6 +23,7 @@ import * as Sharing from 'expo-sharing';
 import { Header } from '../components/payslips';
 import { BottomNavBar } from '../components/BottomNavBar';
 import payslipService, { PayslipDetail } from '../api/services/payslipService';
+import { useTheme } from '../context/ThemeContext';
 
 type PayslipDetailsRouteParams = {
   PayslipDetails: {
@@ -35,6 +36,7 @@ type PayslipDetailsRouteProp = RouteProp<PayslipDetailsRouteParams, 'PayslipDeta
 
 export const PayslipDetailsScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const route = useRoute<PayslipDetailsRouteProp>();
   const { payrollRunId, payslip: legacyPayslip } = route.params || {};
 
@@ -107,12 +109,12 @@ export const PayslipDetailsScreen: React.FC = () => {
   if (loading) {
     return (
       <View style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#F5F5F5" />
+        <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
         <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
           <Header title="Payment Details" onBackPress={() => navigation.goBack()} showBackButton={true} />
         </SafeAreaView>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color="#4285F4" />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
         <BottomNavBar />
       </View>
@@ -122,12 +124,12 @@ export const PayslipDetailsScreen: React.FC = () => {
   if (!detail) {
     return (
       <View style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#F5F5F5" />
+        <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
         <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
           <Header title="Payment Details" onBackPress={() => navigation.goBack()} showBackButton={true} />
         </SafeAreaView>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ fontSize: 16, color: '#999' }}>Payslip not found</Text>
+          <Text style={{ fontSize: 16, color: colors.textTertiary }}>Payslip not found</Text>
         </View>
         <BottomNavBar />
       </View>
@@ -175,7 +177,7 @@ export const PayslipDetailsScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F5F5F5" />
+      <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
 
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <Header title="Payslip Details" onBackPress={() => navigation.goBack()} showBackButton={true} />
@@ -285,9 +287,9 @@ export const PayslipDetailsScreen: React.FC = () => {
           disabled={downloading}
         >
           {downloading ? (
-            <ActivityIndicator size="small" color="#4285F4" />
+            <ActivityIndicator size="small" color={colors.primary} />
           ) : (
-            <MaterialCommunityIcons name="download" size={20} color="#4285F4" />
+            <MaterialCommunityIcons name="download" size={20} color={colors.primary} />
           )}
           <Text style={styles.downloadText}>{downloading ? 'Generating PDF...' : 'Download PDF'}</Text>
         </TouchableOpacity>
@@ -299,31 +301,31 @@ export const PayslipDetailsScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
-  safeAreaTop: { backgroundColor: '#FFFFFF' },
+  container: { flex: 1, backgroundColor: colors.background },
+  safeAreaTop: { backgroundColor: colors.surface },
   scrollView: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 100 },
-  card: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 20, marginBottom: 16 },
-  employeeName: { fontSize: 20, fontWeight: '700', color: '#000' },
-  employeeCode: { fontSize: 14, color: '#666', marginTop: 2 },
-  period: { fontSize: 14, color: '#4285F4', fontWeight: '600', marginTop: 8 },
+  card: { backgroundColor: colors.surface, borderRadius: 12, padding: 20, marginBottom: 16 },
+  employeeName: { fontSize: 20, fontWeight: '700', color: colors.text },
+  employeeCode: { fontSize: 14, color: colors.textSecondary, marginTop: 2 },
+  period: { fontSize: 14, color: colors.primary, fontWeight: '600', marginTop: 8 },
   netPayCard: {
     backgroundColor: '#E8F5E9', borderRadius: 12, padding: 20, marginBottom: 16,
     alignItems: 'center',
   },
   netPayLabel: { fontSize: 14, color: '#2E7D32', fontWeight: '600' },
   netPayAmount: { fontSize: 36, fontWeight: '700', color: '#2E7D32', marginTop: 4 },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#000', marginBottom: 12 },
-  lineItem: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F5F5F5' },
-  lineLabel: { fontSize: 14, color: '#666' },
-  lineAmount: { fontSize: 14, fontWeight: '600', color: '#000' },
-  totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, borderTopWidth: 2, borderTopColor: '#E0E0E0', marginTop: 8 },
-  totalLabel: { fontSize: 16, fontWeight: '700', color: '#000' },
-  totalAmount: { fontSize: 16, fontWeight: '700', color: '#000' },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 12 },
+  lineItem: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.borderLight },
+  lineLabel: { fontSize: 14, color: colors.textSecondary },
+  lineAmount: { fontSize: 14, fontWeight: '600', color: colors.text },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, borderTopWidth: 2, borderTopColor: colors.border, marginTop: 8 },
+  totalLabel: { fontSize: 16, fontWeight: '700', color: colors.text },
+  totalAmount: { fontSize: 16, fontWeight: '700', color: colors.text },
   downloadButton: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, gap: 8,
-    borderWidth: 1, borderColor: '#4285F4', marginBottom: 16,
+    backgroundColor: colors.surface, borderRadius: 12, padding: 16, gap: 8,
+    borderWidth: 1, borderColor: colors.primary, marginBottom: 16,
   },
-  downloadText: { fontSize: 16, fontWeight: '600', color: '#4285F4' },
+  downloadText: { fontSize: 16, fontWeight: '600', color: colors.primary },
 });

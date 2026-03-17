@@ -17,9 +17,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
+import { useTheme } from '../context/ThemeContext';
 
 export const AboutScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
 
   const handleOpenLink = (url: string) => {
     Linking.openURL(url).catch(err => console.error('Failed to open URL:', err));
@@ -27,13 +29,13 @@ export const AboutScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
       
       {/* Header */}
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>About</Text>
           <View style={{ width: 40 }} />
@@ -48,7 +50,7 @@ export const AboutScreen: React.FC = () => {
         {/* App Logo & Name */}
         <View style={styles.logoSection}>
           <View style={styles.logoContainer}>
-            <MaterialCommunityIcons name="briefcase-outline" size={80} color="#4285F4" />
+            <MaterialCommunityIcons name="briefcase-outline" size={80} color={colors.primary} />
           </View>
           <Text style={styles.appName}>Payroll Mobile App</Text>
           <View style={styles.versionBadge}>
@@ -156,14 +158,14 @@ export const AboutScreen: React.FC = () => {
             style={styles.linkCard}
             onPress={() => handleOpenLink('https://www.prismatech.com')}
           >
-            <View style={[styles.linkIcon, { backgroundColor: '#4285F4' }]}>
+            <View style={[styles.linkIcon, { backgroundColor: colors.primary }]}>
               <MaterialCommunityIcons name="web" size={24} color="#FFFFFF" />
             </View>
             <View style={styles.linkInfo}>
               <Text style={styles.linkLabel}>Website</Text>
               <Text style={styles.linkValue}>www.prismatech.com</Text>
             </View>
-            <MaterialCommunityIcons name="open-in-new" size={20} color="#999" />
+            <MaterialCommunityIcons name="open-in-new" size={20} color={colors.textTertiary} />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -177,7 +179,7 @@ export const AboutScreen: React.FC = () => {
               <Text style={styles.linkLabel}>Email</Text>
               <Text style={styles.linkValue}>support@prismatech.com</Text>
             </View>
-            <MaterialCommunityIcons name="open-in-new" size={20} color="#999" />
+            <MaterialCommunityIcons name="open-in-new" size={20} color={colors.textTertiary} />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -191,7 +193,7 @@ export const AboutScreen: React.FC = () => {
               <Text style={styles.linkLabel}>Phone</Text>
               <Text style={styles.linkValue}>+1 (800) 123-4567</Text>
             </View>
-            <MaterialCommunityIcons name="open-in-new" size={20} color="#999" />
+            <MaterialCommunityIcons name="open-in-new" size={20} color={colors.textTertiary} />
           </TouchableOpacity>
         </View>
 
@@ -202,19 +204,19 @@ export const AboutScreen: React.FC = () => {
             style={styles.legalItem}
             onPress={() => navigation.navigate('PrivacyPolicy' as never)}
           >
-            <MaterialCommunityIcons name="file-document-outline" size={20} color="#666" />
+            <MaterialCommunityIcons name="file-document-outline" size={20} color={colors.icon} />
             <Text style={styles.legalText}>Privacy Policy</Text>
-            <MaterialCommunityIcons name="chevron-right" size={20} color="#999" />
+            <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textTertiary} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.legalItem}>
-            <MaterialCommunityIcons name="shield-check-outline" size={20} color="#666" />
+            <MaterialCommunityIcons name="shield-check-outline" size={20} color={colors.icon} />
             <Text style={styles.legalText}>Terms of Service</Text>
-            <MaterialCommunityIcons name="chevron-right" size={20} color="#999" />
+            <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textTertiary} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.legalItem}>
-            <MaterialCommunityIcons name="license" size={20} color="#666" />
+            <MaterialCommunityIcons name="license" size={20} color={colors.icon} />
             <Text style={styles.legalText}>Licenses</Text>
-            <MaterialCommunityIcons name="chevron-right" size={20} color="#999" />
+            <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textTertiary} />
           </TouchableOpacity>
         </View>
 
@@ -233,10 +235,10 @@ export const AboutScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background,
   },
   safeAreaTop: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   header: {
     flexDirection: 'row',
@@ -244,9 +246,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: colors.borderLight,
   },
   backButton: {
     width: 40,
@@ -257,7 +259,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
   },
   scrollView: {
     flex: 1,
@@ -268,7 +270,7 @@ const styles = StyleSheet.create({
   },
   logoSection: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     paddingVertical: 32,
     marginBottom: 20,
@@ -277,7 +279,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: '#E8F0FE',
+    backgroundColor: colors.primaryLight + '30',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
@@ -285,11 +287,11 @@ const styles = StyleSheet.create({
   appName: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 12,
   },
   versionBadge: {
-    backgroundColor: '#E8F0FE',
+    backgroundColor: colors.primaryLight + '30',
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 20,
@@ -298,11 +300,11 @@ const styles = StyleSheet.create({
   versionText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#4285F4',
+    color: colors.primary,
   },
   tagline: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
   },
   section: {
     marginBottom: 20,
@@ -310,19 +312,19 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 12,
   },
   description: {
     fontSize: 15,
     lineHeight: 24,
-    color: '#666',
-    backgroundColor: '#FFFFFF',
+    color: colors.textSecondary,
+    backgroundColor: colors.surface,
     padding: 16,
     borderRadius: 12,
   },
   featuresList: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
   },
@@ -333,11 +335,11 @@ const styles = StyleSheet.create({
   },
   featureText: {
     fontSize: 15,
-    color: '#333',
+    color: colors.text,
     marginLeft: 12,
   },
   infoCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
   },
@@ -349,19 +351,19 @@ const styles = StyleSheet.create({
   },
   infoLabel: {
     fontSize: 15,
-    color: '#666',
+    color: colors.textSecondary,
   },
   infoValue: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#000',
+    color: colors.text,
   },
   divider: {
     height: 1,
     backgroundColor: '#F0F0F0',
   },
   developerCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 20,
   },
@@ -374,7 +376,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#4285F4',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
@@ -385,22 +387,22 @@ const styles = StyleSheet.create({
   developerName: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#000',
+    color: colors.text,
     marginBottom: 4,
   },
   developerRole: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
   },
   developerDescription: {
     fontSize: 14,
     lineHeight: 22,
-    color: '#666',
+    color: colors.textSecondary,
   },
   linkCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     padding: 16,
     borderRadius: 12,
     marginBottom: 12,
@@ -418,18 +420,18 @@ const styles = StyleSheet.create({
   },
   linkLabel: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 2,
   },
   linkValue: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#000',
+    color: colors.text,
   },
   legalItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     padding: 16,
     borderRadius: 12,
     marginBottom: 8,
@@ -437,7 +439,7 @@ const styles = StyleSheet.create({
   legalText: {
     flex: 1,
     fontSize: 15,
-    color: '#333',
+    color: colors.text,
     marginLeft: 12,
   },
   footer: {
@@ -447,7 +449,7 @@ const styles = StyleSheet.create({
   },
   copyright: {
     fontSize: 13,
-    color: '#999',
+    color: colors.textTertiary,
     marginBottom: 4,
   },
 });

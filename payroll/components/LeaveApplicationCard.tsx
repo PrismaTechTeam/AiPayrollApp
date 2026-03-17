@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
+import { useTheme } from '../context/ThemeContext';
 
 interface LeaveApplicationCardProps {
   name: string;
@@ -28,10 +29,11 @@ export const LeaveApplicationCard: React.FC<LeaveApplicationCardProps> = ({
   type,
   avatar,
 }) => {
+  const { colors } = useTheme();
   const avatarBg = getAvatarColor(name);
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, { backgroundColor: colors.surface }]}>
       <View style={styles.userInfo}>
         <View style={styles.avatarContainer}>
           {avatar ? (
@@ -43,16 +45,16 @@ export const LeaveApplicationCard: React.FC<LeaveApplicationCardProps> = ({
           )}
         </View>
         <View style={styles.details}>
-          <Text style={styles.name}>{name}</Text>
-          <Text style={styles.date}>{date}</Text>
-          <Text style={styles.type}>{type}</Text>
+          <Text style={[styles.name, { color: colors.text }]}>{name}</Text>
+          <Text style={[styles.date, { color: colors.primary }]}>{date}</Text>
+          <Text style={[styles.type, { color: colors.textTertiary }]}>{type}</Text>
         </View>
       </View>
       <View style={styles.actions}>
-        <TouchableOpacity style={styles.cancelButton}>
-          <Text style={styles.cancelText}>Cancel</Text>
+        <TouchableOpacity style={[styles.cancelButton, { backgroundColor: colors.warning + '15' }]}>
+          <Text style={[styles.cancelText, { color: colors.warning }]}>Cancel</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.approveButton}>
+        <TouchableOpacity style={[styles.approveButton, { backgroundColor: colors.success }]}>
           <Text style={styles.approveText}>Approve</Text>
         </TouchableOpacity>
       </View>
@@ -62,7 +64,6 @@ export const LeaveApplicationCard: React.FC<LeaveApplicationCardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
     flexDirection: 'row',
@@ -106,22 +107,18 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#333',
   },
   date: {
     fontSize: 12,
-    color: '#4285F4',
     marginVertical: 2,
   },
   type: {
     fontSize: 12,
-    color: '#9E9E9E',
   },
   actions: {
     alignItems: 'center',
   },
   cancelButton: {
-    backgroundColor: '#FFF8E1',
     paddingVertical: 6,
     paddingHorizontal: 16,
     borderRadius: 20,
@@ -130,12 +127,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cancelText: {
-    color: '#FFB300',
     fontSize: 12,
     fontWeight: '600',
   },
   approveButton: {
-    backgroundColor: '#4CAF50',
     paddingVertical: 6,
     paddingHorizontal: 16,
     borderRadius: 20,

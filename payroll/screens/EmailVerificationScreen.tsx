@@ -20,9 +20,11 @@ import { useNavigation } from '@react-navigation/native';
 import { sendEmailVerification } from 'firebase/auth';
 import authService from '../api/services/authService';
 import { getFirebaseAuth } from '../lib/firebase';
+import { useTheme } from '../context/ThemeContext';
 
 export const EmailVerificationScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const [resending, setResending] = useState(false);
 
   const handleOpenEmailApp = async () => {
@@ -57,8 +59,8 @@ export const EmailVerificationScreen: React.FC = () => {
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#4285F4" />
+    <View style={[styles.container, { backgroundColor: colors.primary }]}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         {/* Header */}
@@ -67,19 +69,19 @@ export const EmailVerificationScreen: React.FC = () => {
         </View>
 
         {/* Content */}
-        <View style={styles.contentContainer}>
-          <View style={styles.iconContainer}>
-            <MaterialCommunityIcons name="email-check-outline" size={100} color="#4285F4" />
+        <View style={[styles.contentContainer, { backgroundColor: colors.surface }]}>
+          <View style={[styles.iconContainer, { backgroundColor: colors.primary + '10' }]}>
+            <MaterialCommunityIcons name="email-check-outline" size={100} color={colors.primary} />
           </View>
 
-          <Text style={styles.title}>Check Your Email</Text>
-          <Text style={styles.description}>
+          <Text style={[styles.title, { color: colors.text }]}>Check Your Email</Text>
+          <Text style={[styles.description, { color: colors.textSecondary }]}>
             We've sent a verification link to your email. Please verify your email address to
             continue.
           </Text>
 
           {/* Open Email App Button */}
-          <TouchableOpacity style={styles.primaryButton} onPress={handleOpenEmailApp}>
+          <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.primary }]} onPress={handleOpenEmailApp}>
             <MaterialCommunityIcons name="email-open-outline" size={20} color="#FFFFFF" />
             <Text style={styles.primaryButtonText}>Open Email App</Text>
           </TouchableOpacity>
@@ -91,15 +93,15 @@ export const EmailVerificationScreen: React.FC = () => {
             disabled={resending}
           >
             {resending ? (
-              <ActivityIndicator size="small" color="#4285F4" />
+              <ActivityIndicator size="small" color={colors.primary} />
             ) : (
-              <Text style={styles.linkButtonText}>Resend Email</Text>
+              <Text style={[styles.linkButtonText, { color: colors.primary }]}>Resend Email</Text>
             )}
           </TouchableOpacity>
 
           {/* Back to Sign In Link */}
           <TouchableOpacity style={styles.linkButton} onPress={handleBackToSignIn}>
-            <Text style={styles.backToSignInText}>Back to Sign In</Text>
+            <Text style={[styles.backToSignInText, { color: colors.textSecondary }]}>Back to Sign In</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -110,7 +112,6 @@ export const EmailVerificationScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#4285F4',
   },
   safeArea: {
     flex: 1,
@@ -126,7 +127,6 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     padding: 24,
@@ -138,20 +138,17 @@ const styles = StyleSheet.create({
     width: 160,
     height: 160,
     borderRadius: 80,
-    backgroundColor: '#4285F410',
     justifyContent: 'center',
     alignItems: 'center',
   },
   title: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#000',
     marginBottom: 12,
     textAlign: 'center',
   },
   description: {
     fontSize: 15,
-    color: '#666',
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 32,
@@ -159,7 +156,6 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     flexDirection: 'row',
-    backgroundColor: '#4285F4',
     borderRadius: 12,
     height: 56,
     justifyContent: 'center',
@@ -182,11 +178,9 @@ const styles = StyleSheet.create({
   linkButtonText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#4285F4',
   },
   backToSignInText: {
     fontSize: 14,
-    color: '#666',
     textDecorationLine: 'underline',
   },
 });
