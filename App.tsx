@@ -56,7 +56,11 @@ import { ClaimsScreen } from './payroll/screens/ClaimsScreen';
 import { CreateClaimScreen } from './payroll/screens/CreateClaimScreen';
 import { ClaimDetailsScreen } from './payroll/screens/ClaimDetailsScreen';
 import { ClaimsApprovalScreen } from './payroll/screens/ClaimsApprovalScreen';
+import { MyRequestsScreen } from './payroll/screens/MyRequestsScreen';
+import { MyLeavesScreen } from './payroll/screens/MyLeavesScreen';
 import { SearchScreen } from './payroll/screens/SearchScreen';
+import { RequestTypesScreen } from './payroll/screens/RequestTypesScreen';
+import { ClaimTypesScreen } from './payroll/screens/ClaimTypesScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -182,7 +186,11 @@ function AuthenticatedApp() {
             <Stack.Screen name="CreateClaim" component={CreateClaimScreen} />
             <Stack.Screen name="ClaimDetails" component={ClaimDetailsScreen} />
             <Stack.Screen name="ClaimsApproval" component={ClaimsApprovalScreen} />
+            <Stack.Screen name="MyRequests" component={MyRequestsScreen} />
+            <Stack.Screen name="MyLeaves" component={MyLeavesScreen} />
             <Stack.Screen name="Search" component={SearchScreen} />
+            <Stack.Screen name="RequestTypes" component={RequestTypesScreen} />
+            <Stack.Screen name="ClaimTypes" component={ClaimTypesScreen} />
           </>
         )}
       </Stack.Navigator>

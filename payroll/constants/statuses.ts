@@ -36,10 +36,20 @@ export const STATUS_COLORS: Record<Status, { bg: string; text: string }> = {
 /** Filter tab configurations for list screens */
 export const LEAVE_FILTERS = [
   { key: 'ALL', label: 'All' },
+  { key: STATUSES.DRAFT, label: 'Draft' },
   { key: STATUSES.PENDING, label: 'Pending' },
   { key: STATUSES.APPROVED, label: 'Approved' },
   { key: STATUSES.REJECTED, label: 'Rejected' },
   { key: STATUSES.WITHDRAWN, label: 'Withdrawn' },
+];
+
+export const REQUEST_FILTERS = [
+  { key: 'ALL', label: 'All' },
+  { key: STATUSES.DRAFT, label: 'Draft' },
+  { key: STATUSES.PENDING, label: 'Pending' },
+  { key: STATUSES.APPROVED, label: 'Approved' },
+  { key: STATUSES.REJECTED, label: 'Rejected' },
+  { key: STATUSES.CANCELLED, label: 'Cancelled' },
 ];
 
 export const CLAIM_FILTERS = [

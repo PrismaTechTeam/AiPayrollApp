@@ -26,6 +26,7 @@ import requestService, { EmployeeRequest } from '../api/services/requestService'
 type RequestDetailsRouteParams = {
   RequestDetails: {
     request: EmployeeRequest;
+    canApprove?: boolean;
   };
 };
 
@@ -87,7 +88,7 @@ const getTimeAgo = (dateStr: string) => {
 export const RequestDetailsScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<RequestDetailsRouteProp>();
-  const { request } = route.params;
+  const { request, canApprove = false } = route.params;
   const [isProcessing, setIsProcessing] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
@@ -308,8 +309,8 @@ export const RequestDetailsScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Action Buttons for PENDING requests (manager: approve/reject) */}
-        {request.status === 'PENDING' && (
+        {/* Action Buttons for PENDING requests (owner: approve/reject) */}
+        {request.status === 'PENDING' && canApprove && (
           <View style={styles.actionButtonsContainer}>
             <TouchableOpacity
               style={[styles.actionButton, styles.rejectButton]}
@@ -342,8 +343,8 @@ export const RequestDetailsScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Cancel button for PENDING requests (own request) */}
-        {request.status === 'PENDING' && (
+        {/* Cancel button for PENDING requests (employee only, not owner) */}
+        {request.status === 'PENDING' && !canApprove && (
           <View style={styles.cancelContainer}>
             <TouchableOpacity
               style={[styles.actionButton, styles.cancelButton]}

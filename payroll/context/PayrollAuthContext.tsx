@@ -75,12 +75,13 @@ export const PayrollAuthProvider = ({ children }: { children: ReactNode }) => {
       setAuthStatus('loading');
     } else if (!user) {
       setAuthStatus('unauthenticated');
-    } else if (!user.tenantId) {
+    } else if (!user.tenantId && (!user.availableTenants || user.availableTenants.length === 0)) {
+      // No tenant at all — user needs to join a company
       setAuthStatus('no_company');
-    } else if (!user.employeeId) {
-      // User has a tenant but no linked employee — could be pending approval
-      setAuthStatus('pending_approval');
     } else {
+      // User has at least one tenant (or tenantId set) — fully authenticated.
+      // employeeId may be null for HR/admin users who were added directly
+      // without an Employee record — that's fine, they can still access the app.
       setAuthStatus('authenticated');
     }
   }, [user, isLoading]);

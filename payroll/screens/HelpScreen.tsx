@@ -26,7 +26,7 @@ const FAQ_DATA: FAQItem[] = [
   {
     id: '1',
     question: 'How do I submit a leave request?',
-    answer: 'To submit a leave request, go to the Home screen, tap on "Leave Application" card, fill in the leave type, start date, end date, and any additional notes. Then tap the "Submit Leave Request" button. Your manager will be notified and can approve or reject your request.',
+    answer: 'To submit a leave request, go to the Home screen, tap on "Leave Application" card, fill in the leave type, start date, end date, and any additional notes. Then tap the "Submit Leave Request" button. Your HR/Owner will be notified and can approve or reject your request.',
   },
   {
     id: '2',
@@ -36,22 +36,22 @@ const FAQ_DATA: FAQItem[] = [
   {
     id: '3',
     question: 'How do I view my payslip?',
-    answer: 'If you\'re an employee, tap on "My Payslip" from the Home screen to view your latest payslip details. If you\'re a manager, you can access "Payslip Management" to view and manage all employee payslips.',
+    answer: 'If you\'re an employee, tap on "My Payslip" from the Home screen to view your latest payslip details. If you\'re an owner/HR, you can access "Payslip Management" to view and manage all employee payslips.',
   },
   {
     id: '4',
-    question: 'How do I switch between Employee and Manager roles?',
+    question: 'How do I switch between Employee and Owner roles?',
     answer: 'Tap the hamburger menu (☰) at the top left of the screen. Under the "SWITCH ROLE" section, tap on the role button showing your current role. A modal will appear with available roles. Select the role you want to switch to, and the app will update to show features specific to that role.',
   },
   {
     id: '5',
     question: 'How can I submit a request?',
-    answer: 'From the Home screen, tap on "Request Application" (for employees) or "Request Approval" (for managers). If you\'re an employee, tap the "+" button to create a new request. Select the request type, enter dates, add notes, and submit. Your manager will receive the request for approval.',
+    answer: 'From the Home screen, tap on "Request Application" (for employees) or "Request Approval" (for owners/HR). If you\'re an employee, tap the "+" button to create a new request. Select the request type, enter dates, add notes, and submit. Your HR/Owner will receive the request for approval.',
   },
   {
     id: '6',
     question: 'How do I approve or reject requests?',
-    answer: 'As a manager, go to "Request Approval" or "Leave Approval" from the Home screen. You\'ll see a list of pending requests. Tap the green checkmark (✓) to approve or the red X (✗) to reject any request. You can also tap on a request card to view full details before making a decision.',
+    answer: 'As an owner/HR, go to "Request Approval" or "Leave Approval" from the Home screen. You\'ll see a list of pending requests. Tap the green checkmark (✓) to approve or the red X (✗) to reject any request. You can also tap on a request card to view full details before making a decision.',
   },
   {
     id: '7',

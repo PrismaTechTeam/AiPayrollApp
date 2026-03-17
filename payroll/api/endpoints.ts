@@ -24,7 +24,9 @@ export const ENDPOINTS = {
     JOIN_REQUESTS: '/api/mobile/company/join-requests',
     JOIN_VIA_CODE: '/api/mobile/company/join-via-code',
   },
+  // Mobile-only leave endpoints (no web permissions like LEAVE_TYPE.VIEW; uses JWT + tenant + employee/manager)
   LEAVE: {
+    TYPES: '/api/mobile/leave/types',
     BALANCE: '/api/mobile/leave/balance',
     APPLICATIONS: '/api/mobile/leave/applications',
     PENDING_APPROVALS: '/api/mobile/leave/pending-approvals',
@@ -38,11 +40,12 @@ export const ENDPOINTS = {
   },
   PAYSLIP: {
     LIST: '/api/mobile/payslip/list',
-    PDF: '/api/mobile/payslip', // /{payrollRunId}/pdf
+    HTML: '/api/mobile/payslip', // /{payrollRunId}/html
   },
   CLAIM: {
     TYPES: '/api/mobile/claim/types',
     APPLICATIONS: '/api/mobile/claim/applications',
+    BALANCE: '/api/mobile/claim/balance',
     PENDING_APPROVALS: '/api/mobile/claim/pending-approvals',
   },
   REQUEST: {
@@ -66,5 +69,14 @@ export const ENDPOINTS = {
     CLEAR: '/api/mobile/notifications/clear',
     UNREAD_COUNT: '/api/mobile/notifications/unread-count',
     PREFERENCES: '/api/mobile/notifications/preferences',
+  },
+  // Web API endpoints (Owner/HR role - same as web dashboard)
+  WEB_REQUEST: {
+    APPLICATIONS: '/api/employee-requests',
+    TYPES: '/api/request-types',
+  },
+  WEB_CLAIM: {
+    APPLICATIONS: '/api/claim-applications',
+    TYPES: '/api/Claim',
   },
 } as const;

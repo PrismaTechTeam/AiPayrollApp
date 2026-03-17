@@ -1,5 +1,5 @@
 /**
- * Claims Approval Screen (Manager View)
+ * Claims Approval Screen (Owner View)
  * Approve or reject employee claims from real API
  */
 
@@ -54,8 +54,8 @@ export const ClaimsApprovalScreen: React.FC = () => {
 
   const fetchClaims = useCallback(async () => {
     try {
-      const result = await claimService.getPendingApprovals({ page: 1, pageSize: 50 });
-      const mapped = (result.items || []).map(mapClaimFromApi);
+      const result = await claimService.getAllClaims({ pageSize: 50 });
+      const mapped = (result.items || []).map((item: ClaimApplication) => mapClaimFromApi(item));
       setClaims(mapped);
     } catch (err) {
       console.error('Failed to load claims for approval:', err);
@@ -75,7 +75,7 @@ export const ClaimsApprovalScreen: React.FC = () => {
   });
 
   const handleClaimPress = (claim: Claim) => {
-    (navigation as any).navigate('ClaimDetails', { claim });
+    (navigation as any).navigate('ClaimDetails', { claim, isOwner: true });
   };
 
   const handleApproveClaim = (claim: Claim) => {

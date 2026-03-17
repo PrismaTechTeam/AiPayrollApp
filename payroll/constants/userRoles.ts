@@ -1,40 +1,48 @@
 /**
  * Payroll User Role Constants
- * 2-role system: Employee and Manager
+ *
+ * The DB stores free-form role strings in TenantMember.role
+ * (e.g. "admin", "ADMIN_A", "OWNER", "Employee").
+ * We normalise them into two UI-level buckets: Owner and Employee.
+ *
+ * Rule: Only the exact role "Employee" (case-insensitive) is treated as Employee.
+ *       Every other role (admin, ADMIN_A, OWNER, HR, etc.) is treated as Owner.
  */
 
 export const USER_ROLES = {
   EMPLOYEE: 'Employee',
-  MANAGER: 'Manager',
+  OWNER: 'Owner',
 } as const;
 
 export type UserRole = (typeof USER_ROLES)[keyof typeof USER_ROLES];
 
-// Helper functions for role checks
-export const isEmployee = (role: string): boolean => role === USER_ROLES.EMPLOYEE;
-export const isManager = (role: string): boolean => role === USER_ROLES.MANAGER;
+/**
+ * Check whether a DB role string maps to the Employee bucket.
+ * Only the exact word "employee" (case-insensitive) is treated as employee.
+ */
+export const isEmployee = (role: string | null | undefined): boolean => {
+  if (!role) return false;
+  return role.trim().toLowerCase() === 'employee';
+};
 
-// Role groups for feature access
-export const ROLE_GROUPS: Record<string, string[]> = {
-  // Manager-only features
-  MANAGER_ONLY: [USER_ROLES.MANAGER],
-  
-  // Employee-only features (if any)
-  EMPLOYEE_ONLY: [USER_ROLES.EMPLOYEE],
-  
-  // Features available to all
-  ALL_USERS: [USER_ROLES.EMPLOYEE, USER_ROLES.MANAGER],
-  
-  // Feature-specific permissions
-  CAN_APPROVE_REQUESTS: [USER_ROLES.MANAGER],
-  CAN_APPROVE_LEAVES: [USER_ROLES.MANAGER],
-  CAN_APPROVE_PAYSLIPS: [USER_ROLES.MANAGER],
-  CAN_VIEW_ALL_ATTENDANCE: [USER_ROLES.MANAGER],
-  
-  // Employee permissions
-  CAN_SUBMIT_REQUESTS: [USER_ROLES.EMPLOYEE, USER_ROLES.MANAGER],
-  CAN_VIEW_OWN_PAYSLIPS: [USER_ROLES.EMPLOYEE, USER_ROLES.MANAGER],
-  CAN_VIEW_OWN_ATTENDANCE: [USER_ROLES.EMPLOYEE, USER_ROLES.MANAGER],
+/**
+ * Check whether a DB role string maps to owner-level access.
+ * Any role that is NOT "employee" is treated as owner/admin.
+ */
+export const isOwner = (role: string | null | undefined): boolean => {
+  if (!role) return false;
+  return !isEmployee(role);
+};
+
+/**
+ * Normalise a DB role string into a UI-level role for display purposes.
+ */
+export const normalizeRole = (role: string | null | undefined): UserRole =>
+  isOwner(role) ? USER_ROLES.OWNER : USER_ROLES.EMPLOYEE;
+
+// Role groups for permission checks
+export const ROLE_GROUPS = {
+  CAN_APPROVE_REQUESTS: [USER_ROLES.OWNER],
 };
 
 // Helper function to check if user has access
@@ -43,5 +51,6 @@ export const hasRoleAccess = (
   allowedRoles: string[]
 ): boolean => {
   if (!userRole) return false;
-  return allowedRoles.includes(userRole);
+  const normalised = normalizeRole(userRole);
+  return allowedRoles.includes(normalised);
 };

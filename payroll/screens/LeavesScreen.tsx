@@ -116,7 +116,7 @@ export const LeavesScreen: React.FC<LeavesScreenProps> = ({ navigation: navProp 
 
   const handleViewDetails = (leave: any) => {
     try {
-      navigation?.navigate('LeaveDetails', { leaveId: leave._raw?.id || leave.id, leave });
+      navigation?.navigate('LeaveDetails', { leaveId: leave._raw?.id || leave.id, leave, canApprove: true });
     } catch (error) {
       console.error('Navigation error:', error);
     }

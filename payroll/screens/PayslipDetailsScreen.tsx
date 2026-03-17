@@ -13,10 +13,13 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Alert,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { Header } from '../components/payslips';
 import { BottomNavBar } from '../components/BottomNavBar';
 import payslipService, { PayslipDetail } from '../api/services/payslipService';
@@ -37,6 +40,7 @@ export const PayslipDetailsScreen: React.FC = () => {
 
   const [detail, setDetail] = useState<PayslipDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     loadDetail();
@@ -70,8 +74,34 @@ export const PayslipDetailsScreen: React.FC = () => {
     } catch { return dateStr; }
   };
 
-  const handleDownloadPdf = () => {
-    Alert.alert('Info', 'PDF download will be available in a future update');
+  const handleDownloadPdf = async () => {
+    const id = payrollRunId || legacyPayslip?.payrollRunId;
+    if (!id) return;
+
+    setDownloading(true);
+    try {
+      const html = await payslipService.getPayslipHtml(id);
+
+      const { uri } = await Print.printToFileAsync({
+        html,
+        base64: false,
+      });
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'Payslip PDF',
+          UTI: 'com.adobe.pdf',
+        });
+      } else {
+        Alert.alert('Success', `PDF saved to: ${uri}`);
+      }
+    } catch (err: any) {
+      console.error('Failed to download payslip PDF:', err);
+      Alert.alert('Error', 'Failed to generate PDF. Please try again.');
+    } finally {
+      setDownloading(false);
+    }
   };
 
   if (loading) {
@@ -104,30 +134,44 @@ export const PayslipDetailsScreen: React.FC = () => {
     );
   }
 
+  const inc = detail.income;
+  const ded = detail.deductions;
+  const stat = detail.statutory;
+
   const incomeItems = [
-    { label: 'Basic Wages', amount: detail.wages },
-    { label: 'Allowance', amount: detail.allowance },
-    { label: 'Overtime', amount: detail.overtime },
-    { label: 'Commission', amount: detail.commission },
-    { label: 'Bonus', amount: detail.bonus },
-    { label: 'Claims', amount: detail.claims },
-    { label: 'Others', amount: detail.others },
-  ].filter(item => item.amount > 0);
+    { label: 'Basic Wages', amount: inc?.wages },
+    { label: 'Allowance', amount: inc?.allowance },
+    { label: 'Overtime', amount: inc?.overtime },
+    { label: 'Commission', amount: inc?.commission },
+    { label: 'Bonus', amount: inc?.bonus },
+    { label: 'Claims', amount: inc?.claims },
+    { label: 'Others', amount: inc?.others },
+    { label: 'Director Fees', amount: inc?.directorFees },
+    { label: 'Advance Paid', amount: inc?.advancePaid },
+    { label: 'Gratuity', amount: inc?.gratuity },
+  ].filter(item => (item.amount ?? 0) > 0);
 
   const deductionItems = [
-    { label: 'Deduction', amount: detail.deduction },
-    { label: 'Loan', amount: detail.loan },
-    { label: 'Advance Deduction', amount: detail.advanceDeduct },
-    { label: 'Unpaid Leave', amount: detail.unpaidLeave },
-  ].filter(item => item.amount > 0);
+    { label: 'Deduction', amount: ded?.deduction },
+    { label: 'Loan', amount: ded?.loan },
+    { label: 'Advance Deduction', amount: ded?.advanceDeduct },
+    { label: 'Unpaid Leave', amount: ded?.unpaidLeaveDeduct },
+  ].filter(item => (item.amount ?? 0) > 0);
 
   const statutoryItems = [
-    { label: 'EPF (Employee)', amount: detail.employeeEpf },
-    { label: 'SOCSO (Employee)', amount: detail.employeeSocso },
-    { label: 'EIS (Employee)', amount: detail.employeeEis },
-    { label: 'PCB / Tax', amount: detail.pcb },
-    { label: 'Zakat', amount: detail.zakat },
-  ].filter(item => item.amount > 0);
+    { label: 'EPF (Employee)', amount: stat?.epfEmployee },
+    { label: 'SOCSO (Employee)', amount: stat?.socsoEmployee },
+    { label: 'EIS (Employee)', amount: stat?.eisEmployee },
+    { label: 'PCB / Tax', amount: stat?.pcbPayable },
+    { label: 'Zakat', amount: stat?.zakat },
+    { label: 'CP38', amount: stat?.cp38 },
+  ].filter(item => (item.amount ?? 0) > 0);
+
+  const employerItems = [
+    { label: 'EPF (Employer)', amount: stat?.epfEmployer },
+    { label: 'SOCSO (Employer)', amount: stat?.socsoEmployer },
+    { label: 'EIS (Employer)', amount: stat?.eisEmployer },
+  ].filter(item => (item.amount ?? 0) > 0);
 
   return (
     <View style={styles.container}>
@@ -202,10 +246,50 @@ export const PayslipDetailsScreen: React.FC = () => {
           </View>
         )}
 
+        {/* Employer Contributions */}
+        {employerItems.length > 0 && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Employer Contributions</Text>
+            {employerItems.map((item, i) => (
+              <View key={i} style={styles.lineItem}>
+                <Text style={styles.lineLabel}>{item.label}</Text>
+                <Text style={[styles.lineAmount, { color: '#1976D2' }]}>{formatCurrency(item.amount)}</Text>
+              </View>
+            ))}
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Total Employer</Text>
+              <Text style={[styles.totalAmount, { color: '#1976D2' }]}>
+                {formatCurrency((stat?.epfEmployer ?? 0) + (stat?.socsoEmployer ?? 0) + (stat?.eisEmployer ?? 0))}
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Others / Adjustments */}
+        {(detail.adjustment ?? 0) !== 0 && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Others</Text>
+            <View style={styles.lineItem}>
+              <Text style={styles.lineLabel}>Adjustment</Text>
+              <Text style={[styles.lineAmount, { color: detail.adjustment > 0 ? '#2E7D32' : '#EA4335' }]}>
+                {detail.adjustment > 0 ? '' : '-'}{formatCurrency(Math.abs(detail.adjustment))}
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Download PDF */}
-        <TouchableOpacity style={styles.downloadButton} onPress={handleDownloadPdf}>
-          <MaterialCommunityIcons name="download" size={20} color="#4285F4" />
-          <Text style={styles.downloadText}>Download PDF</Text>
+        <TouchableOpacity
+          style={[styles.downloadButton, downloading && { opacity: 0.6 }]}
+          onPress={handleDownloadPdf}
+          disabled={downloading}
+        >
+          {downloading ? (
+            <ActivityIndicator size="small" color="#4285F4" />
+          ) : (
+            <MaterialCommunityIcons name="download" size={20} color="#4285F4" />
+          )}
+          <Text style={styles.downloadText}>{downloading ? 'Generating PDF...' : 'Download PDF'}</Text>
         </TouchableOpacity>
       </ScrollView>
 

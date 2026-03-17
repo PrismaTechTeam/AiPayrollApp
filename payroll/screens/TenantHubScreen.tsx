@@ -56,9 +56,21 @@ export const TenantHubScreen: React.FC<TenantHubScreenProps> = ({ navigation }) 
   };
 
   const handleSelectTenant = async (tenantId: string, tenantName: string) => {
+    // If already on this tenant, just go to PayrollHome (no API call needed)
+    if (tenantId === user?.tenantId) {
+      navigation?.navigate('PayrollHome');
+      return;
+    }
+
     setSwitchingTenantId(tenantId);
     try {
       await switchCompany(tenantId);
+      // switchCompany updates user state. If the new tenant has an employee,
+      // authStatus stays 'authenticated' and we navigate to PayrollHome.
+      // If no employee, authStatus changes to 'pending_approval' and the
+      // navigation stack swaps automatically — no explicit navigate needed.
+      // We check the result indirectly: if we're still in 'authenticated' stack,
+      // navigate. Otherwise the stack change handles it.
       navigation?.navigate('PayrollHome');
     } catch (err: any) {
       Alert.alert('Error', err?.message || 'Failed to switch tenant');

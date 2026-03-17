@@ -53,23 +53,27 @@ export const CreateLeaveScreen: React.FC = () => {
   const loadLeaveData = async () => {
     try {
       setLoadingTypes(true);
-      // Load balance which contains leave type info
+      // Load leave types from dedicated API (so dropdown is populated even with no balance)
+      const typesFromApi = await leaveService.getLeaveTypes();
+      const types: LeaveTypeOption[] = typesFromApi.map(t => ({
+        id: t.id,
+        code: t.code,
+        description: t.description || t.caption || t.code,
+        color: t.color,
+        allowHalfDay: t.allowHalfDay ?? true,
+      }));
+      setLeaveTypes(types);
+
+      // Load balance for entitlement/used/balance display when a type is selected
       const balanceData = await leaveService.getBalance();
-      if (balanceData.length > 0) {
-        const items = balanceData[0].balances || [];
+      const content = Array.isArray(balanceData) ? balanceData : [];
+      if (content.length > 0) {
+        const items = content[0].balances || [];
         setBalances(items);
-        const types: LeaveTypeOption[] = items.map(b => ({
-          id: b.leaveTypeId,
-          code: b.leaveTypeCode,
-          description: b.leaveTypeDescription,
-          color: b.color,
-          allowHalfDay: true,
-        }));
-        setLeaveTypes(types);
       }
     } catch (err: any) {
-      console.error('Failed to load leave types:', err);
-      Alert.alert('Error', 'Failed to load leave types. Please try again.');
+      console.error('Failed to load leave data:', err);
+      Alert.alert('Error', err?.response?.data?.message || 'Failed to load leave types. Please try again.');
     } finally {
       setLoadingTypes(false);
     }
@@ -139,7 +143,7 @@ export const CreateLeaveScreen: React.FC = () => {
     return balances.find(b => b.leaveTypeId === selectedType.id);
   };
 
-  const handleSubmit = async () => {
+  const submitLeave = async (isDraft: boolean) => {
     if (!validateForm()) return;
 
     setIsSubmitting(true);
@@ -151,11 +155,12 @@ export const CreateLeaveScreen: React.FC = () => {
         isHalfDayStart,
         isHalfDayEnd,
         reason: additionalNote,
+        isDraft,
       });
 
       Alert.alert(
         'Success',
-        'Your leave request has been submitted successfully!',
+        isDraft ? 'Leave saved as draft!' : 'Your leave request has been submitted successfully!',
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
     } catch (error: any) {
@@ -167,6 +172,9 @@ export const CreateLeaveScreen: React.FC = () => {
       setIsSubmitting(false);
     }
   };
+
+  const handleSubmit = () => submitLeave(false);
+  const handleSaveDraft = () => submitLeave(true);
 
   const balance = getBalanceForType();
 
@@ -324,16 +332,28 @@ export const CreateLeaveScreen: React.FC = () => {
           />
         </View>
 
-        {/* Submit Button */}
-        <TouchableOpacity
-          style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
-          onPress={handleSubmit}
-          disabled={isSubmitting}
-        >
-          <Text style={styles.submitButtonText}>
-            {isSubmitting ? 'Submitting...' : 'Submit'}
-          </Text>
-        </TouchableOpacity>
+        {/* Buttons */}
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity
+            style={[styles.draftButton, isSubmitting && styles.submitButtonDisabled]}
+            onPress={handleSaveDraft}
+            disabled={isSubmitting}
+          >
+            <Text style={styles.draftButtonText}>Save as Draft</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
+            onPress={handleSubmit}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.submitButtonText}>Submit</Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
       {/* Date Pickers */}
@@ -489,12 +509,31 @@ const styles = StyleSheet.create({
     color: '#000',
     minHeight: 120,
   },
+  buttonContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  draftButton: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 25,
+    padding: 18,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#4285F4',
+  },
+  draftButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#4285F4',
+  },
   submitButton: {
+    flex: 1,
     backgroundColor: '#4285F4',
     borderRadius: 25,
     padding: 18,
     alignItems: 'center',
-    marginTop: 8,
   },
   submitButtonDisabled: {
     opacity: 0.6,

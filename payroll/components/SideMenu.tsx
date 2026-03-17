@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { RoleSwitcher } from './RoleSwitcher';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
+import { useTheme } from '../context/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const MENU_WIDTH = SCREEN_WIDTH * 0.75;
@@ -29,6 +30,7 @@ interface SideMenuProps {
 
 export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, navigation }) => {
   const { user, logout, availableRoles } = usePayrollAuth();
+  const { colors } = useTheme();
   const hasMultipleRoles = availableRoles && availableRoles.length > 1;
 
   const handleLogout = () => {
@@ -57,23 +59,23 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, navigation
         />
 
         {/* Menu Content */}
-        <SafeAreaView style={styles.menuContainer} edges={['top', 'bottom']}>
+        <SafeAreaView style={[styles.menuContainer, { backgroundColor: colors.surface }]} edges={['top', 'bottom']}>
           <View style={styles.menu}>
             {/* Header */}
             <View style={styles.menuHeader}>
               <View style={styles.userSection}>
-                <View style={styles.avatar}>
+                <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
                   <Text style={styles.avatarText}>
                     {user?.name?.charAt(0).toUpperCase() || 'U'}
                   </Text>
                 </View>
                 <View style={styles.userInfo}>
-                  <Text style={styles.userName}>{user?.name || 'User'}</Text>
-                  <Text style={styles.userEmail}>{user?.email || 'user@example.com'}</Text>
+                  <Text style={[styles.userName, { color: colors.text }]}>{user?.name || 'User'}</Text>
+                  <Text style={[styles.userEmail, { color: colors.textSecondary }]}>{user?.email || 'user@example.com'}</Text>
                 </View>
               </View>
               <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                <MaterialCommunityIcons name="close" size={24} color="#666" />
+                <MaterialCommunityIcons name="close" size={24} color={colors.icon} />
               </TouchableOpacity>
             </View>
 
@@ -81,10 +83,10 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, navigation
             {hasMultipleRoles && (
               <>
                 <View style={styles.roleSwitcherSection}>
-                  <Text style={styles.sectionTitle}>Switch Role</Text>
+                  <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Switch Role</Text>
                   <RoleSwitcher />
                 </View>
-                <View style={styles.divider} />
+                <View style={[styles.divider, { backgroundColor: colors.borderLight }]} />
               </>
             )}
 
@@ -95,33 +97,33 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, navigation
                 onClose();
                 navigation?.navigate('TenantHub');
               }}>
-                <MaterialCommunityIcons name="office-building" size={24} color="#4285F4" />
-                <Text style={styles.menuItemText}>Tenant Hub</Text>
-                <MaterialCommunityIcons name="chevron-right" size={20} color="#CCC" />
+                <MaterialCommunityIcons name="office-building" size={24} color={colors.primary} />
+                <Text style={[styles.menuItemText, { color: colors.text }]}>Tenant Hub</Text>
+                <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textTertiary} />
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.menuItem} onPress={handleProfile}>
-                <MaterialCommunityIcons name="account" size={24} color="#666" />
-                <Text style={styles.menuItemText}>Profile</Text>
-                <MaterialCommunityIcons name="chevron-right" size={20} color="#CCC" />
+                <MaterialCommunityIcons name="account" size={24} color={colors.icon} />
+                <Text style={[styles.menuItemText, { color: colors.text }]}>Profile</Text>
+                <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textTertiary} />
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.menuItem} onPress={() => {
                 onClose();
                 navigation?.navigate('Settings');
               }}>
-                <MaterialCommunityIcons name="cog" size={24} color="#666" />
-                <Text style={styles.menuItemText}>Settings</Text>
-                <MaterialCommunityIcons name="chevron-right" size={20} color="#CCC" />
+                <MaterialCommunityIcons name="cog" size={24} color={colors.icon} />
+                <Text style={[styles.menuItemText, { color: colors.text }]}>Settings</Text>
+                <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textTertiary} />
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.menuItem} onPress={() => {
                 onClose();
                 navigation?.navigate('Help');
               }}>
-                <MaterialCommunityIcons name="help-circle" size={24} color="#666" />
-                <Text style={styles.menuItemText}>Help & Support</Text>
-                <MaterialCommunityIcons name="chevron-right" size={20} color="#CCC" />
+                <MaterialCommunityIcons name="help-circle" size={24} color={colors.icon} />
+                <Text style={[styles.menuItemText, { color: colors.text }]}>Help & Support</Text>
+                <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textTertiary} />
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -131,23 +133,23 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, navigation
                   navigation.navigate('About' as never);
                 }}
               >
-                <MaterialCommunityIcons name="information" size={24} color="#666" />
-                <Text style={styles.menuItemText}>About</Text>
-                <MaterialCommunityIcons name="chevron-right" size={20} color="#CCC" />
+                <MaterialCommunityIcons name="information" size={24} color={colors.icon} />
+                <Text style={[styles.menuItemText, { color: colors.text }]}>About</Text>
+                <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textTertiary} />
               </TouchableOpacity>
             </View>
 
             {/* Divider */}
-            <View style={styles.divider} />
+            <View style={[styles.divider, { backgroundColor: colors.borderLight }]} />
 
             {/* Logout Button */}
             <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-              <MaterialCommunityIcons name="logout" size={24} color="#FF5252" />
-              <Text style={styles.logoutText}>Logout</Text>
+              <MaterialCommunityIcons name="logout" size={24} color={colors.error} />
+              <Text style={[styles.logoutText, { color: colors.error }]}>Logout</Text>
             </TouchableOpacity>
 
             {/* Version */}
-            <Text style={styles.version}>Version 1.0.0</Text>
+            <Text style={[styles.version, { color: colors.textTertiary }]}>Version 1.0.0</Text>
           </View>
         </SafeAreaView>
       </View>
@@ -166,7 +168,6 @@ const styles = StyleSheet.create({
   },
   menuContainer: {
     width: MENU_WIDTH,
-    backgroundColor: '#FFFFFF',
   },
   menu: {
     flex: 1,
@@ -187,7 +188,6 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#4285F4',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -203,12 +203,10 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#000',
     marginBottom: 4,
   },
   userEmail: {
     fontSize: 14,
-    color: '#666',
   },
   closeButton: {
     padding: 4,
@@ -220,14 +218,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#666',
     marginBottom: 12,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   divider: {
     height: 1,
-    backgroundColor: '#F0F0F0',
     marginVertical: 8,
   },
   menuItems: {
@@ -242,7 +238,6 @@ const styles = StyleSheet.create({
   menuItemText: {
     flex: 1,
     fontSize: 16,
-    color: '#000',
     marginLeft: 16,
   },
   logoutButton: {
@@ -255,12 +250,10 @@ const styles = StyleSheet.create({
   logoutText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#FF5252',
     marginLeft: 16,
   },
   version: {
     fontSize: 12,
-    color: '#999',
     textAlign: 'center',
     padding: 20,
     marginTop: 'auto',

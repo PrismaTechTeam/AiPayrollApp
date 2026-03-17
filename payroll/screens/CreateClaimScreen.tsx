@@ -1,6 +1,6 @@
 /**
  * Create Claim Screen
- * Employee submits new claim using real API
+ * Employee submits new claim using real API with receipt attachment support
  */
 
 import React, { useState, useEffect } from 'react';
@@ -15,12 +15,14 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import claimService, { ClaimType } from '../api/services/claimService';
+import * as ImagePicker from 'expo-image-picker';
+import claimService, { ClaimType, ClaimBalance } from '../api/services/claimService';
 
 export const CreateClaimScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -35,9 +37,12 @@ export const CreateClaimScreen: React.FC = () => {
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadingTypes, setLoadingTypes] = useState(true);
+  const [attachment, setAttachment] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [balances, setBalances] = useState<ClaimBalance[]>([]);
 
   useEffect(() => {
     loadClaimTypes();
+    loadBalances();
   }, []);
 
   const loadClaimTypes = async () => {
@@ -52,8 +57,76 @@ export const CreateClaimScreen: React.FC = () => {
     }
   };
 
+  const loadBalances = async () => {
+    try {
+      const data = await claimService.getBalance();
+      setBalances(data);
+    } catch (err: any) {
+      console.error('Failed to load claim balances:', err);
+    }
+  };
+
+  const getSelectedBalance = (): ClaimBalance | undefined => {
+    if (!selectedType) return undefined;
+    return balances.find(b => b.claimTypeId === selectedType.id);
+  };
+
+  const getProgressColor = (used: number, limit: number): string => {
+    if (limit <= 0) return '#4285F4';
+    const pct = used / limit;
+    if (pct >= 1) return '#EA4335';
+    if (pct >= 0.8) return '#FBBC04';
+    return '#34A853';
+  };
+
+  const formatCurrency = (val: number): string => {
+    return val.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
   const formatDate = (date: Date): string => {
     return date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const handlePickImage = () => {
+    Alert.alert('Upload Receipt', 'Choose an option', [
+      {
+        text: 'Take Photo',
+        onPress: async () => {
+          const { status } = await ImagePicker.requestCameraPermissionsAsync();
+          if (status !== 'granted') {
+            Alert.alert('Permission Required', 'Camera access is needed to take photos');
+            return;
+          }
+          const result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ['images'],
+            quality: 0.8,
+            allowsEditing: true,
+          });
+          if (!result.canceled && result.assets[0]) {
+            setAttachment(result.assets[0]);
+          }
+        },
+      },
+      {
+        text: 'Choose from Gallery',
+        onPress: async () => {
+          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (status !== 'granted') {
+            Alert.alert('Permission Required', 'Gallery access is needed to select photos');
+            return;
+          }
+          const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            quality: 0.8,
+            allowsEditing: true,
+          });
+          if (!result.canceled && result.assets[0]) {
+            setAttachment(result.assets[0]);
+          }
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   const validateForm = (): boolean => {
@@ -66,11 +139,15 @@ export const CreateClaimScreen: React.FC = () => {
       return false;
     }
     if (selectedType.maxAmount && parseFloat(amount) > selectedType.maxAmount) {
-      Alert.alert('Validation Error', `Amount exceeds the maximum limit of $${selectedType.maxAmount.toFixed(2)}`);
+      Alert.alert('Validation Error', `Amount exceeds the maximum limit of RM ${selectedType.maxAmount.toFixed(2)}`);
       return false;
     }
     if (!description.trim() || description.trim().length < 10) {
       Alert.alert('Validation Error', 'Please enter a description (min 10 characters)');
+      return false;
+    }
+    if (selectedType.requireReceipt && !attachment) {
+      Alert.alert('Validation Error', 'Receipt is required for this claim type. Please upload a receipt.');
       return false;
     }
     return true;
@@ -79,15 +156,67 @@ export const CreateClaimScreen: React.FC = () => {
   const handleSubmit = async () => {
     if (!validateForm()) return;
 
+    // Check claim limits
+    const bal = getSelectedBalance();
+    if (bal) {
+      const claimAmount = parseFloat(amount);
+      if (bal.monthlyLimit > 0 && claimAmount > bal.monthlyRemaining) {
+        const proceed = await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            'Monthly Limit Warning',
+            `This claim of RM ${formatCurrency(claimAmount)} exceeds your monthly remaining balance of RM ${formatCurrency(bal.monthlyRemaining)}. Submit anyway?`,
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Submit', onPress: () => resolve(true) },
+            ]
+          );
+        });
+        if (!proceed) return;
+      } else if (bal.yearlyLimit > 0 && claimAmount > bal.yearlyRemaining) {
+        const proceed = await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            'Yearly Limit Warning',
+            `This claim of RM ${formatCurrency(claimAmount)} exceeds your yearly remaining balance of RM ${formatCurrency(bal.yearlyRemaining)}. Submit anyway?`,
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Submit', onPress: () => resolve(true) },
+            ]
+          );
+        });
+        if (!proceed) return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
-      await claimService.createApplication({
-        claimTypeId: selectedType!.id,
-        transDate: transDate.toISOString(),
-        amount: parseFloat(amount),
-        description: description.trim(),
-        receiptNo: receiptNo.trim() || undefined,
-      });
+      if (attachment) {
+        const formData = new FormData();
+        formData.append('claimTypeId', selectedType!.id);
+        formData.append('transDate', transDate.toISOString());
+        formData.append('amount', parseFloat(amount).toString());
+        formData.append('description', description.trim());
+        if (receiptNo.trim()) {
+          formData.append('receiptNo', receiptNo.trim());
+        }
+
+        const uri = attachment.uri;
+        const fileName = attachment.fileName || `receipt_${Date.now()}.jpg`;
+        formData.append('receipt', {
+          uri,
+          name: fileName,
+          type: attachment.mimeType || 'image/jpeg',
+        } as any);
+
+        await claimService.createApplicationWithAttachment(formData);
+      } else {
+        await claimService.createApplication({
+          claimTypeId: selectedType!.id,
+          transDate: transDate.toISOString(),
+          amount: parseFloat(amount),
+          description: description.trim(),
+          receiptNo: receiptNo.trim() || undefined,
+        });
+      }
 
       Alert.alert(
         'Success',
@@ -104,8 +233,58 @@ export const CreateClaimScreen: React.FC = () => {
     }
   };
 
-  const handleSaveDraft = () => {
-    Alert.alert('Info', 'Draft saving is not yet available');
+  const handleSaveDraft = async () => {
+    if (!selectedType) {
+      Alert.alert('Validation Error', 'Please select a claim type');
+      return;
+    }
+    if (!amount.trim() || parseFloat(amount) <= 0) {
+      Alert.alert('Validation Error', 'Please enter a valid amount');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      if (attachment) {
+        const formData = new FormData();
+        formData.append('claimTypeId', selectedType.id);
+        formData.append('transDate', transDate.toISOString());
+        formData.append('amount', parseFloat(amount).toString());
+        formData.append('description', description.trim());
+        formData.append('isDraft', 'true');
+        if (receiptNo.trim()) {
+          formData.append('receiptNo', receiptNo.trim());
+        }
+        const uri = attachment.uri;
+        const fileName = attachment.fileName || `receipt_${Date.now()}.jpg`;
+        formData.append('receipt', {
+          uri,
+          name: fileName,
+          type: attachment.mimeType || 'image/jpeg',
+        } as any);
+        await claimService.createApplicationWithAttachment(formData);
+      } else {
+        await claimService.createApplication({
+          claimTypeId: selectedType.id,
+          transDate: transDate.toISOString(),
+          amount: parseFloat(amount),
+          description: description.trim(),
+          receiptNo: receiptNo.trim() || undefined,
+          isDraft: true,
+        });
+      }
+
+      Alert.alert(
+        'Success',
+        'Claim saved as draft!',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
+    } catch (error: any) {
+      const message = error.response?.data?.message || 'Failed to save draft. Please try again.';
+      Alert.alert('Error', message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -164,7 +343,7 @@ export const CreateClaimScreen: React.FC = () => {
                       <View>
                         <Text style={styles.dropdownItemText}>{type.name}</Text>
                         {type.maxAmount && (
-                          <Text style={styles.dropdownItemHint}>Max: ${type.maxAmount.toFixed(2)}</Text>
+                          <Text style={styles.dropdownItemHint}>Max: RM {type.maxAmount.toFixed(2)}</Text>
                         )}
                       </View>
                       {selectedType?.id === type.id && (
@@ -178,13 +357,78 @@ export const CreateClaimScreen: React.FC = () => {
           )}
         </View>
 
+        {/* Balance Card */}
+        {selectedType && (() => {
+          const bal = getSelectedBalance();
+          if (!bal) return null;
+          const hasYearly = bal.yearlyLimit > 0;
+          const hasMonthly = bal.monthlyLimit > 0;
+          if (!hasYearly && !hasMonthly) return null;
+          const ytdUsed = bal.ytdClaimed + bal.ytdPending;
+          const mtdUsed = bal.mtdClaimed + bal.mtdPending;
+          const yearlyPct = hasYearly ? Math.min(ytdUsed / bal.yearlyLimit, 1) : 0;
+          const monthlyPct = hasMonthly ? Math.min(mtdUsed / bal.monthlyLimit, 1) : 0;
+          const hasPending = bal.ytdPending > 0 || bal.mtdPending > 0;
+          return (
+            <View style={styles.balanceCard}>
+              <Text style={styles.balanceTitle}>{bal.claimTypeName}</Text>
+              {hasMonthly && (
+                <View style={styles.balanceRow}>
+                  <View style={styles.balanceLabelRow}>
+                    <Text style={styles.balanceLabel}>Monthly</Text>
+                    <Text style={styles.balanceValue}>
+                      RM {formatCurrency(mtdUsed)} / RM {formatCurrency(bal.monthlyLimit)}
+                    </Text>
+                  </View>
+                  <View style={styles.progressBarBg}>
+                    <View style={[styles.progressBarFill, {
+                      width: `${monthlyPct * 100}%`,
+                      backgroundColor: getProgressColor(mtdUsed, bal.monthlyLimit),
+                    }]} />
+                  </View>
+                  <Text style={styles.balanceRemaining}>
+                    Remaining: RM {formatCurrency(bal.monthlyRemaining)}
+                  </Text>
+                </View>
+              )}
+              {hasYearly && (
+                <View style={styles.balanceRow}>
+                  <View style={styles.balanceLabelRow}>
+                    <Text style={styles.balanceLabel}>Yearly</Text>
+                    <Text style={styles.balanceValue}>
+                      RM {formatCurrency(ytdUsed)} / RM {formatCurrency(bal.yearlyLimit)}
+                    </Text>
+                  </View>
+                  <View style={styles.progressBarBg}>
+                    <View style={[styles.progressBarFill, {
+                      width: `${yearlyPct * 100}%`,
+                      backgroundColor: getProgressColor(ytdUsed, bal.yearlyLimit),
+                    }]} />
+                  </View>
+                  <Text style={styles.balanceRemaining}>
+                    Remaining: RM {formatCurrency(bal.yearlyRemaining)}
+                  </Text>
+                </View>
+              )}
+              {hasPending && (
+                <View style={styles.balancePendingRow}>
+                  <MaterialCommunityIcons name="information-outline" size={14} color="#666" />
+                  <Text style={styles.balancePendingText}>
+                    Includes RM {formatCurrency(Math.max(bal.ytdPending, bal.mtdPending))} pending approval
+                  </Text>
+                </View>
+              )}
+            </View>
+          );
+        })()}
+
         {/* Amount */}
         <View style={styles.section}>
           <Text style={styles.label}>
-            Amount ($) <Text style={styles.required}>*</Text>
+            Amount (RM) <Text style={styles.required}>*</Text>
           </Text>
           <View style={styles.amountInputContainer}>
-            <Text style={styles.currencySymbol}>$</Text>
+            <Text style={styles.currencySymbol}>RM</Text>
             <TextInput
               style={styles.amountInput}
               value={amount}
@@ -252,14 +496,32 @@ export const CreateClaimScreen: React.FC = () => {
           <Text style={styles.hint}>Minimum 10 characters</Text>
         </View>
 
-        {/* Receipts Section */}
+        {/* Receipt Upload Section */}
         <View style={styles.section}>
-          <Text style={styles.label}>Receipts (Optional)</Text>
-          <TouchableOpacity style={styles.uploadButton}>
-            <MaterialCommunityIcons name="camera-outline" size={24} color="#4285F4" />
-            <Text style={styles.uploadButtonText}>Upload Receipt</Text>
-          </TouchableOpacity>
-          <Text style={styles.hint}>File upload will be available in a future update</Text>
+          <Text style={styles.label}>
+            Receipt {selectedType?.requireReceipt ? <Text style={styles.required}>*</Text> : '(Optional)'}
+          </Text>
+
+          {attachment ? (
+            <View style={styles.previewContainer}>
+              <Image source={{ uri: attachment.uri }} style={styles.previewImage} />
+              <TouchableOpacity
+                style={styles.removeButton}
+                onPress={() => setAttachment(null)}
+              >
+                <MaterialCommunityIcons name="close-circle" size={28} color="#EA4335" />
+              </TouchableOpacity>
+              <Text style={styles.fileName} numberOfLines={1}>
+                {attachment.fileName || 'receipt.jpg'}
+              </Text>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.uploadButton} onPress={handlePickImage}>
+              <MaterialCommunityIcons name="camera-outline" size={24} color="#4285F4" />
+              <Text style={styles.uploadButtonText}>Upload Receipt</Text>
+            </TouchableOpacity>
+          )}
+          <Text style={styles.hint}>Supported: JPG, PNG, PDF (max 10MB)</Text>
         </View>
 
         {/* Buttons */}
@@ -278,7 +540,7 @@ export const CreateClaimScreen: React.FC = () => {
             disabled={isSubmitting}
           >
             {isSubmitting ? (
-              <Text style={styles.submitButtonText}>Submitting...</Text>
+              <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
               <>
                 <MaterialCommunityIcons name="check" size={20} color="#FFFFFF" />
@@ -319,19 +581,34 @@ const styles = StyleSheet.create({
   dropdownItemText: { fontSize: 15, color: '#000' },
   dropdownItemHint: { fontSize: 12, color: '#999', marginTop: 2 },
   amountInputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 12, paddingHorizontal: 16, borderWidth: 1, borderColor: '#E0E0E0' },
-  currencySymbol: { fontSize: 18, fontWeight: '600', color: '#000', marginRight: 8 },
+  currencySymbol: { fontSize: 16, fontWeight: '600', color: '#000', marginRight: 8 },
   amountInput: { flex: 1, fontSize: 15, color: '#000', paddingVertical: 16 },
   dateButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, gap: 12, borderWidth: 1, borderColor: '#E0E0E0' },
   dateText: { fontSize: 15, color: '#000', flex: 1 },
   hint: { fontSize: 13, color: '#999', marginTop: 6 },
   uploadButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#E8F0FE', borderRadius: 12, padding: 16, gap: 12, borderWidth: 2, borderColor: '#4285F4', borderStyle: 'dashed' },
   uploadButtonText: { fontSize: 15, fontWeight: '600', color: '#4285F4' },
+  previewContainer: { alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#E0E0E0' },
+  previewImage: { width: '100%', height: 200, borderRadius: 8, resizeMode: 'contain' },
+  removeButton: { position: 'absolute', top: 4, right: 4, backgroundColor: '#FFFFFF', borderRadius: 14 },
+  fileName: { fontSize: 13, color: '#666', marginTop: 8 },
   buttonContainer: { flexDirection: 'row', gap: 12, marginTop: 8 },
   draftButton: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: '#4285F4' },
   draftButtonText: { fontSize: 16, fontWeight: '600', color: '#4285F4' },
   submitButton: { flex: 1, backgroundColor: '#4285F4', borderRadius: 12, padding: 16, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
   submitButtonDisabled: { opacity: 0.6 },
   submitButtonText: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
+  balanceCard: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, marginBottom: 24, borderWidth: 1, borderColor: '#E0E0E0' },
+  balanceTitle: { fontSize: 16, fontWeight: '700', color: '#000', marginBottom: 12 },
+  balanceRow: { marginBottom: 12 },
+  balanceLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  balanceLabel: { fontSize: 13, fontWeight: '600', color: '#666' },
+  balanceValue: { fontSize: 13, color: '#333' },
+  progressBarBg: { height: 8, backgroundColor: '#E8E8E8', borderRadius: 4, overflow: 'hidden' },
+  progressBarFill: { height: 8, borderRadius: 4 },
+  balanceRemaining: { fontSize: 12, color: '#666', marginTop: 4 },
+  balancePendingRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
+  balancePendingText: { fontSize: 12, color: '#666' },
 });
 
 export default CreateClaimScreen;

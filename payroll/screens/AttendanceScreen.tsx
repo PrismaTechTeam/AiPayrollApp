@@ -7,7 +7,7 @@ import { BottomNavBar } from '../components/BottomNavBar';
 import { AttendanceDate } from '../types/attendance.types';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
-import { USER_ROLES } from '../constants/userRoles';
+import { isEmployee as checkIsEmployee } from '../constants/userRoles';
 import attendanceService, { TodayAttendance, AttendanceRecord } from '../api/services/attendanceService';
 
 // Generate week dates dynamically
@@ -41,7 +41,7 @@ const AttendanceScreen: React.FC<AttendanceScreenProps> = ({ navigation: navProp
   const navigation = navProp || useNavigation();
   const route = routeProp || useRoute();
   const { currentRole } = usePayrollAuth();
-  const isEmployee = currentRole === USER_ROLES.EMPLOYEE;
+  const isEmployee = checkIsEmployee(currentRole);
 
   const weekDates = generateWeekDates();
   const initialFilter = route.params?.filter || 'All';

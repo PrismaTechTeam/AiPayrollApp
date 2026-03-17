@@ -30,9 +30,12 @@ export const CreateRequestScreen: React.FC = () => {
   const [requestTypeLabel, setRequestTypeLabel] = useState('');
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [additionalNote, setAdditionalNote] = useState('');
+  const [otherRequestType, setOtherRequestType] = useState('');
   const [showRequestTypePicker, setShowRequestTypePicker] = useState(false);
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const isOtherType = requestType?.toLowerCase() === 'other';
 
   useEffect(() => {
     const fetchTypes = async () => {
@@ -57,6 +60,15 @@ export const CreateRequestScreen: React.FC = () => {
     return `${day}/${month}/${year}`;
   };
 
+  /** API expects DateOnly as YYYY-MM-DD; ISO string can cause 400. */
+  const formatDateForApi = (date: Date | null): string | undefined => {
+    if (!date) return undefined;
+    const y = date.getFullYear();
+    const m = (date.getMonth() + 1).toString().padStart(2, '0');
+    const d = date.getDate().toString().padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
   const handleStartDateChange = (event: any, selectedDate?: Date) => {
     setShowStartDatePicker(Platform.OS === 'ios');
     if (selectedDate) {
@@ -67,6 +79,10 @@ export const CreateRequestScreen: React.FC = () => {
   const validateForm = (): boolean => {
     if (!requestType) {
       Alert.alert('Validation Error', 'Please select a request type');
+      return false;
+    }
+    if (isOtherType && !otherRequestType.trim()) {
+      Alert.alert('Validation Error', 'Please specify the request type in the "Other" field');
       return false;
     }
     if (!startDate) {
@@ -80,20 +96,26 @@ export const CreateRequestScreen: React.FC = () => {
     return true;
   };
 
-  const handleSubmit = async () => {
+  const submitRequest = async (isDraft: boolean) => {
     if (!validateForm()) return;
 
     setIsSubmitting(true);
     try {
+      const notes =
+        isOtherType && otherRequestType.trim()
+          ? `Other: ${otherRequestType.trim()}\n\n${additionalNote.trim()}`
+          : additionalNote.trim();
+
       await requestService.createApplication({
         requestType,
-        startDate: startDate?.toISOString(),
-        notes: additionalNote.trim(),
+        startDate: formatDateForApi(startDate),
+        notes,
+        isDraft,
       });
 
       Alert.alert(
         'Success',
-        'Your request has been submitted successfully!',
+        isDraft ? 'Request saved as draft!' : 'Your request has been submitted successfully!',
         [
           {
             text: 'OK',
@@ -101,13 +123,20 @@ export const CreateRequestScreen: React.FC = () => {
           },
         ]
       );
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to submit request:', error);
-      Alert.alert('Error', 'Failed to submit request. Please try again.');
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Failed to submit request. Please try again.';
+      Alert.alert('Error', message);
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const handleSubmit = () => submitRequest(false);
+  const handleSaveDraft = () => submitRequest(true);
 
   return (
     <View style={styles.container}>
@@ -160,6 +189,7 @@ export const CreateRequestScreen: React.FC = () => {
                       onPress={() => {
                         setRequestType(type.key);
                         setRequestTypeLabel(type.label);
+                        if (type.key?.toLowerCase() !== 'other') setOtherRequestType('');
                         setShowRequestTypePicker(false);
                       }}
                     >
@@ -174,6 +204,20 @@ export const CreateRequestScreen: React.FC = () => {
             </>
           )}
         </View>
+
+        {/* Other request type (shown only when "Other" is selected) */}
+        {isOtherType && (
+          <View style={styles.fieldContainer}>
+            <Text style={styles.label}>Please specify</Text>
+            <TextInput
+              style={styles.otherInput}
+              placeholder="Enter the request type..."
+              placeholderTextColor="#999"
+              value={otherRequestType}
+              onChangeText={setOtherRequestType}
+            />
+          </View>
+        )}
 
         {/* Start Date */}
         <View style={styles.fieldContainer}>
@@ -204,18 +248,28 @@ export const CreateRequestScreen: React.FC = () => {
           />
         </View>
 
-        {/* Submit Button */}
-        <TouchableOpacity
-          style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
-          onPress={handleSubmit}
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <Text style={styles.submitButtonText}>Submit</Text>
-          )}
-        </TouchableOpacity>
+        {/* Buttons */}
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity
+            style={[styles.draftButton, isSubmitting && styles.submitButtonDisabled]}
+            onPress={handleSaveDraft}
+            disabled={isSubmitting}
+          >
+            <Text style={styles.draftButtonText}>Save as Draft</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
+            onPress={handleSubmit}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.submitButtonText}>Submit</Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
       {/* Date Picker */}
@@ -302,6 +356,15 @@ const styles = StyleSheet.create({
   placeholder: {
     color: '#999',
   },
+  otherInput: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    fontSize: 16,
+    color: '#000',
+  },
   pickerContainer: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
@@ -346,12 +409,31 @@ const styles = StyleSheet.create({
     color: '#000',
     minHeight: 150,
   },
+  buttonContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  draftButton: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 25,
+    padding: 18,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#4285F4',
+  },
+  draftButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#4285F4',
+  },
   submitButton: {
+    flex: 1,
     backgroundColor: '#4285F4',
     borderRadius: 25,
     padding: 18,
     alignItems: 'center',
-    marginTop: 8,
   },
   submitButtonDisabled: {
     opacity: 0.6,

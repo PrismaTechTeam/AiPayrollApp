@@ -77,6 +77,7 @@ export interface CreateLeaveRequest {
   startDayPeriod?: string;
   endDayPeriod?: string;
   reason: string;
+  isDraft?: boolean;
 }
 
 const leaveService = {
@@ -87,8 +88,21 @@ const leaveService = {
   },
 
   async getLeaveTypes(): Promise<LeaveType[]> {
-    const response = await axiosInstance.get(`${ENDPOINTS.LEAVE.APPLICATIONS}/types`);
-    return response.data.content;
+    const response = await axiosInstance.get(ENDPOINTS.LEAVE.TYPES);
+    const content = response.data?.content ?? response.data;
+    const list = Array.isArray(content) ? content : [];
+    return list.map((t: { Id?: string; Code?: string; Description?: string; Color?: string | null; AllowHalfDay?: boolean }) => ({
+      id: t.Id ?? t.id ?? '',
+      code: t.Code ?? t.code ?? '',
+      description: t.Description ?? t.description ?? '',
+      caption: t.Description ?? t.description ?? '',
+      allowHalfDay: t.AllowHalfDay ?? t.allowHalfDay ?? true,
+      allowHourly: false,
+      isActive: true,
+      color: t.Color ?? t.color ?? null,
+      requireAttachment: false,
+      attachmentAfterDays: null,
+    }));
   },
 
   async getApplications(params?: { page?: number; pageSize?: number; status?: string }): Promise<{ items: LeaveApplication[]; total: number }> {

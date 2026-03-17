@@ -1,13 +1,13 @@
 /**
  * Role Switcher Component
- * Allows users to switch between Employee and Manager roles
+ * Allows users to switch between Employee and Owner roles
  */
 
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, Alert } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
-import { USER_ROLES } from '../constants/userRoles';
+import { isOwner as checkIsOwner } from '../constants/userRoles';
 
 export const RoleSwitcher: React.FC = () => {
   const { currentRole, availableRoles, switchRole } = usePayrollAuth();
@@ -20,11 +20,11 @@ export const RoleSwitcher: React.FC = () => {
   }
 
   const getRoleIcon = (role: string): string => {
-    return role === USER_ROLES.MANAGER ? 'shield-account' : 'account';
+    return checkIsOwner(role) ? 'shield-account' : 'account';
   };
 
   const getRoleColor = (role: string): string => {
-    return role === USER_ROLES.MANAGER ? '#FF5722' : '#4285F4';
+    return checkIsOwner(role) ? '#FF5722' : '#4285F4';
   };
 
   const handleSwitchRole = async (newRole: string) => {
@@ -111,8 +111,8 @@ export const RoleSwitcher: React.FC = () => {
                           {role}
                         </Text>
                         <Text style={styles.roleItemSubtitle}>
-                          {role === USER_ROLES.MANAGER
-                            ? 'Approve requests, view all data'
+                          {checkIsOwner(role)
+                            ? 'Manage & approve requests, view all data'
                             : 'Submit requests, view own data'}
                         </Text>
                       </View>

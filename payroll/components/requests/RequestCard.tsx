@@ -108,7 +108,7 @@ export const RequestCard: React.FC<RequestCardProps> = ({
               </TouchableOpacity>
             )}
             
-            {/* Restore button for cancelled requests (Manager only) */}
+            {/* Restore button for cancelled requests (Owner only) */}
             {showRestoreButton && onRestore && (
               <TouchableOpacity
                 style={styles.restoreButton}

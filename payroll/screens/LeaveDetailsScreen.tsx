@@ -25,6 +25,7 @@ type LeaveDetailsRouteParams = {
   LeaveDetails: {
     leaveId?: string;
     leave?: any;
+    canApprove?: boolean;
   };
 };
 
@@ -33,7 +34,7 @@ type LeaveDetailsRouteProp = RouteProp<LeaveDetailsRouteParams, 'LeaveDetails'>;
 export const LeaveDetailsScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<LeaveDetailsRouteProp>();
-  const { leaveId, leave: legacyLeave } = route.params;
+  const { leaveId, leave: legacyLeave, canApprove = false } = route.params;
 
   const [leaveDetail, setLeaveDetail] = useState<LeaveApplication | null>(null);
   const [loading, setLoading] = useState(true);
@@ -96,7 +97,7 @@ export const LeaveDetailsScreen: React.FC = () => {
           onPress: async () => {
             setActionLoading(true);
             try {
-              await leaveService.rejectLeave(leaveDetail!.id, 'Rejected by manager');
+              await leaveService.rejectLeave(leaveDetail!.id, 'Rejected by owner');
               Alert.alert('Success', 'Leave rejected');
               navigation.goBack();
             } catch (err: any) {
@@ -292,8 +293,8 @@ export const LeaveDetailsScreen: React.FC = () => {
             </View>
           )}
 
-          {/* Action Buttons for Pending */}
-          {leaveDetail.status === STATUSES.PENDING && !actionLoading && (
+          {/* Action Buttons for Pending (owner only) */}
+          {leaveDetail.status === STATUSES.PENDING && canApprove && !actionLoading && (
             <View style={styles.actionButtons}>
               <TouchableOpacity style={styles.cancelButton} onPress={handleReject}>
                 <Text style={styles.cancelButtonText}>Reject</Text>

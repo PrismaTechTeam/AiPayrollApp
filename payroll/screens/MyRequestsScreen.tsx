@@ -1,26 +1,33 @@
+/**
+ * My Requests Screen (Employee View)
+ * Display employee's own submitted requests with status filtering and cancel action
+ */
+
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  StatusBar,
   FlatList,
   TouchableOpacity,
-  ActivityIndicator,
+  StatusBar,
   Alert,
+  ActivityIndicator,
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { useNavigation } from '@react-navigation/native';
 import { Header } from '../components/requests';
 import { BottomNavBar } from '../components/BottomNavBar';
 import requestService, { EmployeeRequest } from '../api/services/requestService';
+import { STATUSES, STATUS_COLORS } from '../constants/statuses';
 
-type StatusFilter = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+type StatusFilter = 'ALL' | 'DRAFT' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 
 const STATUS_TABS: { key: StatusFilter; label: string }[] = [
   { key: 'ALL', label: 'All' },
+  { key: 'DRAFT', label: 'Draft' },
   { key: 'PENDING', label: 'Pending' },
   { key: 'APPROVED', label: 'Approved' },
   { key: 'REJECTED', label: 'Rejected' },
@@ -28,18 +35,13 @@ const STATUS_TABS: { key: StatusFilter; label: string }[] = [
 ];
 
 const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'PENDING':
-      return '#FF9800';
-    case 'APPROVED':
-      return '#4CAF50';
-    case 'REJECTED':
-      return '#F44336';
-    case 'CANCELLED':
-      return '#9E9E9E';
-    default:
-      return '#9E9E9E';
-  }
+  const colors = STATUS_COLORS[status as keyof typeof STATUS_COLORS];
+  return colors?.text || '#9E9E9E';
+};
+
+const getStatusBg = (status: string) => {
+  const colors = STATUS_COLORS[status as keyof typeof STATUS_COLORS];
+  return colors?.bg || '#F5F5F5';
 };
 
 const formatDate = (dateStr: string | null) => {
@@ -52,12 +54,8 @@ const formatDate = (dateStr: string | null) => {
   });
 };
 
-interface RequestsScreenProps {
-  navigation?: any;
-}
-
-export const RequestsScreen: React.FC<RequestsScreenProps> = ({ navigation: navProp }) => {
-  const navigation = navProp || useNavigation();
+export const MyRequestsScreen: React.FC = () => {
+  const navigation = useNavigation();
   const [activeTab, setActiveTab] = useState<StatusFilter>('ALL');
   const [requests, setRequests] = useState<EmployeeRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,7 +68,8 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({ navigation: navP
       setLoading(true);
     }
     try {
-      const result = await requestService.getAllRequests({ pageSize: 100 });
+      const status = activeTab === 'ALL' ? undefined : activeTab;
+      const result = await requestService.getApplications({ pageSize: 100, status });
       setRequests(result.items);
     } catch (error) {
       console.error('Failed to fetch requests:', error);
@@ -79,7 +78,7 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({ navigation: navP
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [activeTab]);
 
   useEffect(() => {
     fetchRequests();
@@ -90,55 +89,29 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({ navigation: navP
       ? requests
       : requests.filter((r) => r.status === activeTab);
 
-  const handleApprove = (requestId: string) => {
-    Alert.alert('Approve Request', 'Are you sure you want to approve this request?', [
-      { text: 'Cancel', style: 'cancel' },
+  const handleCancel = (requestId: string) => {
+    Alert.alert('Cancel Request', 'Are you sure you want to cancel this request?', [
+      { text: 'No', style: 'cancel' },
       {
-        text: 'Approve',
+        text: 'Yes, Cancel',
+        style: 'destructive',
         onPress: async () => {
           try {
-            await requestService.approveRequest(requestId);
-            Alert.alert('Success', 'Request approved successfully.');
+            await requestService.cancelApplication(requestId);
+            Alert.alert('Success', 'Request cancelled successfully.');
             fetchRequests();
           } catch (error) {
-            console.error('Failed to approve request:', error);
-            Alert.alert('Error', 'Failed to approve request. Please try again.');
+            console.error('Failed to cancel request:', error);
+            Alert.alert('Error', 'Failed to cancel request. Please try again.');
           }
         },
       },
     ]);
   };
 
-  const handleReject = (requestId: string) => {
-    Alert.prompt(
-      'Reject Request',
-      'Please provide a reason for rejection:',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reject',
-          style: 'destructive',
-          onPress: async (reason?: string) => {
-            try {
-              await requestService.rejectRequest(requestId, reason || 'No reason provided');
-              Alert.alert('Success', 'Request rejected successfully.');
-              fetchRequests();
-            } catch (error) {
-              console.error('Failed to reject request:', error);
-              Alert.alert('Error', 'Failed to reject request. Please try again.');
-            }
-          },
-        },
-      ],
-      'plain-text',
-      '',
-      'default'
-    );
-  };
-
   const handleViewDetails = (request: EmployeeRequest) => {
     try {
-      navigation?.navigate('RequestDetails', { request, canApprove: true });
+      (navigation as any).navigate('RequestDetails', { request, canApprove: false });
     } catch (error) {
       console.error('Navigation error:', error);
     }
@@ -146,6 +119,7 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({ navigation: navP
 
   const renderRequestItem = ({ item }: { item: EmployeeRequest }) => {
     const statusColor = getStatusColor(item.status);
+    const statusBg = getStatusBg(item.status);
     return (
       <TouchableOpacity
         style={styles.requestCard}
@@ -153,59 +127,55 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({ navigation: navP
         activeOpacity={0.7}
       >
         <View style={styles.cardHeader}>
-          <View style={styles.avatarContainer}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarInitial}>
-                {(item.employeeName || 'U').charAt(0).toUpperCase()}
-              </Text>
-            </View>
+          <View style={styles.iconContainer}>
+            <MaterialCommunityIcons name="file-document-outline" size={24} color="#4285F4" />
           </View>
           <View style={styles.cardInfo}>
-            <Text style={styles.employeeName} numberOfLines={1}>
-              {item.employeeName || 'Unknown Employee'}
-            </Text>
             <Text style={styles.requestType} numberOfLines={1}>
               {item.requestType}
             </Text>
+            <Text style={styles.requestDate}>
+              Submitted {formatDate(item.createdAt)}
+            </Text>
           </View>
-          <View
-            style={[
-              styles.statusBadge,
-              { backgroundColor: statusColor + '20' },
-            ]}
-          >
+          <View style={[styles.statusBadge, { backgroundColor: statusBg }]}>
             <Text style={[styles.statusText, { color: statusColor }]}>
               {item.status}
             </Text>
           </View>
         </View>
 
+        {item.notes && (
+          <Text style={styles.notesText} numberOfLines={2}>
+            {item.notes}
+          </Text>
+        )}
+
         <View style={styles.cardDetails}>
-          <View style={styles.detailItem}>
-            <MaterialCommunityIcons name="calendar" size={14} color="#999" />
-            <Text style={styles.detailText}>{formatDate(item.startDate)}</Text>
-          </View>
-          <View style={styles.detailItem}>
-            <MaterialCommunityIcons name="clock-outline" size={14} color="#999" />
-            <Text style={styles.detailText}>{formatDate(item.createdAt)}</Text>
-          </View>
+          {item.startDate && (
+            <View style={styles.detailItem}>
+              <MaterialCommunityIcons name="calendar" size={14} color="#999" />
+              <Text style={styles.detailText}>{formatDate(item.startDate)}</Text>
+            </View>
+          )}
+          {item.rejectionReason && (
+            <View style={styles.detailItem}>
+              <MaterialCommunityIcons name="information-outline" size={14} color="#F44336" />
+              <Text style={[styles.detailText, { color: '#F44336' }]} numberOfLines={1}>
+                {item.rejectionReason}
+              </Text>
+            </View>
+          )}
         </View>
 
-        {item.status === 'PENDING' && (
+        {item.status === STATUSES.PENDING && (
           <View style={styles.cardActions}>
             <TouchableOpacity
-              style={[styles.cardActionButton, styles.rejectActionButton]}
-              onPress={() => handleReject(item.id)}
+              style={styles.cancelButton}
+              onPress={() => handleCancel(item.id)}
             >
-              <MaterialCommunityIcons name="close" size={16} color="#FF5252" />
-              <Text style={[styles.cardActionText, { color: '#FF5252' }]}>Reject</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.cardActionButton, styles.approveActionButton]}
-              onPress={() => handleApprove(item.id)}
-            >
-              <MaterialCommunityIcons name="check" size={16} color="#4CAF50" />
-              <Text style={[styles.cardActionText, { color: '#4CAF50' }]}>Approve</Text>
+              <MaterialCommunityIcons name="close-circle-outline" size={16} color="#FF5252" />
+              <Text style={styles.cancelButtonText}>Cancel Request</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -217,16 +187,14 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({ navigation: navP
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      {/* Header with Safe Area */}
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <Header
-          title="Request Approval"
-          onBackPress={() => navigation?.goBack()}
+          title="My Requests"
+          onBackPress={() => navigation.goBack()}
           showBackButton={true}
         />
       </SafeAreaView>
 
-      {/* Content Area */}
       <View style={styles.content}>
         {/* Filter Tabs */}
         <View style={styles.filterContainer}>
@@ -268,6 +236,11 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({ navigation: navP
             <View style={styles.centerContainer}>
               <MaterialCommunityIcons name="file-document-outline" size={48} color="#CCC" />
               <Text style={styles.emptyText}>No requests found</Text>
+              <Text style={styles.emptySubtext}>
+                {activeTab === 'ALL'
+                  ? 'Create your first request using the + button'
+                  : `No ${activeTab.toLowerCase()} requests`}
+              </Text>
             </View>
           ) : (
             <FlatList
@@ -289,7 +262,14 @@ export const RequestsScreen: React.FC<RequestsScreenProps> = ({ navigation: navP
         </View>
       </View>
 
-      {/* Bottom Navigation Bar */}
+      {/* FAB - Create Request */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => (navigation as any).navigate('CreateRequest')}
+      >
+        <MaterialCommunityIcons name="plus" size={28} color="#FFFFFF" />
+      </TouchableOpacity>
+
       <BottomNavBar activeScreen="requests" />
     </View>
   );
@@ -352,11 +332,19 @@ const styles = StyleSheet.create({
   emptyText: {
     marginTop: 12,
     fontSize: 16,
+    fontWeight: '600',
     color: '#999',
+  },
+  emptySubtext: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#CCC',
+    textAlign: 'center',
+    paddingHorizontal: 40,
   },
   requestList: {
     padding: 16,
-    gap: 12,
+    paddingBottom: 100,
   },
   requestCard: {
     backgroundColor: '#FFFFFF',
@@ -373,31 +361,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  avatarContainer: {
-    marginRight: 12,
-  },
-  avatar: {
+  iconContainer: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#E0E0E0',
+    backgroundColor: '#E3F2FD',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  avatarInitial: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#666',
+    marginRight: 12,
   },
   cardInfo: {
     flex: 1,
   },
-  employeeName: {
+  requestType: {
     fontSize: 16,
     fontWeight: '600',
     color: '#000',
   },
-  requestType: {
+  requestDate: {
     fontSize: 13,
     color: '#666',
     marginTop: 2,
@@ -411,6 +392,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
+  notesText: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 8,
+    lineHeight: 18,
+  },
   cardDetails: {
     flexDirection: 'row',
     marginTop: 12,
@@ -420,38 +407,49 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    flex: 1,
   },
   detailText: {
     fontSize: 12,
     color: '#999',
+    flex: 1,
   },
   cardActions: {
-    flexDirection: 'row',
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: '#F0F0F0',
-    gap: 12,
   },
-  cardActionButton: {
-    flex: 1,
+  cancelButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 8,
     borderRadius: 8,
+    backgroundColor: '#FF525210',
     gap: 4,
   },
-  approveActionButton: {
-    backgroundColor: '#4CAF5010',
-  },
-  rejectActionButton: {
-    backgroundColor: '#FF525210',
-  },
-  cardActionText: {
+  cancelButtonText: {
     fontSize: 14,
     fontWeight: '600',
+    color: '#FF5252',
+  },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 100,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#4285F4',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
 });
 
-export default RequestsScreen;
+export default MyRequestsScreen;

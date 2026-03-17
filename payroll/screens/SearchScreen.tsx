@@ -13,7 +13,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { ServiceCard } from '../components/ServiceCard';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
-import { USER_ROLES } from '../constants/userRoles';
+import { isOwner as checkIsOwner } from '../constants/userRoles';
 
 interface Service {
   id: string;
@@ -23,7 +23,7 @@ interface Service {
   route: string;
 }
 
-const managerServices: Service[] = [
+const ownerServices: Service[] = [
   {
     id: '1',
     title: 'Request Approval',
@@ -40,27 +40,34 @@ const managerServices: Service[] = [
   },
   {
     id: '3',
-    title: 'Payslip Management',
-    icon: 'file-document-multiple',
-    color: '#FFB300',
-    route: 'Payslip',
-  },
-  {
-    id: '4',
     title: 'Attendance',
     icon: 'clock-outline',
     color: '#2196F3',
     route: 'Attendance',
   },
   {
-    id: '5',
+    id: '4',
     title: 'Claims Approval',
     icon: 'receipt-text',
     color: '#00897B',
     route: 'ClaimsApproval',
   },
   {
+    id: '5',
+    title: 'Request Types',
+    icon: 'format-list-bulleted-type',
+    color: '#7B1FA2',
+    route: 'RequestTypes',
+  },
+  {
     id: '6',
+    title: 'Claim Types',
+    icon: 'receipt-text-plus',
+    color: '#E65100',
+    route: 'ClaimTypes',
+  },
+  {
+    id: '7',
     title: 'Employee Map',
     icon: 'map-marker-radius',
     color: '#00BCD4',
@@ -111,9 +118,9 @@ export const SearchScreen: React.FC = () => {
   const { currentRole } = usePayrollAuth();
   const [searchQuery, setSearchQuery] = useState('');
 
-  const isManager = currentRole === USER_ROLES.MANAGER;
-  const services = isManager ? managerServices : employeeServices;
-  const screenTitle = isManager ? 'Search Services' : 'Search Categories';
+  const isOwner = checkIsOwner(currentRole);
+  const services = isOwner ? ownerServices : employeeServices;
+  const screenTitle = isOwner ? 'Search Services' : 'Search Categories';
 
   const filteredServices = services.filter((service) =>
     service.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -179,10 +186,10 @@ export const SearchScreen: React.FC = () => {
                 color="#E0E0E0"
               />
               <Text style={styles.emptyStateText}>
-                {isManager ? 'Search for services above' : 'Search for categories above'}
+                {isOwner ? 'Search for services above' : 'Search for categories above'}
               </Text>
               <Text style={styles.emptyStateSubtext}>
-                {isManager ? 'Type to find the service you need' : 'Type to find the category you need'}
+                {isOwner ? 'Type to find the service you need' : 'Type to find the category you need'}
               </Text>
             </View>
           ) : filteredServices.length === 0 ? (
@@ -201,8 +208,8 @@ export const SearchScreen: React.FC = () => {
             <View style={styles.resultsContainer}>
               <Text style={styles.resultsTitle}>
                 {filteredServices.length} {filteredServices.length === 1 
-                  ? (isManager ? 'service' : 'category') 
-                  : (isManager ? 'services' : 'categories')} found
+                  ? (isOwner ? 'service' : 'category') 
+                  : (isOwner ? 'services' : 'categories')} found
               </Text>
               <ScrollView
                 horizontal

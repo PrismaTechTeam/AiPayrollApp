@@ -73,8 +73,16 @@ export const EditProfileScreen: React.FC = () => {
     }
   };
 
-  const getRoleColor = (role: string) => role === 'Manager' ? '#FF5722' : '#4285F4';
-  const getRoleIcon = (role: string) => role === 'Manager' ? 'shield-account' : 'account';
+  const getRoleColor = (role: string) => {
+    const lower = role.toLowerCase();
+    return (lower.includes('admin') || lower.includes('owner') || lower.includes('hr'))
+      ? '#FF5722' : '#4285F4';
+  };
+  const getRoleIcon = (role: string) => {
+    const lower = role.toLowerCase();
+    return (lower.includes('admin') || lower.includes('owner') || lower.includes('hr'))
+      ? 'shield-account' : 'account';
+  };
 
   const handleSave = async () => {
     setSaving(true);
