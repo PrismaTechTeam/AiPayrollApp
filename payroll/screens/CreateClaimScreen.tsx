@@ -331,17 +331,17 @@ export const CreateClaimScreen: React.FC = () => {
 
               {showTypeDropdown && (
                 <View style={styles.dropdownMenu}>
-                  {claimTypes.map((type) => (
+                  {claimTypes.map((type, index) => (
                     <TouchableOpacity
                       key={type.id}
-                      style={styles.dropdownItem}
+                      style={[styles.dropdownItem, index === claimTypes.length - 1 && { borderBottomWidth: 0 }]}
                       onPress={() => {
                         setSelectedType(type);
                         setShowTypeDropdown(false);
                       }}
                     >
-                      <View>
-                        <Text style={styles.dropdownItemText}>{type.name}</Text>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={styles.dropdownItemText} numberOfLines={2}>{type.name}</Text>
                         {type.maxAmount && (
                           <Text style={styles.dropdownItemHint}>Max: RM {type.maxAmount.toFixed(2)}</Text>
                         )}
@@ -574,11 +574,11 @@ const styles = StyleSheet.create({
   input: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, fontSize: 15, color: '#000', borderWidth: 1, borderColor: '#E0E0E0' },
   textArea: { height: 100, paddingTop: 16 },
   dropdown: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#E0E0E0' },
-  dropdownText: { fontSize: 15, color: '#000' },
+  dropdownText: { fontSize: 15, color: '#000', flex: 1, marginRight: 8 },
   placeholder: { color: '#999' },
-  dropdownMenu: { backgroundColor: '#FFFFFF', borderRadius: 12, marginTop: 8, borderWidth: 1, borderColor: '#E0E0E0', maxHeight: 300 },
+  dropdownMenu: { backgroundColor: '#FFFFFF', borderRadius: 12, marginTop: 8, borderWidth: 1, borderColor: '#E0E0E0' },
   dropdownItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
-  dropdownItemText: { fontSize: 15, color: '#000' },
+  dropdownItemText: { fontSize: 16, color: '#000' },
   dropdownItemHint: { fontSize: 12, color: '#999', marginTop: 2 },
   amountInputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 12, paddingHorizontal: 16, borderWidth: 1, borderColor: '#E0E0E0' },
   currencySymbol: { fontSize: 16, fontWeight: '600', color: '#000', marginRight: 8 },

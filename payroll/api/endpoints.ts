@@ -30,6 +30,7 @@ export const ENDPOINTS = {
     BALANCE: '/api/mobile/leave/balance',
     APPLICATIONS: '/api/mobile/leave/applications',
     PENDING_APPROVALS: '/api/mobile/leave/pending-approvals',
+    APPROVER_LEAVES: '/api/mobile/leave/approver-leaves',
   },
   ATTENDANCE: {
     CLOCK: '/api/mobile/attendance/clock',
@@ -71,6 +72,12 @@ export const ENDPOINTS = {
     PREFERENCES: '/api/mobile/notifications/preferences',
   },
   // Web API endpoints (Owner/HR role - same as web dashboard)
+  WEB_LEAVE: {
+    APPLICATIONS: '/api/Leave/applications',         // GET (list), POST (create)
+    APPLICATION_BY_ID: '/api/Leave/applications',    // GET /{id}, PUT /{id}, DELETE /{id}
+    APPROVE: '/api/Leave/applications',              // POST /{id}/approve
+    REJECT: '/api/Leave/applications',               // POST /{id}/reject
+  },
   WEB_REQUEST: {
     APPLICATIONS: '/api/employee-requests',
     TYPES: '/api/request-types',

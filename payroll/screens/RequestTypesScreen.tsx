@@ -90,7 +90,7 @@ export const RequestTypesScreen: React.FC = () => {
           shortCode: shortCode.trim(),
           description: description.trim() || undefined,
           category: category.trim() || undefined,
-          status: 'Active',
+          status: 'ACTIVE',
         });
         Alert.alert('Success', 'Request type created');
       }

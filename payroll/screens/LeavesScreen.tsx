@@ -5,7 +5,9 @@ import { useNavigation } from '@react-navigation/native';
 import { Header, FilterTabs, LeaveList } from '../components/leaves';
 import { BottomNavBar } from '../components/BottomNavBar';
 import leaveService, { LeaveApplication } from '../api/services/leaveService';
-import { STATUSES, LEAVE_FILTERS } from '../constants/statuses';
+import { usePayrollAuth } from '../context/PayrollAuthContext';
+import { isOwner as checkIsOwner } from '../constants/userRoles';
+import { STATUSES } from '../constants/statuses';
 
 interface LeavesScreenProps {
   navigation?: any;
@@ -13,6 +15,8 @@ interface LeavesScreenProps {
 
 export const LeavesScreen: React.FC<LeavesScreenProps> = ({ navigation: navProp }) => {
   const navigation = navProp || useNavigation();
+  const { currentRole } = usePayrollAuth();
+  const isHR = checkIsOwner(currentRole); // Owner/HR/Admin sees all tenant leaves
   const [activeTab, setActiveTab] = useState<string>('ALL');
   const [leaves, setLeaves] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -21,19 +25,30 @@ export const LeavesScreen: React.FC<LeavesScreenProps> = ({ navigation: navProp 
   const fetchLeaves = useCallback(async () => {
     try {
       setLoading(true);
-      const status = activeTab === 'ALL' ? undefined : activeTab;
-      const result = await leaveService.getPendingApprovals({ page: 1, pageSize: 50 });
-      // Map to the shape expected by LeaveList component
-      const mapped = (result.items || [])
-        .filter(item => activeTab === 'ALL' || item.status === activeTab)
-        .map(mapLeaveToLegacy);
-      setLeaves(mapped);
+
+      const fetchFn = isHR
+        ? leaveService.getAllLeaveApplications.bind(leaveService)
+        : leaveService.getApproverLeaves.bind(leaveService);
+
+      if (activeTab === 'CANCELLED') {
+        // Cancelled tab: show both CANCELLED and WITHDRAWN leaves
+        const [cancelled, withdrawn] = await Promise.all([
+          fetchFn({ page: 1, pageSize: 50, status: 'CANCELLED' }),
+          fetchFn({ page: 1, pageSize: 50, status: 'WITHDRAWN' }),
+        ]);
+        const combined = [...(cancelled.items || []), ...(withdrawn.items || [])];
+        setLeaves(combined.map(mapLeaveToLegacy));
+      } else {
+        const status = activeTab === 'ALL' ? undefined : activeTab;
+        const result = await fetchFn({ page: 1, pageSize: 50, status });
+        setLeaves((result.items || []).map(mapLeaveToLegacy));
+      }
     } catch (err: any) {
       console.error('Failed to load leaves:', err);
     } finally {
       setLoading(false);
     }
-  }, [activeTab]);
+  }, [activeTab, isHR]);
 
   useEffect(() => {
     fetchLeaves();
@@ -70,9 +85,9 @@ export const LeavesScreen: React.FC<LeavesScreenProps> = ({ navigation: navProp 
     switch (status) {
       case STATUSES.PENDING: return 'requested';
       case STATUSES.APPROVED: return 'active';
-      case STATUSES.REJECTED:
-      case STATUSES.CANCELLED:
-      case STATUSES.WITHDRAWN: return 'cancelled';
+      case STATUSES.REJECTED: return 'rejected';
+      case STATUSES.CANCELLED: return 'cancelled';
+      case STATUSES.WITHDRAWN: return 'cancelled'; // Show withdrawn as cancelled for HR view
       default: return 'requested';
     }
   };
@@ -135,7 +150,7 @@ export const LeavesScreen: React.FC<LeavesScreenProps> = ({ navigation: navProp 
       </SafeAreaView>
 
       <View style={styles.content}>
-        <FilterTabs activeTab={activeTab as any} onTabChange={setActiveTab as any} />
+        <FilterTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
         <View style={styles.listContainer}>
           {loading ? (
@@ -150,10 +165,6 @@ export const LeavesScreen: React.FC<LeavesScreenProps> = ({ navigation: navProp 
             <LeaveList
               leaves={leaves}
               onPress={handleViewDetails}
-              onApprove={handleApprove}
-              onReject={handleReject}
-              onCancel={undefined}
-              onRestore={handleRestore}
             />
           )}
         </View>

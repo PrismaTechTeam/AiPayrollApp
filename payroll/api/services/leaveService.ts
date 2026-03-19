@@ -36,6 +36,19 @@ export interface LeaveType {
   attachmentAfterDays: number | null;
 }
 
+export interface LeaveApprovalStep {
+  id: string;
+  applicationId: string;
+  stepOrder: number;
+  stepName: string;
+  approverId: string | null;
+  approverRoleId: string | null;
+  approverName: string | null;
+  status: string;
+  approvedAt: string | null;
+  comments: string | null;
+}
+
 export interface LeaveApplication {
   id: string;
   employeeId: string;
@@ -65,6 +78,7 @@ export interface LeaveApplication {
   totalApprovalSteps: number;
   approvedAt: string | null;
   approvedByEmployeeName: string | null;
+  approvals: LeaveApprovalStep[];
   createdAt: string;
 }
 
@@ -128,6 +142,29 @@ const leaveService = {
 
   async getPendingApprovals(params?: { page?: number; pageSize?: number }): Promise<{ items: LeaveApplication[]; total: number }> {
     const response = await axiosInstance.get(ENDPOINTS.LEAVE.PENDING_APPROVALS, { params });
+    return response.data.content;
+  },
+
+  async getApproverLeaves(params?: { page?: number; pageSize?: number; status?: string }): Promise<{ items: LeaveApplication[]; total: number }> {
+    const response = await axiosInstance.get(ENDPOINTS.LEAVE.APPROVER_LEAVES, { params });
+    return response.data.content;
+  },
+
+  /**
+   * Get ALL leave applications in the tenant (HR/Owner view).
+   * Uses the same web API as the web dashboard: GET /api/Leave/applications
+   */
+  async getAllLeaveApplications(params?: { page?: number; pageSize?: number; status?: string }): Promise<{ items: LeaveApplication[]; total: number }> {
+    const response = await axiosInstance.get(ENDPOINTS.WEB_LEAVE.APPLICATIONS, { params });
+    return response.data.content;
+  },
+
+  /**
+   * Get a leave application by ID using the web API (HR/Owner view).
+   * No employee-level access check — just requires LEAVE_APPLICATION.VIEW right.
+   */
+  async getApplicationByIdAsHR(id: string): Promise<LeaveApplication> {
+    const response = await axiosInstance.get(`${ENDPOINTS.WEB_LEAVE.APPLICATION_BY_ID}/${id}`);
     return response.data.content;
   },
 

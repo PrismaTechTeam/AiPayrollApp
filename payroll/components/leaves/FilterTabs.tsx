@@ -4,18 +4,28 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { LeaveFilterTabsProps } from '../../types/leave.types';
-
-const TABS: Array<{ label: string; value: 'requested' | 'active' | 'cancelled' }> = [
-  { label: 'Requested', value: 'requested' },
-  { label: 'Active', value: 'active' },
-  { label: 'Cancelled', value: 'cancelled' },
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+const TABS: Array<{ label: string; value: string }> = [
+  { label: 'All', value: 'ALL' },
+  { label: 'Pending', value: 'PENDING' },
+  { label: 'Approved', value: 'APPROVED' },
+  { label: 'Rejected', value: 'REJECTED' },
+  { label: 'Cancelled', value: 'CANCELLED' },
 ];
 
-export const FilterTabs: React.FC<LeaveFilterTabsProps> = ({ activeTab, onTabChange }) => {
+interface FilterTabsProps {
+  activeTab: string;
+  onTabChange: (tab: string) => void;
+}
+
+export const FilterTabs: React.FC<FilterTabsProps> = ({ activeTab, onTabChange }) => {
   return (
-    <View style={styles.filterContainer}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.scrollView}
+      contentContainerStyle={styles.filterContainer}
+    >
       {TABS.map((tab) => {
         const isActive = activeTab === tab.value;
         return (
@@ -24,47 +34,42 @@ export const FilterTabs: React.FC<LeaveFilterTabsProps> = ({ activeTab, onTabCha
             style={[styles.filterButton, isActive && styles.filterButtonActive]}
             onPress={() => onTabChange(tab.value)}
           >
-            <Text 
-              style={[styles.filterText, isActive && styles.filterTextActive]}
-              numberOfLines={1}
-              adjustsFontSizeToFit={false}
-            >
+            <Text style={[styles.filterText, isActive && styles.filterTextActive]}>
               {tab.label}
             </Text>
           </TouchableOpacity>
         );
       })}
-    </View>
+    </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
+  scrollView: {
+    backgroundColor: '#FFFFFF',
+    flexGrow: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
   filterContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    gap: 12,
-    backgroundColor: '#F5F5F5',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
+    alignItems: 'center',
   },
   filterButton: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 40,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: '#F5F5F5',
   },
   filterButtonActive: {
     backgroundColor: '#4285F4',
   },
   filterText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '500',
     color: '#666',
-    includeFontPadding: false,
-    textAlign: 'center',
   },
   filterTextActive: {
     color: '#FFFFFF',

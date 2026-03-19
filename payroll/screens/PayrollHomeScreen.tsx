@@ -145,11 +145,12 @@ export const PayrollHomeScreen: React.FC<PayrollHomeScreenProps> = ({ navigation
                 <ServiceCard title="My Payslip" icon="file-document" color="#FFB300" onPress={() => navigation?.navigate('MyPayslip')} />
               )}
 
-              {isOwner ? (
+              {/* TODO: Attendance - hidden until fully implemented */}
+              {/* {isOwner ? (
                 <ServiceCard title="Attendance" icon="clock-outline" color="#2196F3" onPress={() => navigation?.navigate('Attendance')} />
               ) : (
                 <ServiceCard title="Check-In" icon="fingerprint" color="#00BCD4" onPress={() => navigation?.navigate('AttendanceCheckIn')} />
-              )}
+              )} */}
 
               {isOwner ? (
                 <ServiceCard title="Claims Approval" icon="receipt-text" color="#00897B" onPress={() => navigation?.navigate('ClaimsApproval')} />
@@ -165,9 +166,10 @@ export const PayrollHomeScreen: React.FC<PayrollHomeScreenProps> = ({ navigation
                 <ServiceCard title="Claim Types" icon="receipt-text-plus" color="#E65100" onPress={() => navigation?.navigate('ClaimTypes')} />
               )}
 
-              {isOwner && (
+              {/* TODO: Employee Map - hidden until attendance is implemented */}
+              {/* {isOwner && (
                 <ServiceCard title="Employee Map" icon="map-marker-radius" color="#00BCD4" onPress={() => navigation?.navigate('EmployeeList')} />
-              )}
+              )} */}
             </ScrollView>
           </View>
 
@@ -181,45 +183,63 @@ export const PayrollHomeScreen: React.FC<PayrollHomeScreenProps> = ({ navigation
                 </TouchableOpacity>
               </View>
 
-              {(dashboard?.recentLeaveApplications ?? []).length === 0 ? (
+              {(dashboard?.recentLeaveApplications ?? [])
+                .filter((leave) => leave.status === 'PENDING')
+                .length === 0 ? (
                 <Text style={styles.noDataText}>No pending leave applications</Text>
               ) : (
-                (dashboard?.recentLeaveApplications ?? []).slice(0, 3).map((leave) => (
-                  <LeaveApplicationCard
-                    key={leave.id}
-                    name={leave.employeeName}
-                    date={formatLeaveDate(leave.startDate, leave.endDate)}
-                    type={`${leave.leaveType} Request`}
-                  />
-                ))
+                (dashboard?.recentLeaveApplications ?? [])
+                  .filter((leave) => leave.status === 'PENDING')
+                  .slice(0, 2)
+                  .map((leave) => (
+                    <LeaveApplicationCard
+                      key={leave.id}
+                      name={leave.employeeName}
+                      date={formatLeaveDate(leave.startDate, leave.endDate)}
+                      type={`${leave.leaveType} Request`}
+                    />
+                  ))
               )}
             </View>
           )}
 
-          {/* Today's Attendance Section */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Todays Attendance</Text>
-            <View style={styles.attendanceContainer}>
-              <AttendanceCard
-                label="Presents"
-                count={attendance.present}
-                color="#4285F4"
-                onPress={() => navigation?.navigate('TodaysAttendance', { filter: 'Present' })}
-              />
-              <AttendanceCard
-                label="Late"
-                count={attendance.late}
-                color="#FFB300"
-                onPress={() => navigation?.navigate('TodaysAttendance', { filter: 'Late' })}
-              />
-              <AttendanceCard
-                label="Absent"
-                count={attendance.absent}
-                color="#FF5252"
-                onPress={() => navigation?.navigate('TodaysAttendance', { filter: 'Absent' })}
-              />
+          {/* TODO: Today's Attendance Section - hidden until fully implemented */}
+          {/* {isOwner && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Todays Attendance</Text>
+              <View style={styles.attendanceContainer}>
+                <AttendanceCard
+                  label="Presents"
+                  count={attendance.present}
+                  color="#4285F4"
+                  onPress={() => navigation?.navigate('TodaysAttendance', { filter: 'Present' })}
+                />
+                <AttendanceCard
+                  label="Late"
+                  count={attendance.late}
+                  color="#FFB300"
+                  onPress={() => navigation?.navigate('TodaysAttendance', { filter: 'Late' })}
+                />
+                <AttendanceCard
+                  label="Absent"
+                  count={attendance.absent}
+                  color="#FF5252"
+                  onPress={() => navigation?.navigate('TodaysAttendance', { filter: 'Absent' })}
+                />
+              </View>
             </View>
-          </View>
+          )} */}
+          {/* TODO: Implement employee-side attendance summary and uncomment below */}
+          {/* {!isOwner && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>My Attendance</Text>
+              <View style={styles.attendanceContainer}>
+                <AttendanceCard label="Presents" count={0} color="#4285F4" />
+                <AttendanceCard label="Late" count={0} color="#FFB300" />
+                <AttendanceCard label="Absent" count={0} color="#FF5252" />
+              </View>
+            </View>
+          )} */}
         </ScrollView>
       </View>
 

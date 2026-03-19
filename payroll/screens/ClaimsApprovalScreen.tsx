@@ -152,6 +152,7 @@ export const ClaimsApprovalScreen: React.FC = () => {
       <FilterTabs
         selectedFilter={selectedFilter}
         onFilterChange={setSelectedFilter}
+        filters={CLAIM_FILTERS.filter(f => f.key !== 'DRAFT')}
       />
 
       {loading ? (

@@ -18,10 +18,17 @@ export const LeaveCard: React.FC<LeaveCardProps> = ({
   onViewDetails,
 }) => {
   // Determine if action buttons should be shown based on status AND role
-  // Only show approve/reject if status is 'requested' AND callbacks are provided (Manager role)
+  // Only show approve/reject if status is 'requested' (PENDING) AND callbacks are provided (Manager role)
   const showApproveReject = leave.status === 'requested' && (onApprove || onReject);
-  const isActive = leave.status === 'active';
-  const isCancelled = leave.status === 'cancelled';
+
+  const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
+    requested: { label: 'Pending', bg: '#FFF3E0', text: '#E65100' },
+    active: { label: 'Approved', bg: '#E8F5E9', text: '#2E7D32' },
+    cancelled: { label: 'Cancelled', bg: '#FFEBEE', text: '#C62828' },
+    rejected: { label: 'Rejected', bg: '#FFEBEE', text: '#C62828' },
+    withdrawn: { label: 'Withdrawn', bg: '#F3E5F5', text: '#7B1FA2' },
+  };
+  const statusInfo = STATUS_CONFIG[leave.status || ''] || { label: leave.status || 'Unknown', bg: '#F5F5F5', text: '#666' };
 
   const handleCardPress = () => {
     console.log('🖱️ [LeaveCard] Card pressed for leave:', leave.id);
@@ -89,42 +96,11 @@ export const LeaveCard: React.FC<LeaveCardProps> = ({
         {!showApproveReject && (
           <View style={styles.actionContainer}>
             {/* Status Badge */}
-            <View style={styles.statusBadge}>
-              <Text style={styles.statusText}>
-                {isActive ? 'Active' : 'Cancelled'}
+            <View style={[styles.statusBadge, { backgroundColor: statusInfo.bg }]}>
+              <Text style={[styles.statusText, { color: statusInfo.text }]}>
+                {statusInfo.label}
               </Text>
             </View>
-            
-            {/* Additional Actions for Active/Cancelled */}
-            {isActive && onCancel && (
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => onCancel(leave.id)}
-              >
-                <MaterialCommunityIcons name="close-circle" size={18} color="#FF5252" />
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-            )}
-            
-            {isCancelled && onRestore && (
-              <TouchableOpacity
-                style={styles.restoreButton}
-                onPress={() => onRestore(leave.id)}
-              >
-                <MaterialCommunityIcons name="restore" size={18} color="#4285F4" />
-                <Text style={styles.restoreButtonText}>Restore</Text>
-              </TouchableOpacity>
-            )}
-            
-            {/* View Details button for all statuses (if onPress not provided) */}
-            {!onPress && onViewDetails && (
-              <TouchableOpacity
-                style={styles.viewDetailsButton}
-                onPress={() => onViewDetails(leave.id)}
-              >
-                <MaterialCommunityIcons name="eye" size={16} color="#666" />
-              </TouchableOpacity>
-            )}
           </View>
         )}
       </View>
@@ -140,6 +116,11 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 12,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   avatarContainer: {
     marginRight: 12,

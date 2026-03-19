@@ -101,7 +101,7 @@ export const ClaimTypesScreen: React.FC = () => {
         await claimService.updateClaimType(editingType.id, payload);
         Alert.alert('Success', 'Claim type updated');
       } else {
-        await claimService.createClaimType({ ...payload, status: 'Active' });
+        await claimService.createClaimType({ ...payload, status: 'ACTIVE' });
         Alert.alert('Success', 'Claim type created');
       }
       setShowModal(false);
