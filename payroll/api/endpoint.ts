@@ -28,8 +28,8 @@ const getEnvVar = (key: string, fallback: string): string => {
 };
 
 // ⚠️ Cloudflare: Run ./start-tunnel.sh to auto-replace the URL below (must stay on one line for sed)
-const baseURL = getEnvVar('EXPO_PUBLIC_API_URL', 'https://productions-eden-shepherd-supplements.trycloudflare.com');
-const baseWebSocketUrl = getEnvVar('EXPO_PUBLIC_WEBSOCKET_URL', 'https://productions-eden-shepherd-supplements.trycloudflare.com');
+const baseURL = getEnvVar('EXPO_PUBLIC_API_URL', 'https://mysterious-sunshine-fancy-drops.trycloudflare.com');
+const baseWebSocketUrl = getEnvVar('EXPO_PUBLIC_WEBSOCKET_URL', 'https://mysterious-sunshine-fancy-drops.trycloudflare.com');
 
 export { baseURL, baseWebSocketUrl, ENDPOINTS };
 

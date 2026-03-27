@@ -7,11 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PayrollAuthProvider, usePayrollAuth } from './payroll/context/PayrollAuthContext';
 import { ThemeProvider } from './payroll/context/ThemeContext';
 import { LanguageProvider } from './payroll/context/LanguageContext';
-import {
-  addNotificationReceivedListener,
-  addNotificationResponseReceivedListener,
-  parseNotificationData,
-} from './payroll/services/pushNotificationHandler';
+import { NotificationProvider } from './payroll/components/NotificationProvider';
 
 // Auth screens
 import LoginScreen from './payroll/screens/LoginScreen';
@@ -87,28 +83,6 @@ function AuthenticatedApp() {
   const { user, isLoading, authStatus } = usePayrollAuth();
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
 
-  // Set up push notification listeners
-  useEffect(() => {
-    // Handle notification received while app is in foreground
-    const receivedSub = addNotificationReceivedListener((notification) => {
-      console.log('[Push] Notification received in foreground:', notification.request.content.title);
-    });
-
-    // Handle notification tap (opens specific screen)
-    const responseSub = addNotificationResponseReceivedListener((response) => {
-      const data = response.notification.request.content.data;
-      const { screen, params } = parseNotificationData(data);
-      if (screen && navigationRef.current) {
-        navigationRef.current.navigate(screen, params);
-      }
-    });
-
-    return () => {
-      receivedSub.remove();
-      responseSub.remove();
-    };
-  }, []);
-
   if (isLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#4285F4' }}>
@@ -122,6 +96,7 @@ function AuthenticatedApp() {
 
   return (
     <NavigationContainer linking={linking} ref={navigationRef}>
+      <NotificationProvider>
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
@@ -194,6 +169,7 @@ function AuthenticatedApp() {
           </>
         )}
       </Stack.Navigator>
+      </NotificationProvider>
     </NavigationContainer>
   );
 }
