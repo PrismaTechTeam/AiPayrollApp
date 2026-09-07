@@ -44,3 +44,4 @@ yarn-error.*
 # Cloudflare tunnel automation
 cloudflared-tunnel.log
 src/config/endpoint.ts.backup.*
+payroll/api/endpoint.ts.backup.*
