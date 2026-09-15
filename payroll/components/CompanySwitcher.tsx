@@ -1,169 +1,113 @@
 /**
- * Company Switcher Component
- * Allows users to switch between different companies
+ * Company Switcher
+ * The pill in the top bar naming the current company. Tapping it lists every
+ * company the person belongs to; picking one switches, and "Manage companies"
+ * goes to the home list.
  */
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Pressable, ActivityIndicator } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
+import { useDialog } from './ui/AppDialog';
+import { AUTH_COLORS as C } from './auth/AuthBackdrop';
+
+function initialsOf(name: string): string {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+}
 
 export const CompanySwitcher: React.FC = () => {
-  const { currentCompany, availableCompanies, switchCompany, user } = usePayrollAuth();
+  const { currentCompany, switchCompany, user } = usePayrollAuth();
   const navigation = useNavigation();
-  const [modalVisible, setModalVisible] = useState(false);
-  const [switching, setSwitching] = useState(false);
+  const dialog = useDialog();
+  const [open, setOpen] = useState(false);
+  const [switchingId, setSwitchingId] = useState<string | null>(null);
 
-  // Always show if user has at least one company
-  if (!currentCompany) {
-    return null;
-  }
-
-  const getCompanyInitials = (company: string): string => {
-    return company
-      .split(' ')
-      .map((word) => word[0])
-      .join('')
-      .toUpperCase()
-      .substring(0, 2);
-  };
+  if (!currentCompany) return null;
 
   const tenants = user?.availableTenants ?? [];
-  const hasMultipleTenants = tenants.length > 1;
 
-  const handleSwitchCompany = async (tenantId: string, tenantName: string) => {
+  const pick = async (tenantId: string, tenantName: string) => {
     if (tenantName === currentCompany) {
-      setModalVisible(false);
+      setOpen(false);
       return;
     }
-
-    setSwitching(true);
+    setSwitchingId(tenantId);
     try {
       await switchCompany(tenantId);
-      setModalVisible(false);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to switch company. Please try again.');
+      setOpen(false);
+    } catch {
+      await dialog.notify({ title: 'Could not switch company', message: 'Please try again.', tone: 'danger' });
     } finally {
-      setSwitching(false);
+      setSwitchingId(null);
     }
-  };
-
-  const handleGoToTenantHub = () => {
-    setModalVisible(false);
-    navigation.navigate('TenantHub' as never);
   };
 
   return (
     <>
-      <TouchableOpacity
-        style={styles.button}
-        onPress={() => setModalVisible(true)}
-      >
-        <View style={styles.iconContainer}>
-          <Text style={styles.iconText}>
-            {currentCompany ? getCompanyInitials(currentCompany) : 'CO'}
-          </Text>
+      <TouchableOpacity style={styles.button} onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel="Switch company">
+        <View style={styles.tile}>
+          <Text style={styles.tileText}>{initialsOf(currentCompany)}</Text>
         </View>
-        <Text style={styles.companyText} numberOfLines={1}>
-          {currentCompany || 'Company'}
-        </Text>
-        <MaterialCommunityIcons name="chevron-down" size={16} color="#FFFFFF" />
+        <Text style={styles.name} numberOfLines={1}>{currentCompany}</Text>
+        <MaterialCommunityIcons name="chevron-down" size={18} color={C.body} />
       </TouchableOpacity>
 
-      <Modal
-        visible={modalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setModalVisible(false)}
-        >
-          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Current Tenant</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <MaterialCommunityIcons name="close" size={24} color="#666" />
+      <Modal visible={open} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setOpen(false)}>
+        <View style={styles.backdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} accessibilityLabel="Dismiss" />
+          <View style={styles.sheet}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Your companies</Text>
+              <TouchableOpacity onPress={() => setOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Close">
+                <MaterialCommunityIcons name="close" size={22} color={C.body} />
               </TouchableOpacity>
             </View>
 
-            <View style={styles.companyList}>
-              {/* Show tenant list for switching if multiple */}
-              {hasMultipleTenants ? (
-                tenants.map((tenant) => {
-                  const isActive = tenant.name === currentCompany;
-                  return (
-                    <TouchableOpacity
-                      key={tenant.id}
-                      style={[
-                        styles.companyItem,
-                        isActive && styles.companyItemActive,
-                      ]}
-                      onPress={() => handleSwitchCompany(tenant.id, tenant.name)}
-                      disabled={switching}
-                    >
-                      <View style={styles.companyItemLeft}>
-                        <View style={styles.companyIconContainer}>
-                          <Text style={styles.companyIconText}>
-                            {getCompanyInitials(tenant.name)}
-                          </Text>
-                        </View>
-                        <View>
-                          <Text style={[
-                            styles.companyItemTitle,
-                            isActive && styles.companyItemTitleActive,
-                          ]}>
-                            {tenant.name}
-                          </Text>
-                          <Text style={styles.companyItemSubtitle}>
-                            {isActive ? 'Current tenant' : 'Tap to switch'}
-                          </Text>
-                        </View>
-                      </View>
-                      {isActive && (
-                        <View style={styles.activeIndicator}>
-                          <MaterialCommunityIcons name="check" size={16} color="#FFFFFF" />
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  );
-                })
-              ) : (
-                <View style={[styles.companyItem, styles.companyItemActive]}>
-                  <View style={styles.companyItemLeft}>
-                    <View style={styles.companyIconContainer}>
-                      <Text style={styles.companyIconText}>
-                        {getCompanyInitials(currentCompany)}
-                      </Text>
-                    </View>
-                    <View>
-                      <Text style={[styles.companyItemTitle, styles.companyItemTitleActive]}>
-                        {currentCompany}
-                      </Text>
-                      <Text style={styles.companyItemSubtitle}>Current tenant</Text>
-                    </View>
+            {tenants.map((t, index) => {
+              const active = t.name === currentCompany;
+              const busy = switchingId === t.id;
+              return (
+                <TouchableOpacity
+                  key={t.id}
+                  style={[styles.row, index < tenants.length - 1 && styles.rowDivider]}
+                  onPress={() => { void pick(t.id, t.name); }}
+                  disabled={switchingId !== null}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.rowTile, active && styles.rowTileActive]}>
+                    <Text style={[styles.rowTileText, active && styles.rowTileTextActive]}>{initialsOf(t.name)}</Text>
                   </View>
-                  <View style={styles.activeIndicator}>
-                    <MaterialCommunityIcons name="check" size={16} color="#FFFFFF" />
+                  <View style={styles.rowText}>
+                    <Text style={styles.rowName} numberOfLines={1}>{t.name}</Text>
+                    <Text style={styles.rowMeta}>{active ? 'Current' : t.role || 'Tap to switch'}</Text>
                   </View>
-                </View>
-              )}
+                  {busy ? (
+                    <ActivityIndicator size="small" color={C.blue} />
+                  ) : active ? (
+                    <MaterialCommunityIcons name="check-circle" size={22} color={C.blue} />
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })}
 
-              {/* Go to Tenant Hub */}
-              <TouchableOpacity
-                style={styles.tenantHubButton}
-                onPress={handleGoToTenantHub}
-              >
-                <MaterialCommunityIcons name="office-building" size={20} color="#4285F4" />
-                <Text style={styles.tenantHubText}>Go to Tenant Hub</Text>
-                <MaterialCommunityIcons name="chevron-right" size={18} color="#4285F4" />
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              style={styles.manage}
+              onPress={() => { setOpen(false); navigation.navigate('TenantHub'); }}
+              accessibilityRole="button"
+            >
+              <MaterialCommunityIcons name="view-grid-outline" size={18} color={C.blue} />
+              <Text style={styles.manageText}>Manage companies</Text>
+            </TouchableOpacity>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
     </>
   );
@@ -173,127 +117,34 @@ const styles = StyleSheet.create({
   button: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    gap: 6,
-  },
-  iconContainer: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  iconText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  companyText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    maxWidth: 80,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    width: '85%',
-    maxWidth: 400,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#000',
-  },
-  companyList: {
-    padding: 16,
-  },
-  companyItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    backgroundColor: '#F9F9F9',
-  },
-  companyItemActive: {
-    backgroundColor: '#E3F2FD',
-    borderWidth: 2,
-    borderColor: '#4285F4',
-  },
-  companyItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: 12,
-    marginRight: 12,
-  },
-  companyIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#4285F4',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  companyIconText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  companyItemTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#000',
-    marginBottom: 2,
-  },
-  companyItemTitleActive: {
-    color: '#4285F4',
-  },
-  companyItemSubtitle: {
-    fontSize: 12,
-    color: '#666',
-  },
-  activeIndicator: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#4285F4',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  tenantHubButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: '#E8F0FE',
-    marginTop: 4,
     gap: 8,
+    backgroundColor: '#EEF3FB',
+    borderRadius: 999,
+    paddingLeft: 6,
+    paddingRight: 10,
+    paddingVertical: 5,
+    maxWidth: '100%',
+    flexShrink: 1,
   },
-  tenantHubText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#4285F4',
-  },
+  tile: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#D8E6FB', justifyContent: 'center', alignItems: 'center' },
+  tileText: { fontSize: 11, fontWeight: '800', color: C.blue },
+  name: { flex: 1, fontSize: 13, fontWeight: '700', color: C.ink },
+
+  backdrop: { flex: 1, backgroundColor: 'rgba(15,27,45,0.45)', justifyContent: 'center', padding: 24 },
+  sheet: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 8, paddingTop: 16 },
+  sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingBottom: 10 },
+  sheetTitle: { fontSize: 18, fontWeight: '800', color: C.ink },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 12 },
+  rowDivider: { borderBottomWidth: 1, borderBottomColor: C.line },
+  rowTile: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#EEF3FB', justifyContent: 'center', alignItems: 'center' },
+  rowTileActive: { backgroundColor: C.blue },
+  rowTileText: { fontSize: 14, fontWeight: '800', color: C.blue },
+  rowTileTextActive: { color: '#FFFFFF' },
+  rowText: { flex: 1 },
+  rowName: { fontSize: 15, fontWeight: '700', color: C.ink },
+  rowMeta: { fontSize: 12, color: C.body, marginTop: 2 },
+  manage: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, marginTop: 4, borderTopWidth: 1, borderTopColor: C.line },
+  manageText: { fontSize: 14, fontWeight: '700', color: C.blue },
 });
+
+export default CompanySwitcher;

@@ -44,3 +44,6 @@ yarn-error.*
 # Cloudflare tunnel automation
 cloudflared-tunnel.log
 src/config/endpoint.ts.backup.*
+
+# ssh-broker audit logs written into the working directory
+logs/

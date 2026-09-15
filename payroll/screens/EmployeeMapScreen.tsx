@@ -10,15 +10,14 @@ import {
   StyleSheet,
   TouchableOpacity,
   StatusBar,
-  Alert,
   ActivityIndicator,
-  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
+import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
 
 interface EmployeeLocation {
   id: string;
@@ -39,12 +38,15 @@ const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navPr
   const navigation = navProp || useNavigation();
   const route = routeProp || useRoute();
   const mapRef = useRef<MapView>(null);
-  
+
   const [currentLocation, setCurrentLocation] = useState<{
     latitude: number;
     longitude: number;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  // Both refusals end the screen, so they are the screen rather than a dialog
+  // stacked over a map that will never draw.
+  const [blocked, setBlocked] = useState<{ title: string; body: string } | null>(null);
   const [employees, setEmployees] = useState<EmployeeLocation[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeLocation | null>(null);
 
@@ -59,26 +61,20 @@ const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navPr
     } else {
       setEmployees([]);
     }
-    
+
     requestLocationPermission();
   }, []);
 
   const requestLocationPermission = async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      
+
       if (status !== 'granted') {
-        Alert.alert(
-          'Permission Denied',
-          'Location permission is required to show employee locations on the map.',
-          [
-            { text: 'Cancel', onPress: () => navigation?.goBack() },
-            {
-              text: 'Grant Permission',
-              onPress: () => requestLocationPermission(),
-            },
-          ]
-        );
+        setBlocked({
+          title: 'Location access is off',
+          body: 'The map places people against where you are, so it needs your location. You can turn it on and try again.',
+        });
+        setLoading(false);
         return;
       }
 
@@ -93,19 +89,17 @@ const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navPr
       });
       setLoading(false);
     } catch (error) {
-      console.error('Error getting location:', error);
-      Alert.alert(
-        'Location Error',
-        'Unable to get your current location. Please try again.',
-        [{ text: 'OK', onPress: () => navigation?.goBack() }]
-      );
+      setBlocked({
+        title: 'Could not find where you are',
+        body: 'Step outside or near a window and try again.',
+      });
       setLoading(false);
     }
   };
 
   const handleMarkerPress = (employee: EmployeeLocation) => {
     setSelectedEmployee(employee);
-    
+
     // Animate map to employee location
     if (mapRef.current) {
       mapRef.current.animateToRegion({
@@ -133,28 +127,70 @@ const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navPr
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#4285F4" />
-        <Text style={styles.loadingText}>Loading map...</Text>
+      <View style={styles.stateContainer}>
+        <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+        <AuthBackdrop scriptLines={[]} />
+        <ActivityIndicator size="large" color={C.blue} />
+        <Text style={styles.loadingText}>Finding everyone…</Text>
+      </View>
+    );
+  }
+
+  if (blocked) {
+    return (
+      <View style={styles.stateContainer}>
+        <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+        <AuthBackdrop scriptLines={[]} />
+        <View style={styles.blockedCard}>
+          <View style={styles.blockedIcon}>
+            <MaterialCommunityIcons name="map-marker-off-outline" size={26} color={C.blue} />
+          </View>
+          <Text style={styles.blockedTitle}>{blocked.title}</Text>
+          <Text style={styles.blockedBody}>{blocked.body}</Text>
+          <TouchableOpacity
+            style={styles.blockedButton}
+            onPress={() => {
+              setBlocked(null);
+              setLoading(true);
+              void requestLocationPermission();
+            }}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+          >
+            <Text style={styles.blockedButtonText}>Try again</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation?.goBack()}
+            style={styles.blockedBackHit}
+            accessibilityRole="button"
+          >
+            <Text style={styles.blockedBack}>Go back</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+
       {/* Header */}
       <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity
             onPress={() => navigation?.goBack()}
-            style={styles.backButton}
+            style={styles.back}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            <MaterialCommunityIcons name="arrow-left" size={26} color={C.ink} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Employee Map</Text>
-          <View style={styles.placeholder} />
+          <View style={styles.headerText} pointerEvents="none">
+            <Text style={styles.headerTitle}>Employee Map</Text>
+            <Text style={styles.headerSubtitle}>Where today's punches came from</Text>
+          </View>
         </View>
       </SafeAreaView>
 
@@ -178,8 +214,8 @@ const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navPr
           <Circle
             center={currentLocation}
             radius={500}
-            fillColor="rgba(66, 133, 244, 0.1)"
-            strokeColor="rgba(66, 133, 244, 0.3)"
+            fillColor="rgba(47, 107, 255, 0.10)"
+            strokeColor="rgba(47, 107, 255, 0.30)"
             strokeWidth={2}
           />
 
@@ -202,7 +238,7 @@ const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navPr
                 <MaterialCommunityIcons
                   name="account-circle"
                   size={selectedEmployee?.id === employee.id ? 40 : 36}
-                  color={selectedEmployee?.id === employee.id ? '#4285F4' : '#666'}
+                  color={selectedEmployee?.id === employee.id ? C.blue : C.muted}
                 />
               </View>
             </Marker>
@@ -212,6 +248,7 @@ const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navPr
 
       {/* Bottom Info Card */}
       <View style={styles.bottomCard}>
+        <View style={styles.grabber} />
         {selectedEmployee ? (
           // Show selected employee info
           <>
@@ -222,14 +259,14 @@ const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navPr
                 </Text>
               </View>
               <View style={styles.employeeInfo}>
-                <Text style={styles.employeeName}>{selectedEmployee.name}</Text>
+                <Text style={styles.employeeName} numberOfLines={1}>{selectedEmployee.name}</Text>
                 {selectedEmployee.position && (
-                  <Text style={styles.employeePosition}>{selectedEmployee.position}</Text>
+                  <Text style={styles.employeePosition} numberOfLines={1}>{selectedEmployee.position}</Text>
                 )}
                 {selectedEmployee.department && (
                   <View style={styles.departmentRow}>
-                    <MaterialCommunityIcons name="office-building" size={14} color="#999" />
-                    <Text style={styles.employeeDepartment}>{selectedEmployee.department}</Text>
+                    <MaterialCommunityIcons name="office-building-outline" size={13} color={C.muted} />
+                    <Text style={styles.employeeDepartment} numberOfLines={1}>{selectedEmployee.department}</Text>
                   </View>
                 )}
               </View>
@@ -237,56 +274,48 @@ const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navPr
 
             <View style={styles.locationDetails}>
               <View style={styles.detailRow}>
-                <MaterialCommunityIcons name="clock-outline" size={18} color="#4285F4" />
-                <Text style={styles.detailLabel}>Check-in Time:</Text>
-                <Text style={styles.detailValue}>{selectedEmployee.checkInTime}</Text>
+                <MaterialCommunityIcons name="clock-outline" size={18} color={C.blue} />
+                <Text style={styles.detailLabel}>Check-in</Text>
+                <Text style={styles.detailValue} numberOfLines={1}>{selectedEmployee.checkInTime}</Text>
               </View>
+              <View style={styles.detailDivider} />
               <View style={styles.detailRow}>
-                <MaterialCommunityIcons name="map-marker" size={18} color="#4285F4" />
-                <Text style={styles.detailLabel}>Location:</Text>
-                <Text style={styles.detailValue}>
+                <MaterialCommunityIcons name="map-marker-outline" size={18} color={C.blue} />
+                <Text style={styles.detailLabel}>Location</Text>
+                <Text style={styles.detailValue} numberOfLines={1}>
                   {selectedEmployee.latitude.toFixed(4)}, {selectedEmployee.longitude.toFixed(4)}
                 </Text>
               </View>
             </View>
 
             <TouchableOpacity
-              style={styles.cancelButton}
+              style={styles.secondaryButton}
               onPress={() => navigation?.goBack()}
               activeOpacity={0.8}
+              accessibilityRole="button"
             >
-              <Text style={styles.cancelButtonText}>Back to List</Text>
+              <Text style={styles.secondaryButtonText}>Back to list</Text>
             </TouchableOpacity>
           </>
         ) : (
           // Show default map info
           <>
-            <View style={styles.mapIconContainer}>
-              <View style={styles.mapIcon}>
-                <View style={styles.googleIconRed} />
-                <View style={styles.googleIconBlue} />
-                <View style={styles.googleIconYellow} />
-                <View style={styles.googleIconGreen} />
-                <MaterialCommunityIcons
-                  name="magnify"
-                  size={24}
-                  color="#00897B"
-                  style={styles.searchIcon}
-                />
-              </View>
+            <View style={styles.mapIcon}>
+              <MaterialCommunityIcons name="map-search-outline" size={28} color={C.blue} />
             </View>
 
             <Text style={styles.cardTitle}>Employee Map</Text>
             <Text style={styles.cardDescription}>
-              Where your employee you can check gps
+              Tap a marker to see who clocked in there and when.
             </Text>
 
             <TouchableOpacity
-              style={styles.cancelButton}
+              style={styles.secondaryButton}
               onPress={() => navigation?.goBack()}
               activeOpacity={0.8}
+              accessibilityRole="button"
             >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <Text style={styles.secondaryButtonText}>Back to list</Text>
             </TouchableOpacity>
           </>
         )}
@@ -298,47 +327,73 @@ const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navPr
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F6F8FF',
   },
-  loadingContainer: {
+
+  // Loading and permission refusals share one frame: backdrop, centred content.
+  stateContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    padding: 24,
+    backgroundColor: '#F6F8FF',
   },
   loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#666',
+    marginTop: 14,
+    fontSize: 14,
+    color: C.body,
   },
-  safeAreaTop: {
-    backgroundColor: '#FFFFFF',
-    zIndex: 10,
-  },
-  header: {
-    flexDirection: 'row',
+  blockedCard: {
+    width: '100%',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
     backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderRadius: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    shadowColor: C.blue,
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
   },
-  backButton: {
-    width: 40,
-    height: 40,
+  blockedIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#E6EEFF',
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 14,
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#000',
+  blockedTitle: { fontSize: 18, fontWeight: '800', color: C.ink, textAlign: 'center', marginBottom: 8 },
+  blockedBody: { fontSize: 14, color: C.body, textAlign: 'center', lineHeight: 20 },
+  blockedButton: {
+    marginTop: 20,
+    alignSelf: 'stretch',
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: C.blue,
   },
-  placeholder: {
-    width: 40,
+  blockedButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15, textAlign: 'center' },
+  blockedBackHit: { marginTop: 6, paddingVertical: 10, paddingHorizontal: 16 },
+  blockedBack: { fontSize: 14, fontWeight: '600', color: C.body },
+
+  safeAreaTop: {
+    backgroundColor: '#F6F8FF',
+    zIndex: 10,
   },
+  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, justifyContent: 'center' },
+  back: { width: 40, height: 40, alignItems: 'flex-start', justifyContent: 'center' },
+  headerText: {
+    ...StyleSheet.absoluteFillObject,
+    left: 68,
+    right: 68,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: C.ink },
+  headerSubtitle: { fontSize: 13, color: C.body, marginTop: 2 },
+
   map: {
     flex: 1,
   },
@@ -347,17 +402,18 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 4,
     borderWidth: 2,
-    borderColor: '#4285F4',
+    borderColor: C.line,
   },
   employeeMarkerSelected: {
     borderWidth: 3,
-    borderColor: '#4285F4',
-    shadowColor: '#4285F4',
+    borderColor: C.blue,
+    shadowColor: C.blue,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.5,
-    shadowRadius: 4,
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
     elevation: 6,
   },
+
   bottomCard: {
     position: 'absolute',
     bottom: 0,
@@ -367,157 +423,129 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 24,
-    paddingTop: 24,
+    paddingTop: 12,
     paddingBottom: 32,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowColor: C.blue,
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
     elevation: 8,
     alignItems: 'center',
   },
-  mapIconContainer: {
-    marginBottom: 16,
-  },
+  // A short bar so the card reads as a sheet resting over the map.
+  grabber: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.line, marginBottom: 16 },
+
   mapIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#F5F5F5',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#E6EEFF',
     justifyContent: 'center',
     alignItems: 'center',
-    position: 'relative',
-  },
-  googleIconRed: {
-    position: 'absolute',
-    top: 15,
-    left: 15,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#EA4335',
-  },
-  googleIconBlue: {
-    position: 'absolute',
-    top: 15,
-    right: 15,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#4285F4',
-  },
-  googleIconYellow: {
-    position: 'absolute',
-    bottom: 15,
-    right: 15,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#FBBC04',
-  },
-  googleIconGreen: {
-    position: 'absolute',
-    bottom: 15,
-    left: 15,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#34A853',
-  },
-  searchIcon: {
-    position: 'absolute',
-    bottom: 8,
+    marginBottom: 14,
   },
   cardTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#000',
-    marginBottom: 8,
+    fontSize: 18,
+    fontWeight: '800',
+    color: C.ink,
+    marginBottom: 6,
   },
   cardDescription: {
     fontSize: 14,
-    color: '#999',
+    lineHeight: 20,
+    color: C.body,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
-  cancelButton: {
+
+  secondaryButton: {
     width: '100%',
     paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: '#FFE5E5',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.line,
+    backgroundColor: C.field,
   },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FF6B6B',
+  secondaryButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: C.ink,
     textAlign: 'center',
   },
+
   employeeInfoHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 14,
     marginBottom: 16,
     width: '100%',
   },
   employeeAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#4285F4',
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: '#E6EEFF',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
   },
   employeeAvatarText: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '800',
+    color: C.blue,
   },
   employeeInfo: {
     flex: 1,
   },
   employeeName: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#000',
-    marginBottom: 4,
+    fontWeight: '800',
+    color: C.ink,
   },
   employeePosition: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
+    fontSize: 13,
+    color: C.body,
+    marginTop: 2,
   },
   departmentRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    marginTop: 3,
   },
   employeeDepartment: {
+    flex: 1,
     fontSize: 12,
-    color: '#999',
+    color: C.muted,
   },
+
   locationDetails: {
     width: '100%',
-    backgroundColor: '#F5F5F5',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
+    backgroundColor: C.field,
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+    marginBottom: 18,
   },
   detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
-    gap: 8,
+    gap: 10,
+    paddingVertical: 12,
   },
+  detailDivider: { height: 1, backgroundColor: C.line },
   detailLabel: {
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
+    fontSize: 13,
+    color: C.body,
   },
   detailValue: {
-    fontSize: 14,
-    color: '#333',
-    fontWeight: '600',
     flex: 1,
+    fontSize: 14,
+    color: C.ink,
+    fontWeight: '700',
+    textAlign: 'right',
+    fontVariant: ['tabular-nums'],
   },
 });
 

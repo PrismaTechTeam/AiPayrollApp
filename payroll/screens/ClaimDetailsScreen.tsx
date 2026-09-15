@@ -1,485 +1,417 @@
 /**
- * Claim Details Screen
- * View detailed information about a claim (uses real data from API)
+ * One claim, everything about it: what was bought, what it cost, what happened
+ * to it, and the receipt behind it.
+ *
+ * The screen always re-reads the claim on open. It used to render whichever
+ * object the list handed over, so a claim decided while the list was on screen
+ * still read as pending, and the Edit and Delete buttons it offered were both
+ * alerts saying "coming soon".
+ *
+ * The same page serves the employee and the approver. Which one you are decides
+ * what you can do, never what you can see — an approver deciding a claim needs
+ * the same detail the employee filled in.
  */
-
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  StatusBar,
-  Alert,
   ActivityIndicator,
-  Linking,
-  Platform,
-  TextInput,
-  Modal,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import { File, Directory, Paths } from 'expo-file-system/next';
-import { shareAsync } from 'expo-sharing';
-import type { Claim } from '../components/claims';
-import { STATUS_COLORS, STATUS_LABELS, STATUSES } from '../constants/statuses';
-import claimService from '../api/services/claimService';
+import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
+import PrimaryButton from '../components/auth/PrimaryButton';
+import { useDialog } from '../components/ui/AppDialog';
+import claimService, { ClaimApplication } from '../api/services/claimService';
+import { serverMessage } from '../lib/serverMessage';
+import { openSignedUrl } from '../lib/downloadAttachment';
+import {
+  ClaimState,
+  DetailRow,
+  ReceiptRow,
+  StatusPill,
+  claimDate,
+  claimIcon,
+  claimTint,
+  claimWash,
+  dateAndTime,
+  goTo,
+  money,
+  shortDate,
+  statusOf,
+} from '../components/claims/ClaimUi';
+
+type Params = {
+  ClaimDetails: {
+    /** Preferred. The screen reads the rest itself. */
+    claimId?: string;
+    /** Older callers passed the whole row; used only as a first paint. */
+    claim?: ClaimApplication;
+    canApprove?: boolean;
+  };
+};
 
 export const ClaimDetailsScreen: React.FC = () => {
   const navigation = useNavigation();
-  const route = useRoute();
-  const { claim, isOwner = false } = (route.params as { claim: Claim; isOwner?: boolean }) || {};
+  const route = useRoute<RouteProp<Params, 'ClaimDetails'>>();
+  const dialog = useDialog();
 
-  if (!claim) {
-    return (
-      <View style={styles.container}>
-        <Text>Claim not found</Text>
-      </View>
-    );
-  }
+  const params = route.params ?? {};
+  const canApprove = params.canApprove === true;
+  const claimId = params.claimId ?? params.claim?.id ?? '';
 
-  const statusColors = STATUS_COLORS[claim.status as keyof typeof STATUS_COLORS];
-  const statusLabel = STATUS_LABELS[claim.status as keyof typeof STATUS_LABELS] || claim.status;
+  const [claim, setClaim] = useState<ClaimApplication | null>(params.claim ?? null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const getStatusIcon = (status: string): string => {
-    switch (status) {
-      case STATUSES.APPROVED: return 'check-circle';
-      case STATUSES.REJECTED: return 'close-circle';
-      case STATUSES.CANCELLED: return 'cancel';
-      case STATUSES.DRAFT: return 'pencil-outline';
-      default: return 'clock-outline';
-    }
-  };
-
-  const getStatusBannerColor = (status: string): string => {
-    switch (status) {
-      case STATUSES.DRAFT: return '#999';
-      case STATUSES.PENDING: return '#4285F4';
-      case STATUSES.APPROVED: return '#34A853';
-      case STATUSES.REJECTED: return '#EA4335';
-      case STATUSES.CANCELLED: return '#546E7A';
-      default: return '#999';
-    }
-  };
-
-  const formatDate = (dateStr?: string | null) => {
-    if (!dateStr) return '';
-    try {
-      return new Date(dateStr).toLocaleDateString('en-US', {
-        day: 'numeric', month: 'short', year: 'numeric',
-      });
-    } catch { return dateStr; }
-  };
-
-  const handleEdit = () => {
-    if (claim.status === STATUSES.DRAFT) {
-      Alert.alert('Edit Claim', 'Edit functionality coming soon');
-    } else {
-      Alert.alert('Cannot Edit', 'You can only edit draft claims');
-    }
-  };
-
-  const handleDelete = () => {
-    Alert.alert(
-      'Delete Claim',
-      'Are you sure you want to delete this claim?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            navigation.goBack();
-            Alert.alert('Info', 'Claim deletion coming soon');
-          },
-        },
-      ]
-    );
-  };
-
-  const [downloading, setDownloading] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  const [rejectionReason, setRejectionReason] = useState('');
-
-  const handleApprove = () => {
-    Alert.alert('Approve Claim', 'Are you sure you want to approve this claim?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Approve',
-        onPress: async () => {
-          setIsProcessing(true);
-          try {
-            await claimService.approveClaim(claim.id);
-            Alert.alert('Success', 'Claim approved successfully.', [
-              { text: 'OK', onPress: () => navigation.goBack() },
-            ]);
-          } catch (error) {
-            console.error('Failed to approve claim:', error);
-            Alert.alert('Error', 'Failed to approve claim. Please try again.');
-          } finally {
-            setIsProcessing(false);
-          }
-        },
-      },
-    ]);
-  };
-
-  const handleRejectConfirm = async () => {
-    if (!rejectionReason.trim()) {
-      Alert.alert('Validation Error', 'Please provide a reason for rejection.');
+  const load = useCallback(async () => {
+    if (!claimId) {
+      setError('This claim could not be opened.');
+      setLoading(false);
       return;
     }
-    setShowRejectModal(false);
-    setIsProcessing(true);
+    setError(null);
     try {
-      await claimService.rejectClaim(claim.id, rejectionReason.trim());
-      Alert.alert('Success', 'Claim rejected successfully.', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
-    } catch (error) {
-      console.error('Failed to reject claim:', error);
-      Alert.alert('Error', 'Failed to reject claim. Please try again.');
+      setClaim(await claimService.getApplication(claimId));
+    } catch (err) {
+      setError(serverMessage(err, 'Could not load this claim.'));
     } finally {
-      setIsProcessing(false);
-      setRejectionReason('');
+      setLoading(false);
     }
+  }, [claimId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
   };
 
-  const handleDownloadReceipt = async () => {
-    setDownloading(true);
+  const status = statusOf(claim?.status);
+  const pending = status === 'PENDING';
+  /** Only the person who filed it may change it, and only before it is decided. */
+  const mineAndOpen = !canApprove && pending;
+
+  // ── Doing things to it ─────────────────────────────────────────────────
+
+  const openReceipt = async () => {
     try {
-      const { url, fileName } = isOwner
-        ? await claimService.getReceiptUrlAsOwner(claim.id)
-        : await claimService.getReceiptUrl(claim.id);
-
-      const destination = new Directory(Paths.cache, 'receipts');
-      if (!destination.exists) {
-        destination.create();
-      }
-
-      // Remove existing file with same name to avoid "Destination already exists" error
-      const expectedFile = new File(destination, fileName);
-      if (expectedFile.exists) {
-        expectedFile.delete();
-      }
-
-      const downloadedFile = await File.downloadFileAsync(url, destination);
-
-      if (!downloadedFile.exists) {
-        Alert.alert('Error', 'Failed to download receipt');
-        return;
-      }
-
-      await shareAsync(downloadedFile.uri, {
-        dialogTitle: 'Save Receipt',
+      const link = await claimService.getReceiptLink(claimId);
+      // A pre-signed URL, not a stream: the bytes come from storage directly and
+      // the link is good for minutes, so it is fetched at the moment of the tap.
+      await openSignedUrl(link.url, link.fileName);
+    } catch (err) {
+      await dialog.notify({
+        title: 'Could not open the receipt',
+        message: serverMessage(err, 'Please try again.'),
+        tone: 'danger',
       });
-    } catch (error: any) {
-      console.error('Failed to download receipt:', error);
-      const message = error?.response?.data?.message || 'Failed to download receipt. Please try again.';
-      Alert.alert('Error', message);
-    } finally {
-      setDownloading(false);
     }
   };
+
+  const edit = () => {
+    goTo(navigation, 'CreateClaim', { claimId });
+  };
+
+  const withdraw = async () => {
+    const ok = await dialog.confirm({
+      title: 'Withdraw this claim?',
+      message: 'It stops waiting for approval and stays on your record as cancelled. You can send a new one any time.',
+      confirmText: 'Withdraw',
+      cancelText: 'Keep it',
+      destructive: true,
+      tone: 'warning',
+    });
+    if (!ok) return;
+
+    setBusy(true);
+    try {
+      await claimService.withdrawApplication(claimId);
+      navigation.goBack();
+    } catch (err) {
+      await dialog.notify({ title: 'Could not withdraw it', message: serverMessage(err, 'Please try again.'), tone: 'danger' });
+      setBusy(false);
+    }
+  };
+
+  const approve = async () => {
+    const ok = await dialog.confirm({
+      title: 'Approve this claim?',
+      message: `${money(claim?.amount)} to ${claim?.employeeName ?? 'the employee'}. Approving sends it through to payroll.`,
+      confirmText: 'Approve',
+    });
+    if (!ok) return;
+
+    setBusy(true);
+    try {
+      await claimService.approveClaim(claimId);
+      await dialog.notify({ title: 'Approved', tone: 'success' });
+      await load();
+    } catch (err) {
+      await dialog.notify({ title: 'Could not approve', message: serverMessage(err, 'Please try again.'), tone: 'danger' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reject = async () => {
+    const reason = await dialog.prompt({
+      title: 'Reject this claim',
+      message: 'The employee sees this, so say what would make it claimable.',
+      placeholder: 'Reason for rejection',
+      confirmText: 'Reject',
+      required: true,
+      multiline: true,
+      maxLength: 1000,
+      destructive: true,
+    });
+    if (!reason) return;
+
+    setBusy(true);
+    try {
+      await claimService.rejectClaim(claimId, reason);
+      await dialog.notify({ title: 'Rejected', tone: 'success' });
+      await load();
+    } catch (err) {
+      await dialog.notify({ title: 'Could not reject', message: serverMessage(err, 'Please try again.'), tone: 'danger' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────
+
+  const tint = claimTint(claim?.claimTypeId ?? null);
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <AuthBackdrop scriptLines={[]} />
 
-      <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
+      <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.back}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={26} color={C.ink} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Claim Details</Text>
-          {!isOwner ? (
-            <TouchableOpacity onPress={handleDelete} style={styles.deleteButton}>
-              <MaterialCommunityIcons name="delete-outline" size={24} color="#EA4335" />
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.deleteButton} />
-          )}
+          <View style={styles.headerText} pointerEvents="none">
+            <Text style={styles.headerTitle}>Claim</Text>
+          </View>
         </View>
+
+        {loading && !claim ? (
+          <View style={styles.centre}>
+            <ActivityIndicator size="large" color={C.blue} />
+          </View>
+        ) : !claim ? (
+          <ClaimState
+            icon="file-remove-outline"
+            title="Could not open this claim"
+            body={error ?? 'It may have been removed.'}
+            tone="danger"
+            actionLabel="Go back"
+            onAction={() => navigation.goBack()}
+          />
+        ) : (
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            showsVerticalScrollIndicator={false}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.blue} colors={[C.blue]} />}
+          >
+            {/* The amount, because that is what the page is about */}
+            <View style={styles.card}>
+              <View style={styles.heroTop}>
+                <View style={[styles.heroIcon, { backgroundColor: claimWash(tint) }]}>
+                  <MaterialCommunityIcons name={claimIcon({ name: claim.claimTypeName })} size={24} color={tint} />
+                </View>
+                <View style={styles.heroHead}>
+                  <Text style={styles.heroTitle} numberOfLines={2}>{claim.claimTypeName ?? 'Claim'}</Text>
+                  <Text style={styles.heroDate}>{claimDate(claim.transDate)}</Text>
+                </View>
+                <StatusPill status={claim.status} large />
+              </View>
+
+              <Text style={styles.amount}>{money(claim.amount)}</Text>
+
+              {canApprove && claim.employeeName ? (
+                <Text style={styles.employee}>
+                  {claim.employeeName}
+                  {claim.employeeCode ? ` · ${claim.employeeCode}` : ''}
+                  {claim.departmentName ? ` · ${claim.departmentName}` : ''}
+                </Text>
+              ) : null}
+            </View>
+
+            {/* What it was for */}
+            {claim.description ? (
+              <View style={styles.card}>
+                <View style={styles.cardHead}>
+                  <View style={styles.cardIcon}>
+                    <MaterialCommunityIcons name="text-box-outline" size={20} color={C.blue} />
+                  </View>
+                  <Text style={styles.cardTitle}>What it was for</Text>
+                </View>
+                <Text style={styles.body}>{claim.description}</Text>
+              </View>
+            ) : null}
+
+            {/* The receipt */}
+            <View style={styles.card}>
+              <View style={styles.cardHead}>
+                <View style={styles.cardIcon}>
+                  <MaterialCommunityIcons name="paperclip" size={20} color={C.blue} />
+                </View>
+                <Text style={styles.cardTitle}>Receipt</Text>
+              </View>
+
+              {claim.attachmentFileName ? (
+                <ReceiptRow fileName={claim.attachmentFileName} onOpen={openReceipt} hint="Opens for a few minutes" />
+              ) : (
+                <Text style={styles.body}>
+                  {canApprove ? 'No receipt was attached to this claim.' : 'You did not attach a receipt to this claim.'}
+                </Text>
+              )}
+
+              {claim.receiptNo ? <DetailRow label="Receipt number" value={claim.receiptNo} /> : null}
+            </View>
+
+            {/* The trail */}
+            <View style={styles.card}>
+              <View style={styles.cardHead}>
+                <View style={styles.cardIcon}>
+                  <MaterialCommunityIcons name="history" size={20} color={C.blue} />
+                </View>
+                <Text style={styles.cardTitle}>History</Text>
+              </View>
+
+              <DetailRow label="Sent" value={shortDate(claim.createdAt)} />
+              {claim.submittedFrom ? <DetailRow label="From" value={friendlySource(claim.submittedFrom)} /> : null}
+              {claim.approvedAt ? (
+                <DetailRow
+                  label={status === 'REJECTED' ? 'Rejected' : 'Approved'}
+                  value={dateAndTime(claim.approvedAt) || shortDate(claim.approvedAt)}
+                />
+              ) : null}
+              {claim.approvedByName ? <DetailRow label="Decided by" value={claim.approvedByName} /> : null}
+              {pending ? <DetailRow label="Now" value="Waiting for approval" /> : null}
+            </View>
+
+            {/* Why it was turned down */}
+            {status === 'REJECTED' && claim.rejectionReason ? (
+              <View style={styles.reasonBox}>
+                <Text style={styles.reasonLabel}>Reason for rejection</Text>
+                <Text style={styles.reasonText}>{claim.rejectionReason}</Text>
+              </View>
+            ) : null}
+
+            {/* What you can do about it */}
+            {mineAndOpen ? (
+              <View style={styles.actions}>
+                <View style={styles.half}>
+                  <PrimaryButton icon="pencil-outline" label="Edit" onPress={edit} variant="outline" disabled={busy} />
+                </View>
+                <View style={styles.half}>
+                  <PrimaryButton icon="close-circle-outline" label="Withdraw" onPress={() => { void withdraw(); }} variant="danger" loading={busy} />
+                </View>
+              </View>
+            ) : null}
+
+            {canApprove && pending ? (
+              <View style={styles.actions}>
+                <View style={styles.half}>
+                  <PrimaryButton icon="close" label="Reject" onPress={() => { void reject(); }} variant="danger" disabled={busy} />
+                </View>
+                <View style={styles.half}>
+                  <PrimaryButton icon="check" label="Approve" onPress={() => { void approve(); }} loading={busy} />
+                </View>
+              </View>
+            ) : null}
+
+            {!canApprove && !pending ? (
+              <Text style={styles.closed}>
+                This claim is {status.toLowerCase()}, so it can no longer be changed.
+              </Text>
+            ) : null}
+
+            {error && claim ? <Text style={styles.stale}>{error}</Text> : null}
+          </ScrollView>
+        )}
       </SafeAreaView>
-
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Status Banner */}
-        <View style={[styles.statusBanner, { backgroundColor: getStatusBannerColor(claim.status) }]}>
-          <MaterialCommunityIcons name={getStatusIcon(claim.status) as any} size={24} color="#FFFFFF" />
-          <Text style={styles.statusBannerText}>{statusLabel}</Text>
-        </View>
-
-        {/* Claim Type & Amount */}
-        <View style={styles.card}>
-          <Text style={styles.claimType}>{claim.type}</Text>
-          <Text style={styles.amount}>${claim.amount.toFixed(2)}</Text>
-        </View>
-
-        {/* Details */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Claim Information</Text>
-
-          <View style={styles.detailRow}>
-            <View style={styles.iconLabel}>
-              <MaterialCommunityIcons name="calendar" size={20} color="#666" />
-              <Text style={styles.detailLabel}>Transaction Date</Text>
-            </View>
-            <Text style={styles.detailValue}>{formatDate(claim.transDate)}</Text>
-          </View>
-
-          <View style={styles.divider} />
-
-          {claim.receiptNo && (
-            <>
-              <View style={styles.detailRow}>
-                <View style={styles.iconLabel}>
-                  <MaterialCommunityIcons name="receipt" size={20} color="#666" />
-                  <Text style={styles.detailLabel}>Receipt No</Text>
-                </View>
-                <Text style={styles.detailValue}>{claim.receiptNo}</Text>
-              </View>
-              <View style={styles.divider} />
-            </>
-          )}
-
-          {claim.createdAt && (
-            <>
-              <View style={styles.detailRow}>
-                <View style={styles.iconLabel}>
-                  <MaterialCommunityIcons name="calendar-check" size={20} color="#666" />
-                  <Text style={styles.detailLabel}>Submitted Date</Text>
-                </View>
-                <Text style={styles.detailValue}>{formatDate(claim.createdAt)}</Text>
-              </View>
-              <View style={styles.divider} />
-            </>
-          )}
-
-          {claim.approvedAt && (
-            <View style={styles.detailRow}>
-              <View style={styles.iconLabel}>
-                <MaterialCommunityIcons name="account-check" size={20} color="#666" />
-                <Text style={styles.detailLabel}>Reviewed Date</Text>
-              </View>
-              <Text style={styles.detailValue}>{formatDate(claim.approvedAt)}</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Description */}
-        {claim.description && (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Description</Text>
-            <Text style={styles.description}>{claim.description}</Text>
-          </View>
-        )}
-
-        {/* Rejection Reason */}
-        {claim.status === STATUSES.REJECTED && claim.rejectionReason && (
-          <View style={[styles.card, styles.rejectionCard]}>
-            <View style={styles.rejectionHeader}>
-              <MaterialCommunityIcons name="alert-circle" size={24} color="#EA4335" />
-              <Text style={styles.rejectionTitle}>Rejection Reason</Text>
-            </View>
-            <Text style={styles.rejectionReason}>{claim.rejectionReason}</Text>
-          </View>
-        )}
-
-        {/* Attachment */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Receipts</Text>
-          {claim.attachmentFileName ? (
-            <TouchableOpacity
-              style={styles.receiptItem}
-              onPress={handleDownloadReceipt}
-              disabled={downloading}
-            >
-              <MaterialCommunityIcons name="file-document" size={24} color="#4285F4" />
-              <Text style={styles.receiptName} numberOfLines={1}>{claim.attachmentFileName}</Text>
-              {downloading ? (
-                <ActivityIndicator size="small" color="#4285F4" />
-              ) : (
-                <MaterialCommunityIcons name="download" size={20} color="#666" />
-              )}
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.emptyReceipts}>
-              <MaterialCommunityIcons name="file-document-outline" size={48} color="#CCC" />
-              <Text style={styles.emptyReceiptsText}>No receipts attached</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Action Buttons */}
-        {claim.status === STATUSES.DRAFT && !isOwner && (
-          <View style={styles.actionButtons}>
-            <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
-              <MaterialCommunityIcons name="pencil" size={20} color="#4285F4" />
-              <Text style={styles.editButtonText}>Edit Claim</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Approve/Reject Buttons for Owner */}
-        {claim.status === STATUSES.PENDING && isOwner && (
-          <View style={styles.approveRejectContainer}>
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.rejectBtn]}
-              onPress={() => setShowRejectModal(true)}
-              disabled={isProcessing}
-            >
-              {isProcessing ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <>
-                  <MaterialCommunityIcons name="close" size={20} color="#FFFFFF" />
-                  <Text style={styles.actionBtnText}>Reject</Text>
-                </>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.approveBtn]}
-              onPress={handleApprove}
-              disabled={isProcessing}
-            >
-              {isProcessing ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <>
-                  <MaterialCommunityIcons name="check" size={20} color="#FFFFFF" />
-                  <Text style={styles.actionBtnText}>Approve</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
-
-        <SafeAreaView edges={['bottom']} style={{ paddingBottom: 20 }} />
-      </ScrollView>
-
-      {/* Rejection Reason Modal */}
-      <Modal
-        visible={showRejectModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowRejectModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Reject Claim</Text>
-            <Text style={styles.modalSubtitle}>
-              Please provide a reason for rejecting this claim.
-            </Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Enter rejection reason..."
-              placeholderTextColor="#999"
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-              value={rejectionReason}
-              onChangeText={setRejectionReason}
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.modalCancelButton}
-                onPress={() => {
-                  setShowRejectModal(false);
-                  setRejectionReason('');
-                }}
-              >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalRejectButton}
-                onPress={handleRejectConfirm}
-              >
-                <Text style={styles.modalRejectText}>Reject</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 };
 
+/** MOBILE / WEB as the server stores it, in words a person would use. */
+function friendlySource(value: string): string {
+  const key = value.toUpperCase();
+  if (key === 'MOBILE') return 'The app';
+  if (key === 'WEB') return 'The web dashboard';
+  return value;
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
-  safeAreaTop: { backgroundColor: '#FFFFFF' },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1, borderBottomColor: '#F0F0F0',
+  container: { flex: 1, backgroundColor: '#F6F8FF' },
+  flex: { flex: 1 },
+  centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+
+  header: { flexDirection: 'row', alignItems: 'center', minHeight: 56, paddingHorizontal: 12, paddingTop: 4 },
+  back: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  headerText: { position: 'absolute', left: 88, right: 88, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: C.ink },
+
+  scroll: { paddingHorizontal: 16, paddingBottom: 28, gap: 12 },
+
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 18,
+    shadowColor: C.blue,
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2,
   },
-  backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: '#000' },
-  deleteButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  scrollView: { flex: 1 },
-  scrollContent: { padding: 20 },
-  statusBanner: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    padding: 16, borderRadius: 12, marginBottom: 20, gap: 12,
-  },
-  statusBannerText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
-  card: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 20, marginBottom: 16 },
-  claimType: { fontSize: 24, fontWeight: '700', color: '#000', marginBottom: 8 },
-  amount: { fontSize: 32, fontWeight: '700', color: '#EA4335' },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#000', marginBottom: 16 },
-  detailRow: { paddingVertical: 12 },
-  iconLabel: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 8 },
-  detailLabel: { fontSize: 14, color: '#666', fontWeight: '500' },
-  detailValue: { fontSize: 15, color: '#000', fontWeight: '600' },
-  divider: { height: 1, backgroundColor: '#F0F0F0' },
-  description: { fontSize: 15, lineHeight: 24, color: '#333' },
-  rejectionCard: { backgroundColor: '#FFEBEE', borderWidth: 1, borderColor: '#EA4335' },
-  rejectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
-  rejectionTitle: { fontSize: 18, fontWeight: '700', color: '#EA4335' },
-  rejectionReason: { fontSize: 15, lineHeight: 24, color: '#333' },
-  receiptItem: { flexDirection: 'row', alignItems: 'center', padding: 12, backgroundColor: '#F9F9F9', borderRadius: 8, gap: 12 },
-  receiptName: { flex: 1, fontSize: 15, color: '#000', fontWeight: '500' },
-  emptyReceipts: { alignItems: 'center', paddingVertical: 40 },
-  emptyReceiptsText: { fontSize: 14, color: '#999', marginTop: 12 },
-  actionButtons: { marginBottom: 16 },
-  editButton: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, gap: 8,
-    borderWidth: 2, borderColor: '#4285F4',
-  },
-  editButtonText: { fontSize: 16, fontWeight: '600', color: '#4285F4' },
-  approveRejectContainer: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-  actionBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 14, borderRadius: 12, gap: 8,
-  },
-  approveBtn: { backgroundColor: '#4CAF50' },
-  rejectBtn: { backgroundColor: '#FF5252' },
-  actionBtnText: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
-  modalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center',
-    alignItems: 'center', padding: 20,
-  },
-  modalContent: {
-    backgroundColor: '#FFFFFF', borderRadius: 16, padding: 24, width: '100%', maxWidth: 400,
-  },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: '#000', marginBottom: 8 },
-  modalSubtitle: { fontSize: 14, color: '#666', marginBottom: 16 },
-  modalInput: {
-    backgroundColor: '#F5F5F5', borderRadius: 12, padding: 16, borderWidth: 1,
-    borderColor: '#E0E0E0', fontSize: 16, color: '#000', minHeight: 100, marginBottom: 16,
-  },
-  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12 },
-  modalCancelButton: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, backgroundColor: '#F5F5F5' },
-  modalCancelText: { fontSize: 14, fontWeight: '600', color: '#666' },
-  modalRejectButton: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, backgroundColor: '#FF5252' },
-  modalRejectText: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
+
+  heroTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  heroIcon: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
+  heroHead: { flex: 1 },
+  heroTitle: { fontSize: 16, fontWeight: '800', color: C.ink },
+  heroDate: { fontSize: 13, color: C.body, marginTop: 2 },
+  amount: { fontSize: 34, fontWeight: '800', color: C.ink, marginTop: 14, fontVariant: ['tabular-nums'] },
+  employee: { fontSize: 13, color: C.body, marginTop: 6 },
+
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
+  cardIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#E6EEFF', justifyContent: 'center', alignItems: 'center' },
+  cardTitle: { flex: 1, fontSize: 16, fontWeight: '800', color: C.ink },
+  body: { fontSize: 14, lineHeight: 21, color: C.body },
+
+  reasonBox: { backgroundColor: C.dangerBg, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: C.dangerLine },
+  reasonLabel: { fontSize: 12, fontWeight: '700', color: C.danger, marginBottom: 4 },
+  reasonText: { fontSize: 14, lineHeight: 20, color: C.body },
+
+  actions: { flexDirection: 'row', gap: 10 },
+  half: { flex: 1 },
+
+  closed: { fontSize: 12, color: C.muted, textAlign: 'center', lineHeight: 17, paddingHorizontal: 20 },
+  stale: { fontSize: 12, color: C.danger, textAlign: 'center', lineHeight: 17 },
 });
 
 export default ClaimDetailsScreen;

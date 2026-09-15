@@ -81,13 +81,6 @@ export const useNotifications = () => {
             navigation.navigate('MyPayslip');
             break;
 
-          // Test notification
-          case 'test':
-            if (__DEV__) {
-              Alert.alert('Test Notification', 'Notification tap handler is working!');
-            }
-            break;
-
           // Default — go to notifications list
           default:
             navigation.navigate('Notifications');

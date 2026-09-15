@@ -13,12 +13,31 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import attendanceService, { TeamMemberAttendance, TeamTodayResponse } from '../api/services/attendanceService';
+import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
+import { useDialog } from '../components/ui/AppDialog';
+import { serverMessage } from '../lib/serverMessage';
+
+/** Green for someone who is in, amber for someone who is not. Nothing else earns colour. */
+const IN_GREEN = '#16A34A';
+const OUT_AMBER = '#D97706';
+
+/**
+ * Whether this row can be put on a map at all.
+ *
+ * Being clocked in does not mean we know where from: a fingerprint terminal records no
+ * coordinates, and neither did the phone before punch locations existed. Those rows arrive
+ * with latitude and longitude null, and handing a null to a map Marker draws nothing at
+ * best.
+ */
+const hasFix = (
+  e: TeamMemberAttendance,
+): e is TeamMemberAttendance & { latitude: number; longitude: number } =>
+  typeof e.latitude === 'number' && typeof e.longitude === 'number';
 
 interface EmployeeListScreenProps {
   navigation?: any;
@@ -40,8 +59,20 @@ const formatCheckInTime = (isoString: string | null): string => {
   }
 };
 
+/**
+ * Two letters off the name, so a row without a photo still has something to
+ * recognise at a glance. One word gives one letter rather than a repeated one.
+ */
+const initialsOf = (name: string): string => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+};
+
 const EmployeeListScreen: React.FC<EmployeeListScreenProps> = ({ navigation: navProp }) => {
   const navigation = navProp || useNavigation();
+  const dialog = useDialog();
   const [teamData, setTeamData] = useState<TeamTodayResponse | null>(null);
   const [employees, setEmployees] = useState<TeamMemberAttendance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,13 +83,17 @@ const EmployeeListScreen: React.FC<EmployeeListScreenProps> = ({ navigation: nav
       const data = await attendanceService.getTeamToday();
       setTeamData(data);
       setEmployees(data.employees ?? []);
-    } catch (error: any) {
-      Alert.alert('Error', error?.message || 'Failed to load employee data. Please try again.');
+    } catch (error: unknown) {
+      await dialog.notify({
+        title: 'Could not load your team',
+        message: serverMessage(error, 'Please try again.'),
+        tone: 'danger',
+      });
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [dialog]);
 
   useEffect(() => {
     fetchTeamData();
@@ -70,12 +105,28 @@ const EmployeeListScreen: React.FC<EmployeeListScreenProps> = ({ navigation: nav
   }, [fetchTeamData]);
 
   const handleEmployeePress = (employee: TeamMemberAttendance) => {
+    // Both of these used to be a `return` with a comment promising a message. A row that
+    // does nothing when tapped reads as a broken app, so each one now says why.
     if (employee.status === 'not-checked-in') {
-      // Show message if employee hasn't checked in
+      void dialog.notify({
+        title: `${employee.employeeName} has not clocked in`,
+        message: 'There is nothing to show on the map until they do.',
+        tone: 'info',
+      });
       return;
     }
 
-    // Navigate to map with selected employee
+    if (!hasFix(employee)) {
+      void dialog.notify({
+        title: 'No map location for this clock-in',
+        message: `${employee.employeeName} clocked in at ${formatCheckInTime(employee.checkInTime)}, but the punch carried no position — an office terminal records the time, not the place.`,
+        tone: 'info',
+      });
+      return;
+    }
+
+    // Only rows with a real fix are handed to the map: it takes plain numbers, and a null
+    // coordinate puts a marker nowhere.
     navigation?.navigate('EmployeeMap', {
       selectedEmployee: {
         id: employee.employeeId,
@@ -89,6 +140,7 @@ const EmployeeListScreen: React.FC<EmployeeListScreenProps> = ({ navigation: nav
       },
       employees: employees
         .filter(e => e.status === 'checked-in')
+        .filter(hasFix)
         .map(e => ({
           id: e.employeeId,
           name: e.employeeName,
@@ -103,18 +155,20 @@ const EmployeeListScreen: React.FC<EmployeeListScreenProps> = ({ navigation: nav
   };
 
   const getStatusColor = (status: string) => {
-    return status === 'checked-in' ? '#4CAF50' : '#FF9800';
+    return status === 'checked-in' ? IN_GREEN : OUT_AMBER;
   };
 
   const getStatusIcon = (status: string) => {
-    return status === 'checked-in' ? 'check-circle' : 'clock-alert-outline';
+    return status === 'checked-in' ? 'check-circle-outline' : 'clock-alert-outline';
   };
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#4285F4" />
-        <Text style={styles.loadingText}>Loading employees...</Text>
+        <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+        <AuthBackdrop scriptLines={[]} />
+        <ActivityIndicator size="large" color={C.blue} />
+        <Text style={styles.loadingText}>Loading employees…</Text>
       </View>
     );
   }
@@ -124,320 +178,266 @@ const EmployeeListScreen: React.FC<EmployeeListScreenProps> = ({ navigation: nav
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <AuthBackdrop scriptLines={[]} />
 
       {/* Header */}
-      <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
+      <SafeAreaView style={styles.flex} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity
             onPress={() => navigation?.goBack()}
-            style={styles.backButton}
+            style={styles.back}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            <MaterialCommunityIcons name="arrow-left" size={26} color={C.ink} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Employee List</Text>
-          <View style={styles.placeholder} />
+          <View style={styles.headerText} pointerEvents="none">
+            <Text style={styles.headerTitle}>Employees</Text>
+            <Text style={styles.headerSubtitle}>Who is on the clock today</Text>
+          </View>
         </View>
-      </SafeAreaView>
 
-      {/* Summary Cards */}
-      <View style={styles.summaryContainer}>
-        <View style={[styles.summaryCard, styles.checkedInCard]}>
-          <MaterialCommunityIcons name="check-circle" size={32} color="#4CAF50" />
-          <Text style={styles.summaryCount}>{checkedInCount}</Text>
-          <Text style={styles.summaryLabel}>Checked In</Text>
+        {/* Summary Cards */}
+        <View style={styles.summaryContainer}>
+          <View style={styles.summaryCard}>
+            <View style={[styles.summaryIcon, styles.summaryIconIn]}>
+              <MaterialCommunityIcons name="check-circle-outline" size={22} color={IN_GREEN} />
+            </View>
+            <View style={styles.flex}>
+              <Text style={styles.summaryCount}>{checkedInCount}</Text>
+              <Text style={styles.summaryLabel}>Checked in</Text>
+            </View>
+          </View>
+          <View style={styles.summaryCard}>
+            <View style={[styles.summaryIcon, styles.summaryIconOut]}>
+              <MaterialCommunityIcons name="clock-alert-outline" size={22} color={OUT_AMBER} />
+            </View>
+            <View style={styles.flex}>
+              <Text style={styles.summaryCount}>{notCheckedInCount}</Text>
+              <Text style={styles.summaryLabel}>Not yet</Text>
+            </View>
+          </View>
         </View>
-        <View style={[styles.summaryCard, styles.notCheckedInCard]}>
-          <MaterialCommunityIcons name="clock-alert-outline" size={32} color="#FF9800" />
-          <Text style={styles.summaryCount}>{notCheckedInCount}</Text>
-          <Text style={styles.summaryLabel}>Not Checked In</Text>
-        </View>
-      </View>
 
-      {/* Employee List */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#4285F4']} />
-        }
-      >
-        <Text style={styles.sectionTitle}>All Employees</Text>
+        {/* Employee List */}
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[C.blue]}
+              tintColor={C.blue}
+            />
+          }
+        >
+          <Text style={styles.sectionTitle}>All employees</Text>
 
-        {employees.map((employee) => (
-          <TouchableOpacity
-            key={employee.employeeId}
-            style={[
-              styles.employeeCard,
-              employee.status === 'not-checked-in' && styles.employeeCardDisabled,
-            ]}
-            onPress={() => handleEmployeePress(employee)}
-            activeOpacity={employee.status === 'checked-in' ? 0.7 : 1}
-          >
-            {/* Avatar */}
-            <View style={[
-              styles.avatar,
-              employee.status === 'not-checked-in' && styles.avatarDisabled,
-            ]}>
-              <Text style={styles.avatarText}>
-                {employee.employeeName.charAt(0).toUpperCase()}
+          {employees.length === 0 ? (
+            <View style={styles.empty}>
+              <MaterialCommunityIcons name="account-group-outline" size={40} color={C.muted} />
+              <Text style={styles.emptyTitle}>Nobody to show</Text>
+              <Text style={styles.emptyBody}>
+                No one is listed under you today. Pull down to check again.
               </Text>
             </View>
+          ) : null}
 
-            {/* Employee Details */}
-            <View style={styles.employeeDetails}>
-              <Text style={[
-                styles.employeeName,
-                employee.status === 'not-checked-in' && styles.textDisabled,
-              ]}>
-                {employee.employeeName}
-              </Text>
-              <Text style={[
-                styles.employeePosition,
-                employee.status === 'not-checked-in' && styles.textDisabled,
-              ]}>
-                {employee.position ?? ''}
-              </Text>
-              <View style={styles.departmentRow}>
-                <MaterialCommunityIcons
-                  name="office-building"
-                  size={14}
-                  color={employee.status === 'checked-in' ? '#999' : '#CCC'}
-                />
-                <Text style={[
-                  styles.employeeDepartment,
-                  employee.status === 'not-checked-in' && styles.textDisabled,
-                ]}>
-                  {employee.department ?? ''}
-                </Text>
-              </View>
-            </View>
+          {employees.map((employee) => {
+            const inToday = employee.status === 'checked-in';
+            const tone = getStatusColor(employee.status);
+            // Position and department are both optional on the wire. Rather than
+            // leaving a blank line where one is missing, the row falls back to the
+            // other and only says "No role on file" when both are empty.
+            const role = employee.position?.trim() || '';
+            const dept = employee.department?.trim() || '';
 
-            {/* Status & Time */}
-            <View style={styles.statusContainer}>
-              <View style={[
-                styles.statusBadge,
-                { backgroundColor: getStatusColor(employee.status) + '20' },
-              ]}>
-                <MaterialCommunityIcons
-                  name={getStatusIcon(employee.status)}
-                  size={16}
-                  color={getStatusColor(employee.status)}
-                />
-                <Text style={[
-                  styles.statusText,
-                  { color: getStatusColor(employee.status) },
-                ]}>
-                  {employee.status === 'checked-in' ? 'Checked In' : 'Not Yet'}
-                </Text>
-              </View>
-              {employee.status === 'checked-in' && (
-                <View style={styles.timeRow}>
-                  <MaterialCommunityIcons name="clock-outline" size={14} color="#666" />
-                  <Text style={styles.checkInTime}>{formatCheckInTime(employee.checkInTime)}</Text>
+            return (
+              <TouchableOpacity
+                key={employee.employeeId}
+                style={[styles.employeeCard, !inToday && styles.employeeCardDim]}
+                onPress={() => handleEmployeePress(employee)}
+                activeOpacity={inToday ? 0.7 : 1}
+                accessibilityRole="button"
+                accessibilityLabel={`${employee.employeeName}, ${inToday ? 'checked in' : 'not checked in'}`}
+              >
+                {/* Avatar */}
+                <View style={[styles.avatar, !inToday && styles.avatarDim]}>
+                  <Text style={[styles.avatarText, !inToday && styles.avatarTextDim]}>
+                    {initialsOf(employee.employeeName)}
+                  </Text>
                 </View>
-              )}
-            </View>
 
-            {/* Arrow Icon (only for checked-in employees) */}
-            {employee.status === 'checked-in' && (
-              <MaterialCommunityIcons
-                name="chevron-right"
-                size={24}
-                color="#999"
-                style={styles.arrowIcon}
-              />
-            )}
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+                {/* Employee Details */}
+                <View style={styles.employeeDetails}>
+                  <Text style={styles.employeeName} numberOfLines={1}>
+                    {employee.employeeName}
+                  </Text>
+                  <Text style={styles.employeeRole} numberOfLines={1}>
+                    {role || dept || 'No role on file'}
+                  </Text>
+                  {role && dept ? (
+                    <View style={styles.departmentRow}>
+                      <MaterialCommunityIcons name="office-building-outline" size={13} color={C.muted} />
+                      <Text style={styles.employeeDepartment} numberOfLines={1}>
+                        {dept}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  <View style={styles.metaRow}>
+                    <View style={[styles.statusBadge, { backgroundColor: `${tone}1A` }]}>
+                      <MaterialCommunityIcons name={getStatusIcon(employee.status)} size={13} color={tone} />
+                      <Text style={[styles.statusText, { color: tone }]}>
+                        {inToday ? 'Checked in' : 'Not yet'}
+                      </Text>
+                    </View>
+                    {inToday ? (
+                      <View style={styles.timeRow}>
+                        <MaterialCommunityIcons name="clock-outline" size={13} color={C.muted} />
+                        <Text style={styles.checkInTime}>{formatCheckInTime(employee.checkInTime)}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+
+                {/* Arrow Icon (only for checked-in employees) */}
+                {inToday ? (
+                  <MaterialCommunityIcons name="chevron-right" size={24} color={C.muted} />
+                ) : null}
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </SafeAreaView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
+  container: { flex: 1, backgroundColor: '#F6F8FF' },
+  flex: { flex: 1 },
+
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F6F8FF',
   },
   loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#666',
+    marginTop: 14,
+    fontSize: 14,
+    color: C.body,
   },
-  safeAreaTop: {
-    backgroundColor: '#FFFFFF',
-  },
-  header: {
-    flexDirection: 'row',
+
+  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, justifyContent: 'center' },
+  back: { width: 40, height: 40, alignItems: 'flex-start', justifyContent: 'center' },
+  headerText: {
+    ...StyleSheet.absoluteFillObject,
+    left: 68,
+    right: 68,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  backButton: {
-    width: 40,
-    height: 40,
     justifyContent: 'center',
-    alignItems: 'center',
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#000',
-  },
-  placeholder: {
-    width: 40,
-  },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: C.ink },
+  headerSubtitle: { fontSize: 13, color: C.body, marginTop: 2 },
+
   summaryContainer: {
     flexDirection: 'row',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingBottom: 8,
     gap: 12,
   },
   summaryCard: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+    flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    gap: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    shadowColor: C.blue,
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
     elevation: 2,
   },
-  checkedInCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#4CAF50',
-  },
-  notCheckedInCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#FF9800',
-  },
-  summaryCount: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#333',
-    marginTop: 8,
-  },
-  summaryLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 4,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
-  },
+  summaryIcon: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+  summaryIconIn: { backgroundColor: '#E7F7EE' },
+  summaryIconOut: { backgroundColor: '#FFF4E5' },
+  summaryCount: { fontSize: 22, fontWeight: '800', color: C.ink },
+  summaryLabel: { fontSize: 12, color: C.body, marginTop: 1 },
+
+  scrollView: { flex: 1 },
+  scrollContent: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 32 },
+
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#333',
-    marginBottom: 16,
+    color: C.body,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginLeft: 4,
+    marginBottom: 10,
   },
+
+  empty: { alignItems: 'center', paddingTop: 48, gap: 6 },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: C.ink, marginTop: 6 },
+  emptyBody: { fontSize: 14, lineHeight: 20, color: C.body, textAlign: 'center', paddingHorizontal: 24 },
+
   employeeCard: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 24,
     padding: 16,
     marginBottom: 12,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowColor: C.blue,
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
     elevation: 2,
   },
-  employeeCardDisabled: {
-    opacity: 0.6,
-  },
+  // Dimmed rather than greyed out: the row still opens a message explaining why
+  // there is nothing to see, so it must not read as disabled.
+  employeeCardDim: { shadowOpacity: 0.04 },
+
   avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#4285F4',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#E6EEFF',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
   },
-  avatarDisabled: {
-    backgroundColor: '#E0E0E0',
-  },
-  avatarText: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  employeeDetails: {
-    flex: 1,
-  },
-  employeeName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
-  },
-  employeePosition: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
-  },
-  departmentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  employeeDepartment: {
-    fontSize: 12,
-    color: '#999',
-  },
-  textDisabled: {
-    color: '#CCC',
-  },
-  statusContainer: {
-    alignItems: 'flex-end',
-    marginRight: 8,
-  },
+  avatarDim: { backgroundColor: '#EEF2F7' },
+  avatarText: { fontSize: 16, fontWeight: '800', color: C.blue, letterSpacing: 0.5 },
+  avatarTextDim: { color: C.muted },
+
+  employeeDetails: { flex: 1 },
+  employeeName: { fontSize: 16, fontWeight: '700', color: C.ink },
+  employeeRole: { fontSize: 13, color: C.body, marginTop: 2 },
+  departmentRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+  employeeDepartment: { flex: 1, fontSize: 12, color: C.muted },
+
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
     gap: 4,
-    marginBottom: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
   },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  timeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  checkInTime: {
-    fontSize: 12,
-    color: '#666',
-    fontWeight: '500',
-  },
-  arrowIcon: {
-    marginLeft: 4,
-  },
+  statusText: { fontSize: 11, fontWeight: '700' },
+  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  checkInTime: { fontSize: 12, color: C.body, fontWeight: '600', fontVariant: ['tabular-nums'] },
 });
 
 export default EmployeeListScreen;

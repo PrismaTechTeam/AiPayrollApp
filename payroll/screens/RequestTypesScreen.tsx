@@ -1,164 +1,175 @@
 /**
- * Request Types Management Screen (Owner/HR)
- * CRUD for request types using web API /api/request-types
+ * Request Types
+ * The kinds of request employees can choose from. HR keeps this list; every
+ * entry here becomes an option on the employee's New Request screen.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   StatusBar,
-  Alert,
+  FlatList,
+  TouchableOpacity,
   TextInput,
   Modal,
-  TouchableOpacity,
-  ActivityIndicator,
+  Pressable,
   RefreshControl,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useNavigation } from '@react-navigation/native';
-import requestService, { RequestTypeDetail, CreateRequestTypePayload } from '../api/services/requestService';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
+import PrimaryButton from '../components/auth/PrimaryButton';
+import { useDialog } from '../components/ui/AppDialog';
+import requestService, { RequestTypeDetail } from '../api/services/requestService';
+import { serverMessage } from '../lib/serverMessage';
+
+/** The API has answered with both 'ACTIVE' and 'Active' over time. */
+function isActive(status: string | null | undefined): boolean {
+  return (status ?? '').toUpperCase() === 'ACTIVE';
+}
 
 export const RequestTypesScreen: React.FC = () => {
   const navigation = useNavigation();
-  const [types, setTypes] = useState<RequestTypeDetail[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [showModal, setShowModal] = useState(false);
-  const [editingType, setEditingType] = useState<RequestTypeDetail | null>(null);
-  const [saving, setSaving] = useState(false);
+  const dialog = useDialog();
 
-  // Form fields
+  const [types, setTypes] = useState<RequestTypeDetail[] | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+
+  const [editing, setEditing] = useState<RequestTypeDetail | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
   const [shortCode, setShortCode] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [focused, setFocused] = useState<'code' | 'desc' | 'cat' | null>(null);
 
-  const fetchTypes = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
+  const load = useCallback(async () => {
+    setListError(null);
     try {
-      const data = await requestService.getRequestTypes();
-      setTypes(data);
+      setTypes(await requestService.getRequestTypes());
     } catch (err) {
-      console.error('Failed to load request types:', err);
-      Alert.alert('Error', 'Failed to load request types');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      setTypes((prev) => prev ?? []);
+      setListError(serverMessage(err, 'Could not load the request types. Pull down to try again.'));
     }
   }, []);
 
-  useEffect(() => {
-    fetchTypes();
-  }, [fetchTypes]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
-  const openCreateModal = () => {
-    setEditingType(null);
-    setShortCode('');
-    setDescription('');
-    setCategory('');
-    setShowModal(true);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
   };
 
-  const openEditModal = (item: RequestTypeDetail) => {
-    setEditingType(item);
-    setShortCode(item.shortCode);
-    setDescription(item.description || '');
-    setCategory(item.category || '');
-    setShowModal(true);
+  const openForm = (type: RequestTypeDetail | null) => {
+    setEditing(type);
+    setShortCode(type?.shortCode ?? '');
+    setDescription(type?.description ?? '');
+    setCategory(type?.category ?? '');
+    setFormError(null);
+    setFormOpen(true);
   };
 
-  const handleSave = async () => {
-    if (!shortCode.trim()) {
-      Alert.alert('Validation', 'Short code is required');
+  const save = async () => {
+    const code = shortCode.trim();
+    if (!code) {
+      setFormError('A short code is required.');
       return;
     }
+    // Two types with the same code would be indistinguishable to an employee.
+    const clash = (types ?? []).some(
+      (t) => t.id !== editing?.id && t.shortCode.trim().toUpperCase() === code.toUpperCase(),
+    );
+    if (clash) {
+      setFormError(`"${code}" is already in use. Choose a different short code.`);
+      return;
+    }
+
+    setFormError(null);
     setSaving(true);
     try {
-      if (editingType) {
-        await requestService.updateRequestType(editingType.id, {
-          shortCode: shortCode.trim(),
-          description: description.trim() || undefined,
-          category: category.trim() || undefined,
-        });
-        Alert.alert('Success', 'Request type updated');
-      } else {
-        await requestService.createRequestType({
-          shortCode: shortCode.trim(),
-          description: description.trim() || undefined,
-          category: category.trim() || undefined,
-          status: 'ACTIVE',
-        });
-        Alert.alert('Success', 'Request type created');
-      }
-      setShowModal(false);
-      fetchTypes();
-    } catch (err: any) {
-      Alert.alert('Error', err?.response?.data?.message || 'Failed to save request type');
+      const payload = {
+        shortCode: code,
+        description: description.trim() || undefined,
+        category: category.trim() || undefined,
+      };
+      if (editing) await requestService.updateRequestType(editing.id, payload);
+      else await requestService.createRequestType({ ...payload, status: 'ACTIVE' });
+
+      setFormOpen(false);
+      await load();
+    } catch (err) {
+      setFormError(serverMessage(err, 'Could not save the request type.'));
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = (item: RequestTypeDetail) => {
-    Alert.alert(
-      'Delete Request Type',
-      `Are you sure you want to delete "${item.description || item.shortCode}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await requestService.deleteRequestType(item.id);
-              Alert.alert('Success', 'Request type deleted');
-              fetchTypes();
-            } catch (err: any) {
-              Alert.alert('Error', err?.response?.data?.message || 'Failed to delete');
-            }
-          },
-        },
-      ]
-    );
+  const remove = async (type: RequestTypeDetail) => {
+    const ok = await dialog.confirm({
+      title: 'Delete this request type?',
+      message: `"${type.description || type.shortCode}" will no longer be offered to employees. Requests already sent keep their type.`,
+      confirmText: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
+
+    try {
+      await requestService.deleteRequestType(type.id);
+      await load();
+    } catch (err) {
+      await dialog.notify({
+        title: 'Could not delete',
+        message: serverMessage(err, 'It may be in use by existing requests.'),
+        tone: 'danger',
+      });
+    }
   };
 
-  const renderItem = ({ item }: { item: RequestTypeDetail }) => (
+  const renderCard = ({ item }: { item: RequestTypeDetail }) => (
     <View style={styles.card}>
-      <View style={styles.cardMain}>
-        <View style={styles.cardInfo}>
-          <Text style={styles.cardCode}>{item.shortCode}</Text>
-          {item.description && (
-            <Text style={styles.cardDesc}>{item.description}</Text>
-          )}
-          {item.category && (
-            <Text style={styles.cardCategory}>{item.category}</Text>
-          )}
+      <View style={styles.cardTop}>
+        <View style={styles.codeTile}>
+          <Text style={styles.codeText} numberOfLines={1}>{item.shortCode.slice(0, 4).toUpperCase()}</Text>
         </View>
-        <View style={styles.cardBadges}>
-          <View style={[styles.statusBadge, { backgroundColor: item.status === 'Active' ? '#E8F5E9' : '#FFF3E0' }]}>
-            <Text style={[styles.statusText, { color: item.status === 'Active' ? '#4CAF50' : '#FF9800' }]}>
-              {item.status}
-            </Text>
-          </View>
-          {item.isDefault && (
-            <View style={[styles.statusBadge, { backgroundColor: '#E3F2FD' }]}>
-              <Text style={[styles.statusText, { color: '#1976D2' }]}>Default</Text>
-            </View>
-          )}
+        <View style={styles.cardText}>
+          <Text style={styles.cardTitle} numberOfLines={1}>{item.description || item.shortCode}</Text>
+          <Text style={styles.cardMeta} numberOfLines={1}>
+            {item.shortCode}
+            {item.category ? ` · ${item.category}` : ''}
+          </Text>
+        </View>
+        <View style={[styles.pill, isActive(item.status) ? styles.pillOn : styles.pillOff]}>
+          <Text style={[styles.pillText, isActive(item.status) ? styles.pillTextOn : styles.pillTextOff]}>
+            {isActive(item.status) ? 'Active' : 'Inactive'}
+          </Text>
         </View>
       </View>
+
       <View style={styles.cardActions}>
-        <TouchableOpacity style={styles.editButton} onPress={() => openEditModal(item)}>
-          <MaterialCommunityIcons name="pencil-outline" size={18} color="#4285F4" />
-          <Text style={styles.editText}>Edit</Text>
+        <TouchableOpacity style={styles.cardAction} onPress={() => openForm(item)} accessibilityRole="button">
+          <MaterialCommunityIcons name="pencil-outline" size={16} color={C.blue} />
+          <Text style={styles.cardActionText}>Edit</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(item)}>
-          <MaterialCommunityIcons name="delete-outline" size={18} color="#FF5252" />
-          <Text style={styles.deleteText}>Delete</Text>
+        <TouchableOpacity
+          style={[styles.cardAction, styles.cardActionDanger]}
+          onPress={() => { void remove(item); }}
+          accessibilityRole="button"
+        >
+          <MaterialCommunityIcons name="trash-can-outline" size={16} color={C.danger} />
+          <Text style={[styles.cardActionText, styles.cardActionTextDanger]}>Delete</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -166,153 +177,240 @@ export const RequestTypesScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <AuthBackdrop scriptLines={[]} />
 
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.iconButton}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={26} color={C.ink} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Request Types</Text>
-          <TouchableOpacity onPress={openCreateModal} style={styles.addButton}>
-            <MaterialCommunityIcons name="plus" size={24} color="#4285F4" />
+          <View style={styles.headerText} pointerEvents="none">
+            <Text style={styles.headerTitle}>Request Types</Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => openForm(null)}
+            style={styles.iconButton}
+            accessibilityRole="button"
+            accessibilityLabel="Add a request type"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialCommunityIcons name="plus" size={26} color={C.blue} />
           </TouchableOpacity>
         </View>
+
+        {types === null ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={C.blue} />
+          </View>
+        ) : (
+          <FlatList
+            data={types}
+            keyExtractor={(t) => t.id}
+            renderItem={renderCard}
+            contentContainerStyle={styles.list}
+            showsVerticalScrollIndicator={false}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.blue} colors={[C.blue]} />}
+            ListEmptyComponent={
+              <View style={styles.emptyCard}>
+                <View style={styles.emptyIcon}>
+                  <MaterialCommunityIcons name={listError ? 'wifi-off' : 'format-list-bulleted-type'} size={32} color={listError ? C.danger : C.blue} />
+                </View>
+                <Text style={styles.emptyTitle}>{listError ? 'Could not load' : 'No request types yet'}</Text>
+                <Text style={styles.emptyBody}>
+                  {listError ?? 'Add one so employees have something to choose when they send a request.'}
+                </Text>
+                {!listError ? (
+                  <>
+                    <View style={styles.gap} />
+                    <PrimaryButton icon="plus" label="Add a type" onPress={() => openForm(null)} />
+                  </>
+                ) : null}
+              </View>
+            }
+          />
+        )}
       </SafeAreaView>
 
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4285F4" />
-        </View>
-      ) : (
-        <FlatList
-          data={types}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          contentContainerStyle={[styles.listContent, types.length === 0 && styles.emptyListContent]}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <MaterialCommunityIcons name="file-plus-outline" size={64} color="#CCC" />
-              <Text style={styles.emptyText}>No request types yet</Text>
-              <Text style={styles.emptySubtext}>Tap + to create one</Text>
-            </View>
-          }
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={() => fetchTypes(true)} colors={['#4285F4']} tintColor="#4285F4" />
-          }
-        />
-      )}
+      {/* Create / edit */}
+      <Modal visible={formOpen} transparent animationType="fade" statusBarTranslucent onRequestClose={() => !saving && setFormOpen(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
+          <View style={styles.sheetBackdrop}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => !saving && setFormOpen(false)} accessibilityLabel="Dismiss" />
+            <View style={styles.sheet}>
+              <Text style={styles.sheetTitle}>{editing ? 'Edit request type' : 'New request type'}</Text>
 
-      {/* Create/Edit Modal */}
-      <Modal visible={showModal} transparent animationType="fade" onRequestClose={() => setShowModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{editingType ? 'Edit Request Type' : 'New Request Type'}</Text>
-              <TouchableOpacity onPress={() => setShowModal(false)}>
-                <MaterialCommunityIcons name="close" size={24} color="#666" />
-              </TouchableOpacity>
-            </View>
+              <Text style={styles.label}>Short code</Text>
+              <View style={[styles.field, focused === 'code' && styles.fieldFocused]}>
+                <TextInput
+                  style={styles.input}
+                  value={shortCode}
+                  onChangeText={setShortCode}
+                  onFocus={() => setFocused('code')}
+                  onBlur={() => setFocused(null)}
+                  placeholder="e.g. EQUIP"
+                  placeholderTextColor={C.muted}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  maxLength={20}
+                />
+              </View>
 
-            <Text style={styles.inputLabel}>Short Code *</Text>
-            <TextInput
-              style={styles.textInput}
-              value={shortCode}
-              onChangeText={setShortCode}
-              placeholder="e.g. LEAVE_EXT"
-              placeholderTextColor="#999"
-              autoCapitalize="characters"
-            />
+              <Text style={styles.label}>Name employees see</Text>
+              <View style={[styles.field, focused === 'desc' && styles.fieldFocused]}>
+                <TextInput
+                  style={styles.input}
+                  value={description}
+                  onChangeText={setDescription}
+                  onFocus={() => setFocused('desc')}
+                  onBlur={() => setFocused(null)}
+                  placeholder="e.g. Equipment Request"
+                  placeholderTextColor={C.muted}
+                  maxLength={100}
+                />
+              </View>
 
-            <Text style={styles.inputLabel}>Description</Text>
-            <TextInput
-              style={styles.textInput}
-              value={description}
-              onChangeText={setDescription}
-              placeholder="e.g. Leave Extension Request"
-              placeholderTextColor="#999"
-            />
+              <Text style={styles.label}>Category (optional)</Text>
+              <View style={[styles.field, focused === 'cat' && styles.fieldFocused]}>
+                <TextInput
+                  style={styles.input}
+                  value={category}
+                  onChangeText={setCategory}
+                  onFocus={() => setFocused('cat')}
+                  onBlur={() => setFocused(null)}
+                  placeholder="e.g. Facilities"
+                  placeholderTextColor={C.muted}
+                  maxLength={50}
+                />
+              </View>
 
-            <Text style={styles.inputLabel}>Category</Text>
-            <TextInput
-              style={styles.textInput}
-              value={category}
-              onChangeText={setCategory}
-              placeholder="e.g. HR, General"
-              placeholderTextColor="#999"
-            />
+              {formError ? (
+                <View style={styles.errorBox}>
+                  <MaterialCommunityIcons name="alert-circle-outline" size={18} color={C.danger} />
+                  <Text style={styles.errorText}>{formError}</Text>
+                </View>
+              ) : null}
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.cancelModalButton} onPress={() => setShowModal(false)}>
-                <Text style={styles.cancelModalText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.saveButton, saving && { opacity: 0.6 }]}
-                onPress={handleSave}
-                disabled={saving}
-              >
-                <Text style={styles.saveButtonText}>{saving ? 'Saving...' : 'Save'}</Text>
-              </TouchableOpacity>
+              <View style={styles.sheetActions}>
+                <View style={styles.half}>
+                  <PrimaryButton label="Cancel" onPress={() => setFormOpen(false)} variant="outline" disabled={saving} compact />
+                </View>
+                <View style={styles.half}>
+                  <PrimaryButton label={editing ? 'Save' : 'Add'} onPress={() => { void save(); }} loading={saving} compact />
+                </View>
+              </View>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
-  safeArea: { backgroundColor: '#FFFFFF' },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1, borderBottomColor: '#F0F0F0',
-  },
-  backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: '#000' },
-  addButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  listContent: { padding: 16 },
-  emptyListContent: { flexGrow: 1, justifyContent: 'center' },
-  emptyState: { alignItems: 'center', paddingVertical: 60 },
-  emptyText: { fontSize: 18, fontWeight: '600', color: '#999', marginTop: 16 },
-  emptySubtext: { fontSize: 14, color: '#CCC', marginTop: 8 },
+  container: { flex: 1, backgroundColor: '#F6F8FF' },
+  flex: { flex: 1 },
+  gap: { height: 12, width: '100%' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 56, paddingHorizontal: 12, paddingTop: 4 },
+  iconButton: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  headerText: { position: 'absolute', left: 88, right: 88, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: C.ink },
+
+  list: { paddingHorizontal: 16, paddingBottom: 24, paddingTop: 8, gap: 12 },
+
   card: {
-    backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, marginBottom: 12,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: C.blue,
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2,
   },
-  cardMain: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  cardInfo: { flex: 1, marginRight: 12 },
-  cardCode: { fontSize: 16, fontWeight: '700', color: '#000' },
-  cardDesc: { fontSize: 14, color: '#666', marginTop: 4 },
-  cardCategory: { fontSize: 12, color: '#999', marginTop: 2 },
-  cardBadges: { flexDirection: 'row', gap: 6 },
-  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  statusText: { fontSize: 11, fontWeight: '600' },
-  cardActions: {
-    flexDirection: 'row', marginTop: 12, paddingTop: 12,
-    borderTopWidth: 1, borderTopColor: '#F0F0F0', gap: 12,
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  codeTile: { width: 46, height: 46, borderRadius: 14, backgroundColor: '#E8F0FE', justifyContent: 'center', alignItems: 'center' },
+  codeText: { fontSize: 12, fontWeight: '800', color: C.blue },
+  cardText: { flex: 1 },
+  cardTitle: { fontSize: 15, fontWeight: '800', color: C.ink },
+  cardMeta: { fontSize: 12, color: C.body, marginTop: 2 },
+  pill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  pillOn: { backgroundColor: '#DCFCE7' },
+  pillOff: { backgroundColor: '#EEF2F7' },
+  pillText: { fontSize: 11, fontWeight: '700' },
+  pillTextOn: { color: '#15803D' },
+  pillTextOff: { color: C.body },
+
+  cardActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  cardAction: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#C9DAF8',
+    backgroundColor: '#F8FBFF',
   },
-  editButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, borderRadius: 8, backgroundColor: '#E3F2FD', gap: 4 },
-  editText: { fontSize: 14, fontWeight: '600', color: '#4285F4' },
-  deleteButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, borderRadius: 8, backgroundColor: '#FFEBEE', gap: 4 },
-  deleteText: { fontSize: 14, fontWeight: '600', color: '#FF5252' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modalContent: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 24, width: '100%', maxWidth: 400 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 20, fontWeight: '700', color: '#000' },
-  inputLabel: { fontSize: 14, fontWeight: '600', color: '#333', marginBottom: 6, marginTop: 12 },
-  textInput: {
-    backgroundColor: '#F9F9F9', borderRadius: 12, padding: 14, fontSize: 15, color: '#000',
-    borderWidth: 1, borderColor: '#E0E0E0',
+  cardActionDanger: { borderColor: C.dangerLine, backgroundColor: C.dangerBg },
+  cardActionText: { fontSize: 13, fontWeight: '700', color: C.blue },
+  cardActionTextDanger: { color: C.danger },
+
+  emptyCard: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 28, alignItems: 'center', gap: 8, marginTop: 20 },
+  emptyIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#E6EEFF', justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
+  emptyTitle: { fontSize: 17, fontWeight: '800', color: C.ink },
+  emptyBody: { fontSize: 14, lineHeight: 20, color: C.body, textAlign: 'center' },
+
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,27,45,0.45)', justifyContent: 'center', padding: 22 },
+  sheet: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 22,
+    shadowColor: C.ink,
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 10,
   },
-  modalButtons: { flexDirection: 'row', gap: 12, marginTop: 24 },
-  cancelModalButton: { flex: 1, backgroundColor: '#F5F5F5', borderRadius: 12, padding: 16, alignItems: 'center' },
-  cancelModalText: { fontSize: 16, fontWeight: '600', color: '#666' },
-  saveButton: { flex: 1, backgroundColor: '#4285F4', borderRadius: 12, padding: 16, alignItems: 'center' },
-  saveButtonText: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
+  sheetTitle: { fontSize: 19, fontWeight: '800', color: C.ink, marginBottom: 6 },
+  label: { fontSize: 12, fontWeight: '700', color: C.body, letterSpacing: 0.3, marginTop: 10, marginBottom: 6 },
+  field: {
+    height: 50,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.line,
+    backgroundColor: C.field,
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+  },
+  fieldFocused: { borderColor: C.blue, backgroundColor: '#FFFFFF' },
+  input: { fontSize: 15, color: C.ink, paddingVertical: 0 },
+
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: C.dangerBg,
+    borderWidth: 1,
+    borderColor: C.dangerLine,
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 12,
+  },
+  errorText: { flex: 1, fontSize: 13, lineHeight: 18, color: C.danger },
+
+  sheetActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  half: { flex: 1 },
 });
 
 export default RequestTypesScreen;

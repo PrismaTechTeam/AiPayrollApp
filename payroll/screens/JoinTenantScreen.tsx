@@ -1,19 +1,21 @@
 /**
  * Join Tenant Screen
- * Allows users to join a tenant/company via QR code scanning or invitation link/code.
- * Two tabs: "Scan QR" and "Join via Link"
+ * One page: who you are at the company, then the invitation code. The code can
+ * be typed, pasted as a link, or scanned — the scan icon inside the code field
+ * opens the camera, and a good scan fills the field and submits. Two ways to
+ * get the same string did not deserve two tabs.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  StatusBar,
   TextInput,
-  Alert,
+  Modal,
   ActivityIndicator,
+  StatusBar,
   Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,681 +23,403 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import companyService from '../api/services/companyService';
-
-type TabType = 'scanQR' | 'joinViaLink';
-
-interface QRPayload {
-  tenantId: string;
-  inviteCode?: string;
-  companyName?: string;
-}
+import { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
+import PrimaryButton from '../components/auth/PrimaryButton';
+import { AccountPage, Card, SectionHeader } from '../components/account/AccountUi';
+import { useDialog } from '../components/ui/AppDialog';
 
 /**
- * Parse QR data from either JSON or URL format.
- * Supported formats:
- *   - JSON: {"tenantId": "uuid", "inviteCode": "ABC123"}
- *   - URL:  payrollapp://join?tenantId=xxx&code=xxx
- *   - URL:  https://...?tenantId=xxx&code=xxx
+ * What a scanned QR or a pasted link resolves to.
+ *
+ * A join code is now the primary form. It used to be the TENANT ID: a value that shows
+ * up in URLs and JWT claims and can never be changed, so once it leaked anyone could
+ * queue join requests at that company forever. Links carrying a tenantId still resolve,
+ * because posters printed under the old scheme are out in the world.
  */
-function parseQRData(data: string): QRPayload | null {
-  // Try JSON first
-  try {
-    const parsed = JSON.parse(data);
-    if (parsed && parsed.tenantId) {
-      return {
-        tenantId: parsed.tenantId,
-        inviteCode: parsed.inviteCode || parsed.code,
-        companyName: parsed.companyName || parsed.tenantName,
-      };
-    }
-  } catch {
-    // Not JSON, try URL parsing
-  }
-
-  // Try URL parsing
-  try {
-    const url = new URL(data);
-    const tenantId = url.searchParams.get('tenantId');
-    if (tenantId) {
-      return {
-        tenantId,
-        inviteCode: url.searchParams.get('code') || url.searchParams.get('inviteCode') || undefined,
-        companyName: url.searchParams.get('companyName') || undefined,
-      };
-    }
-  } catch {
-    // Not a valid URL
-  }
-
-  return null;
-}
+type JoinTarget =
+  | { type: 'code'; code: string; companyName?: string }
+  | { type: 'tenant'; tenantId: string; companyName?: string };
 
 /**
- * Parse a link or code input from the "Join via Link" tab.
- * If it looks like a URL, extract tenantId/code params.
- * Otherwise treat it as a raw invitation code.
+ * Parse a scanned QR, a pasted link, or a typed code.
+ * Accepts:
+ *   - a bare code            ABCD234XYZ
+ *   - payrollapp://join?code=ABCD234XYZ            (current invite QR)
+ *   - https://…?code=ABCD234XYZ
+ *   - JSON  {"code": "…"} or {"tenantId": "…"}     (older QR payloads)
+ *   - payrollapp://join?tenantId=…                 (older invite links)
  */
-function parseLinkOrCode(input: string): { type: 'url'; tenantId: string; code?: string } | { type: 'code'; code: string } | null {
-  const trimmed = input.trim();
+function parseJoinInput(data: string): JoinTarget | null {
+  const trimmed = (data ?? '').trim();
   if (!trimmed) return null;
 
-  // Check if it's a URL
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('payrollapp://')) {
-    try {
-      const url = new URL(trimmed);
-      const tenantId = url.searchParams.get('tenantId');
-      if (tenantId) {
-        return {
-          type: 'url',
-          tenantId,
-          code: url.searchParams.get('code') || url.searchParams.get('inviteCode') || undefined,
-        };
-      }
-    } catch {
-      // Invalid URL format
+  // JSON payload
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === 'object') {
+      const companyName = parsed.companyName || parsed.tenantName || undefined;
+      const code = parsed.code || parsed.inviteCode;
+      if (code) return { type: 'code', code: String(code), companyName };
+      if (parsed.tenantId) return { type: 'tenant', tenantId: String(parsed.tenantId), companyName };
     }
+  } catch {
+    // Not JSON — fall through.
   }
 
-  // Treat as raw invitation code
+  // URL. Code wins over tenantId: a link carrying both is a new-style link with the id
+  // left in for older builds, and the code is the part that can be revoked.
+  if (/^(https?|payrollapp):\/\//i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      const companyName = url.searchParams.get('companyName') || undefined;
+      const code = url.searchParams.get('code') || url.searchParams.get('inviteCode');
+      if (code) return { type: 'code', code, companyName };
+      const tenantId = url.searchParams.get('tenantId');
+      if (tenantId) return { type: 'tenant', tenantId, companyName };
+    } catch {
+      // Not a valid URL — fall through.
+    }
+    return null;
+  }
+
+  // Anything else typed by hand is a raw join code.
   return { type: 'code', code: trimmed };
 }
 
+/** The server's own words when it has any; otherwise ours. */
+function failureMessage(err: unknown, fallback: string): string {
+  const e = err as { response?: { data?: { message?: unknown } }; message?: unknown } | null;
+  const server = e?.response?.data?.message;
+  if (typeof server === 'string' && server) return server;
+  if (e?.message === 'Network Error') return 'Could not reach the server. Check your connection and try again.';
+  if (typeof e?.message === 'string' && e.message) return e.message;
+  return fallback;
+}
+
+/** The four bracket corners drawn around the scan area. */
+const ScanCorners: React.FC<{ color: string }> = ({ color }) => (
+  <>
+    <View style={[styles.corner, styles.cornerTopLeft, { borderColor: color }]} />
+    <View style={[styles.corner, styles.cornerTopRight, { borderColor: color }]} />
+    <View style={[styles.corner, styles.cornerBottomLeft, { borderColor: color }]} />
+    <View style={[styles.corner, styles.cornerBottomRight, { borderColor: color }]} />
+  </>
+);
+
 export const JoinTenantScreen: React.FC = () => {
   const navigation = useNavigation();
-  const [activeTab, setActiveTab] = useState<TabType>('scanQR');
+  const dialog = useDialog();
 
-  // QR Scanner state
+  // Who this person is at the company. HR needs it whichever way the code
+  // arrives — without it they receive a display name and an email and have to
+  // guess which of a few hundred employee records that is.
+  const [employeeCode, setEmployeeCode] = useState('');
+  const [icNumber, setIcNumber] = useState('');
+  const [codeInput, setCodeInput] = useState('');
+  const [focused, setFocused] = useState<'code' | 'ic' | 'invite' | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Scanner
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
-  const [scanSubmitting, setScanSubmitting] = useState(false);
 
-  // Join via Link state
-  const [linkInput, setLinkInput] = useState('');
-  const [linkSubmitting, setLinkSubmitting] = useState(false);
+  const submitTarget = useCallback(
+    async (target: JoinTarget, how: 'code' | 'scan') => {
+      const identity = { employeeCode, icNumber };
+      const message = how === 'scan' ? 'Joined via QR scan' : 'Joined via invitation code';
+      setSubmitting(true);
+      try {
+        // A current invite carries a rotatable join code; older ones carry a tenant id.
+        const joinRequest =
+          target.type === 'code'
+            ? await companyService.joinViaCode(target.code, { ...identity, message })
+            : await companyService.submitJoinRequest(target.tenantId, message, identity);
+        navigation.navigate('JoinRequestPending', {
+          companyId: target.type === 'code' ? joinRequest.tenantId : target.tenantId,
+          companyName: joinRequest.tenantName || target.companyName || 'Company',
+        } as never);
+      } catch (err) {
+        await dialog.notify({ title: 'Join failed', message: failureMessage(err, 'Failed to submit join request. Please try again.'), tone: 'danger' });
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [employeeCode, icNumber, navigation, dialog],
+  );
 
-  // Reset scanned state when switching back to QR tab
-  useEffect(() => {
-    if (activeTab === 'scanQR') {
-      setScanned(false);
+  const handleJoin = () => {
+    const target = parseJoinInput(codeInput);
+    if (!target) {
+      void dialog.notify({ title: 'Enter a code', message: 'Please enter an invitation code or link.', tone: 'warning' });
+      return;
     }
-  }, [activeTab]);
+    void submitTarget(target, 'code');
+  };
+
+  const openScanner = async () => {
+    setScanned(false);
+    setScannerOpen(true);
+    // Always ask when not granted. A one-time grant that has lapsed reports
+    // canAskAgain=false yet the system dialog still appears; only when this
+    // request comes back denied does the settings fallback make sense.
+    if (permission && !permission.granted) {
+      await requestPermission();
+    }
+  };
 
   const handleBarcodeScanned = useCallback(
-    async ({ data }: { data: string }) => {
-      if (scanned || scanSubmitting) return;
+    ({ data }: { data: string }) => {
+      if (scanned || submitting) return;
       setScanned(true);
 
       console.log('[JoinTenant] QR raw data:', data);
-      const payload = parseQRData(data);
-      if (!payload) {
-        console.log('[JoinTenant] QR parse failed — invalid or unsupported format');
-        Alert.alert(
-          'Invalid QR Code',
-          'This QR code does not contain valid join information. Please try a different code.',
-          [{ text: 'Scan Again', onPress: () => setScanned(false) }],
-        );
+      const target = parseJoinInput(data);
+      if (!target) {
+        void dialog
+          .notify({
+            title: 'Invalid QR code',
+            message: 'This QR code does not contain valid join information. Please try a different code.',
+            buttonText: 'Scan again',
+            tone: 'warning',
+          })
+          .then(() => setScanned(false));
         return;
       }
-      console.log('[JoinTenant] QR parsed payload:', payload);
-
-      setScanSubmitting(true);
-
-      try {
-        const message = 'Joined via QR scan';
-        console.log('[JoinTenant] Sending join request:', { tenantId: payload.tenantId, message });
-        const joinRequest = await companyService.submitJoinRequest(
-          payload.tenantId,
-          message,
-        );
-        navigation.navigate('JoinRequestPending' as never, {
-          companyId: payload.tenantId,
-          companyName: payload.companyName || joinRequest.tenantName || 'Company',
-        } as never);
-      } catch (err: any) {
-        const message = err?.response?.data?.message ?? err?.message ?? 'Failed to submit join request. Please try again.';
-        Alert.alert(
-          'Join Failed',
-          message,
-          [{ text: 'Scan Again', onPress: () => setScanned(false) }],
-        );
-      } finally {
-        setScanSubmitting(false);
-      }
+      // Show what was read, then send it — the person should not have to tap Join
+      // for a code they just pointed the camera at.
+      setCodeInput(target.type === 'code' ? target.code : data.trim());
+      setScannerOpen(false);
+      void submitTarget(target, 'scan');
     },
-    [scanned, scanSubmitting, navigation],
-  );
-
-  const handleJoinViaLink = async () => {
-    const parsed = parseLinkOrCode(linkInput);
-    if (!parsed) {
-      Alert.alert('Invalid Input', 'Please enter an invitation code or link.');
-      return;
-    }
-
-    setLinkSubmitting(true);
-    try {
-      if (parsed.type === 'url') {
-        // Direct join via tenantId from URL
-        const joinRequest = await companyService.submitJoinRequest(
-          parsed.tenantId,
-          parsed.code ? `Joined via invitation link (code: ${parsed.code})` : 'Joined via invitation link',
-        );
-        navigation.navigate('JoinRequestPending' as never, {
-          companyId: parsed.tenantId,
-          companyName: joinRequest.tenantName || 'Company',
-        } as never);
-      } else {
-        // Raw code: submit to backend code resolution endpoint
-        const joinRequest = await companyService.joinViaCode(parsed.code);
-        navigation.navigate('JoinRequestPending' as never, {
-          companyId: joinRequest.tenantId,
-          companyName: joinRequest.tenantName || 'Company',
-        } as never);
-      }
-    } catch (err: any) {
-      Alert.alert(
-        'Join Failed',
-        err.message || 'Invalid code or failed to submit join request. Please try again.',
-      );
-    } finally {
-      setLinkSubmitting(false);
-    }
-  };
-
-  const renderScanQRTab = () => {
-    if (!permission) {
-      // Permissions still loading
-      return (
-        <View style={styles.centeredContent}>
-          <ActivityIndicator size="large" color="#4285F4" />
-          <Text style={styles.permissionText}>Loading camera...</Text>
-        </View>
-      );
-    }
-
-    if (!permission.granted) {
-      return (
-        <View style={styles.centeredContent}>
-          <View style={styles.permissionIconContainer}>
-            <MaterialCommunityIcons name="camera-off" size={64} color="#CCC" />
-          </View>
-          <Text style={styles.permissionTitle}>Camera Access Required</Text>
-          <Text style={styles.permissionText}>
-            To scan QR codes, please grant camera permission.
-          </Text>
-          <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
-            <MaterialCommunityIcons name="camera" size={20} color="#FFFFFF" />
-            <Text style={styles.permissionButtonText}>Grant Camera Permission</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    if (scanSubmitting) {
-      return (
-        <View style={styles.centeredContent}>
-          <ActivityIndicator size="large" color="#4285F4" />
-          <Text style={styles.submittingText}>Submitting join request...</Text>
-        </View>
-      );
-    }
-
-    return (
-      <View style={styles.scannerContainer}>
-        <View style={styles.cameraWrapper}>
-          <CameraView
-            style={styles.camera}
-            facing="back"
-            barcodeScannerSettings={{
-              barcodeTypes: ['qr'],
-            }}
-            onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
-          />
-          {/* Scanner overlay */}
-          <View style={styles.scannerOverlay}>
-            <View style={styles.scannerFrame}>
-              {/* Corner decorations */}
-              <View style={[styles.corner, styles.cornerTopLeft]} />
-              <View style={[styles.corner, styles.cornerTopRight]} />
-              <View style={[styles.corner, styles.cornerBottomLeft]} />
-              <View style={[styles.corner, styles.cornerBottomRight]} />
-            </View>
-          </View>
-        </View>
-
-        <Text style={styles.scanInstructions}>
-          Point your camera at a company QR code to join
-        </Text>
-
-        {scanned && (
-          <TouchableOpacity
-            style={styles.rescanButton}
-            onPress={() => setScanned(false)}
-          >
-            <MaterialCommunityIcons name="refresh" size={18} color="#4285F4" />
-            <Text style={styles.rescanButtonText}>Scan Again</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    );
-  };
-
-  const renderJoinViaLinkTab = () => (
-    <View style={styles.linkContainer}>
-      <View style={styles.linkIconContainer}>
-        <MaterialCommunityIcons name="link-variant" size={48} color="#4285F4" />
-      </View>
-
-      <Text style={styles.linkTitle}>Enter Invitation Code or Link</Text>
-      <Text style={styles.linkDescription}>
-        Paste the invitation code or link shared by your company admin.
-      </Text>
-
-      <View style={styles.linkInputContainer}>
-        <MaterialCommunityIcons name="code-tags" size={20} color="#999" />
-        <TextInput
-          style={styles.linkInput}
-          placeholder="Enter invitation code or link"
-          placeholderTextColor="#BBB"
-          value={linkInput}
-          onChangeText={setLinkInput}
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={!linkSubmitting}
-        />
-        {linkInput.length > 0 && !linkSubmitting && (
-          <TouchableOpacity onPress={() => setLinkInput('')}>
-            <MaterialCommunityIcons name="close-circle" size={20} color="#999" />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      <TouchableOpacity
-        style={[
-          styles.joinButton,
-          (!linkInput.trim() || linkSubmitting) && styles.joinButtonDisabled,
-        ]}
-        onPress={handleJoinViaLink}
-        disabled={!linkInput.trim() || linkSubmitting}
-      >
-        {linkSubmitting ? (
-          <ActivityIndicator size="small" color="#FFFFFF" />
-        ) : (
-          <>
-            <MaterialCommunityIcons name="login" size={20} color="#FFFFFF" />
-            <Text style={styles.joinButtonText}>Join</Text>
-          </>
-        )}
-      </TouchableOpacity>
-
-      <View style={styles.helperContainer}>
-        <MaterialCommunityIcons name="information-outline" size={16} color="#999" />
-        <Text style={styles.helperText}>
-          Your HR admin can provide you with an invitation code or link.
-          You can also ask them for a QR code to scan.
-        </Text>
-      </View>
-    </View>
+    [scanned, submitting, submitTarget, dialog],
   );
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#4285F4" />
+    <>
+      <AccountPage title="Join Tenant" subtitle="Connect to your company">
+        <SectionHeader title="Who are you at this company?" description="HR uses this to match you to your employee record. Without it, your request may wait while they work out who you are." />
+        <Card>
+          <View style={[styles.field, focused === 'code' && styles.fieldFocused]}>
+            <MaterialCommunityIcons name="account-group-outline" size={22} color={C.muted} />
+            <TextInput
+              style={styles.input}
+              placeholder="Employee number (e.g. 210)"
+              placeholderTextColor={C.muted}
+              value={employeeCode}
+              onChangeText={setEmployeeCode}
+              onFocus={() => setFocused('code')}
+              onBlur={() => setFocused(null)}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              returnKeyType="next"
+            />
+          </View>
+          <View style={[styles.field, styles.fieldLast, focused === 'ic' && styles.fieldFocused]}>
+            <MaterialCommunityIcons name="card-account-details-outline" size={22} color={C.muted} />
+            <TextInput
+              style={styles.input}
+              placeholder="IC or passport number"
+              placeholderTextColor={C.muted}
+              value={icNumber}
+              onChangeText={setIcNumber}
+              onFocus={() => setFocused('ic')}
+              onBlur={() => setFocused(null)}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              returnKeyType="done"
+            />
+          </View>
+        </Card>
 
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerRow}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-              <MaterialCommunityIcons name="arrow-left" size={24} color="#FFFFFF" />
+        <SectionHeader title="Invitation code" description="Paste the code or link from your HR, or tap the scan icon to read their QR." />
+        <Card>
+          <View style={[styles.field, styles.fieldLast, focused === 'invite' && styles.fieldFocused]}>
+            <MaterialCommunityIcons name="link-variant" size={22} color={C.muted} />
+            <TextInput
+              style={styles.input}
+              placeholder="Enter invitation code or link"
+              placeholderTextColor={C.muted}
+              value={codeInput}
+              onChangeText={setCodeInput}
+              onFocus={() => setFocused('invite')}
+              onBlur={() => setFocused(null)}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!submitting}
+              returnKeyType="go"
+              onSubmitEditing={handleJoin}
+            />
+            {codeInput.length > 0 && !submitting ? (
+              <TouchableOpacity onPress={() => setCodeInput('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Clear">
+                <MaterialCommunityIcons name="close-circle" size={20} color={C.muted} />
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              onPress={openScanner}
+              disabled={submitting}
+              style={styles.scanButton}
+              accessibilityRole="button"
+              accessibilityLabel="Scan QR code"
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <MaterialCommunityIcons name="qrcode-scan" size={22} color={C.blue} />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Join Tenant</Text>
-            <View style={styles.headerSpacer} />
+          </View>
+          <View style={styles.gap} />
+          <PrimaryButton icon="login" label="Join" onPress={handleJoin} disabled={!codeInput.trim()} loading={submitting} />
+        </Card>
+
+        <View style={styles.helpCard}>
+          <View style={styles.helpIcon}>
+            <MaterialCommunityIcons name="information-outline" size={24} color={C.blue} />
+          </View>
+          <View style={styles.helpText}>
+            <Text style={styles.helpTitle}>Need help?</Text>
+            <Text style={styles.helpBody}>Your HR admin can give you an invitation code, a link, or a QR code to scan.</Text>
           </View>
         </View>
+      </AccountPage>
 
-        {/* Content */}
-        <View style={styles.contentContainer}>
-          {/* Tabs */}
-          <View style={styles.tabRow}>
-            <TouchableOpacity
-              style={[styles.tab, activeTab === 'scanQR' && styles.tabActive]}
-              onPress={() => setActiveTab('scanQR')}
-            >
-              <MaterialCommunityIcons
-                name="qrcode-scan"
-                size={18}
-                color={activeTab === 'scanQR' ? '#FFFFFF' : '#555'}
-              />
-              <Text
-                style={[styles.tabText, activeTab === 'scanQR' && styles.tabTextActive]}
+      {/* Scanner */}
+      <Modal visible={scannerOpen} animationType="slide" onRequestClose={() => setScannerOpen(false)}>
+        <View style={styles.scanner}>
+          <StatusBar barStyle="light-content" backgroundColor={C.ink} />
+          {permission?.granted ? (
+            <CameraView
+              style={StyleSheet.absoluteFill}
+              facing="back"
+              barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+              onBarcodeScanned={scanned || !scannerOpen ? undefined : handleBarcodeScanned}
+            />
+          ) : null}
+
+          <SafeAreaView style={styles.scannerOverlay} edges={['top', 'bottom']}>
+            <View style={styles.scannerHeader}>
+              <TouchableOpacity
+                onPress={() => setScannerOpen(false)}
+                style={styles.scannerClose}
+                accessibilityRole="button"
+                accessibilityLabel="Close scanner"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                Scan QR
-              </Text>
-            </TouchableOpacity>
+                <MaterialCommunityIcons name="close" size={26} color="#FFFFFF" />
+              </TouchableOpacity>
+              <Text style={styles.scannerTitle}>Scan QR code</Text>
+              <View style={styles.scannerClose} />
+            </View>
 
-            <TouchableOpacity
-              style={[styles.tab, activeTab === 'joinViaLink' && styles.tabActive]}
-              onPress={() => setActiveTab('joinViaLink')}
-            >
-              <MaterialCommunityIcons
-                name="link-variant"
-                size={18}
-                color={activeTab === 'joinViaLink' ? '#FFFFFF' : '#555'}
-              />
-              <Text
-                style={[
-                  styles.tabText,
-                  activeTab === 'joinViaLink' && styles.tabTextActive,
-                ]}
-              >
-                Join via Link
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Tab Content */}
-          <View style={styles.tabContent}>
-            {activeTab === 'scanQR' ? renderScanQRTab() : renderJoinViaLinkTab()}
-          </View>
+            {permission?.granted ? (
+              <>
+                <View style={styles.scannerMiddle}>
+                  <View style={styles.scannerTarget}>
+                    <ScanCorners color="#FFFFFF" />
+                  </View>
+                </View>
+                <View style={styles.scannerFooter}>
+                  {submitting ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.scannerHint}>Point your camera at the company QR code</Text>
+                  )}
+                  {scanned && !submitting ? (
+                    <TouchableOpacity onPress={() => setScanned(false)} style={styles.rescan}>
+                      <MaterialCommunityIcons name="refresh" size={18} color="#FFFFFF" />
+                      <Text style={styles.rescanText}>Scan Again</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              </>
+            ) : (
+              <View style={styles.scannerMiddle}>
+                <View style={styles.permissionCard}>
+                  <View style={styles.permissionIcon}>
+                    <MaterialCommunityIcons name="camera-off-outline" size={34} color={C.blue} />
+                  </View>
+                  <Text style={styles.permissionTitle}>Camera Access Required</Text>
+                  <Text style={styles.permissionBody}>To scan QR codes, please grant camera permission.</Text>
+                  {permission && !permission.canAskAgain ? (
+                    <>
+                      <Text style={styles.permissionBody}>Camera was refused earlier, so the phone will not ask again. Allow it for this app in Settings, then come back.</Text>
+                      <PrimaryButton icon="cog-outline" label="Open App Settings" onPress={() => { void Linking.openSettings(); }} />
+                    </>
+                  ) : (
+                    <PrimaryButton icon="camera" label="Grant Camera Permission" onPress={() => { void requestPermission(); }} />
+                  )}
+                </View>
+              </View>
+            )}
+          </SafeAreaView>
         </View>
-      </SafeAreaView>
-    </View>
+      </Modal>
+    </>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#4285F4',
-  },
-  safeArea: {
-    flex: 1,
-  },
-
-  // Header
-  header: {
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-  },
-  headerRow: {
+  field: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  headerSpacer: {
-    width: 40,
-  },
-
-  // Content
-  contentContainer: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    paddingTop: 24,
-  },
-
-  // Tabs
-  tabRow: {
-    flexDirection: 'row',
-    marginHorizontal: 24,
-    backgroundColor: '#F0F0F0',
-    borderRadius: 12,
-    padding: 4,
-    marginBottom: 20,
-  },
-  tab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 10,
-    gap: 6,
-  },
-  tabActive: {
-    backgroundColor: '#4285F4',
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#555',
-  },
-  tabTextActive: {
-    color: '#FFFFFF',
-  },
-
-  // Tab Content
-  tabContent: {
-    flex: 1,
-  },
-
-  // Scan QR Tab
-  centeredContent: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-  permissionIconContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#F5F5F5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  permissionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  permissionText: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 24,
-    marginTop: 8,
-  },
-  permissionButton: {
-    flexDirection: 'row',
-    backgroundColor: '#4285F4',
-    borderRadius: 12,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    alignItems: 'center',
-    gap: 8,
-  },
-  permissionButtonText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  submittingText: {
-    fontSize: 15,
-    color: '#666',
-    marginTop: 16,
-  },
-  scannerContainer: {
-    flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  cameraWrapper: {
-    width: '100%',
-    aspectRatio: 1,
-    maxWidth: 300,
-    borderRadius: 20,
-    overflow: 'hidden',
-    backgroundColor: '#000',
-    position: 'relative',
-  },
-  camera: {
-    flex: 1,
-  },
-  scannerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  scannerFrame: {
-    width: 200,
-    height: 200,
-    position: 'relative',
-  },
-  corner: {
-    position: 'absolute',
-    width: 30,
-    height: 30,
-    borderColor: '#4285F4',
-  },
-  cornerTopLeft: {
-    top: 0,
-    left: 0,
-    borderTopWidth: 3,
-    borderLeftWidth: 3,
-    borderTopLeftRadius: 4,
-  },
-  cornerTopRight: {
-    top: 0,
-    right: 0,
-    borderTopWidth: 3,
-    borderRightWidth: 3,
-    borderTopRightRadius: 4,
-  },
-  cornerBottomLeft: {
-    bottom: 0,
-    left: 0,
-    borderBottomWidth: 3,
-    borderLeftWidth: 3,
-    borderBottomLeftRadius: 4,
-  },
-  cornerBottomRight: {
-    bottom: 0,
-    right: 0,
-    borderBottomWidth: 3,
-    borderRightWidth: 3,
-    borderBottomRightRadius: 4,
-  },
-  scanInstructions: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    marginTop: 20,
-    lineHeight: 20,
-    paddingHorizontal: 16,
-  },
-  rescanButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#4285F4',
-    gap: 6,
-  },
-  rescanButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#4285F4',
-  },
-
-  // Join via Link Tab
-  linkContainer: {
-    flex: 1,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-  },
-  linkIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#4285F410',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-    marginTop: 12,
-  },
-  linkTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  linkDescription: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 28,
-  },
-  linkInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 56,
-    width: '100%',
-    marginBottom: 16,
-  },
-  linkInput: {
-    flex: 1,
-    fontSize: 15,
-    color: '#000',
-    marginLeft: 12,
-  },
-  joinButton: {
-    flexDirection: 'row',
-    backgroundColor: '#4285F4',
-    borderRadius: 12,
+    gap: 12,
     height: 52,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.line,
+    backgroundColor: C.field,
+    paddingLeft: 14,
+    paddingRight: 8,
+    marginBottom: 10,
+  },
+  fieldLast: { marginBottom: 0 },
+  fieldFocused: { borderColor: C.blue, backgroundColor: '#FFFFFF' },
+  input: { flex: 1, fontSize: 16, color: C.ink, paddingVertical: 0 },
+  scanButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#E6EEFF',
     justifyContent: 'center',
     alignItems: 'center',
-    width: '100%',
-    gap: 8,
   },
-  joinButtonDisabled: {
-    opacity: 0.5,
-  },
-  joinButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  helperContainer: {
+  gap: { height: 14 },
+
+  helpCard: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 24,
-    paddingHorizontal: 4,
-    gap: 8,
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: C.line,
   },
-  helperText: {
-    flex: 1,
-    fontSize: 13,
-    color: '#999',
-    lineHeight: 20,
-  },
+  helpIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#E6EEFF', justifyContent: 'center', alignItems: 'center' },
+  helpText: { flex: 1 },
+  helpTitle: { fontSize: 15, fontWeight: '700', color: C.ink },
+  helpBody: { fontSize: 13, lineHeight: 18, color: C.body, marginTop: 2 },
+
+  // Scanner modal
+  scanner: { flex: 1, backgroundColor: C.ink },
+  scannerOverlay: { flex: 1 },
+  scannerHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6 },
+  scannerClose: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  scannerTitle: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '800', color: '#FFFFFF' },
+  scannerMiddle: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  scannerTarget: { width: 240, height: 240 },
+  scannerFooter: { alignItems: 'center', paddingHorizontal: 24, paddingBottom: 28, gap: 14 },
+  scannerHint: { fontSize: 15, color: '#FFFFFF', textAlign: 'center', opacity: 0.9 },
+  rescan: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.6)' },
+  rescanText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
+  corner: { position: 'absolute', width: 40, height: 40 },
+  cornerTopLeft: { top: 0, left: 0, borderTopWidth: 3, borderLeftWidth: 3, borderTopLeftRadius: 12 },
+  cornerTopRight: { top: 0, right: 0, borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: 12 },
+  cornerBottomLeft: { bottom: 0, left: 0, borderBottomWidth: 3, borderLeftWidth: 3, borderBottomLeftRadius: 12 },
+  cornerBottomRight: { bottom: 0, right: 0, borderBottomWidth: 3, borderRightWidth: 3, borderBottomRightRadius: 12 },
+
+  permissionCard: { width: '100%', backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, alignItems: 'center', gap: 10 },
+  permissionIcon: { width: 68, height: 68, borderRadius: 34, backgroundColor: '#E6EEFF', justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
+  permissionTitle: { fontSize: 20, fontWeight: '800', color: C.ink, textAlign: 'center' },
+  permissionBody: { fontSize: 14, lineHeight: 21, color: C.body, textAlign: 'center', marginBottom: 6 },
 });
 
 export default JoinTenantScreen;

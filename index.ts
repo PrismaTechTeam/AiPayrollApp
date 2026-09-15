@@ -37,7 +37,11 @@ try {
     androidPackage: Constants.expoConfig?.android?.package,
   });
   
-  console.log('🔍 [index.ts] Full expoConfig:', JSON.stringify(Constants.expoConfig, null, 2));
+  // The full config embeds google-services.json, API key included. That is
+  // fine on a dev box and has no business in a release build's logcat.
+  if (__DEV__) {
+    console.log('🔍 [index.ts] Full expoConfig:', JSON.stringify(Constants.expoConfig, null, 2));
+  }
 } catch (configError) {
   console.error('❌ [index.ts] Error reading config:', configError);
 }

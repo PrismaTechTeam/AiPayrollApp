@@ -25,3 +25,15 @@ export const API_CONFIG = {
   retryAttempts: 3,
   tokenRefreshBuffer: 2 * 60 * 1000,
 } as const;
+
+// Which backend is this build talking to? Until now the only way to find out was
+// to attempt a sign-in and read the log the login path emits on its way through —
+// so a dev pointed at the wrong API discovered it from a failed login rather than
+// from the log. Say it once at startup instead, and say plainly when it is the
+// live one, because every write from here is then real customer data.
+if (__DEV__) {
+  const live = /payrollapi\.niaga\.shop|api\.aipayroll\.com/.test(API_BASE_URL);
+  console.log(
+    `🌐 [API] ${API_BASE_URL}${live ? '  ⚠️ PRODUCTION — writes are live customer data' : ''}`,
+  );
+}

@@ -6,13 +6,14 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import Constants from 'expo-constants';
 import authService, { LoginResponse, MobileEmployee, TenantInfo } from '../api/services/authService';
 import { API_CONFIG } from '../api/config';
 import { tokenManager } from '../api/tokenManager';
 import { registerForPushNotifications, unregisterPushToken } from '../services/pushNotificationHandler';
 import { getFirebaseAuth, isFirebaseConfigured } from '../lib/firebase';
+import companyService from '../api/services/companyService';
 
 export interface PayrollUser {
   uid: string;
@@ -49,6 +50,8 @@ interface PayrollAuthContextType {
   logout: () => Promise<void>;
   refreshAuthState: () => Promise<void>;
   refreshTenants: () => Promise<void>;
+  /** After the server accepted a name change, keep the stored user in step. */
+  updateUserProfile: (patch: { firstName?: string; lastName?: string }) => Promise<void>;
 }
 
 const PayrollAuthContext = createContext<PayrollAuthContextType | undefined>(undefined);
@@ -56,6 +59,23 @@ const PayrollAuthContext = createContext<PayrollAuthContextType | undefined>(und
 const USER_STORE_KEY = 'payroll_user';
 const EMPLOYEE_STORE_KEY = 'payroll_employee';
 const PUSH_TOKEN_KEY = 'payroll_push_token';
+const KEEP_SIGNED_IN_KEY = 'payroll_keep_signed_in';
+
+/**
+ * Records the login screen's "Keep me signed in" choice.
+ *
+ * <p>Absent or 'true' means restore the session on next launch, which is what
+ * this app has always done — so an install that predates this setting, or a
+ * write that fails, keeps the old behaviour rather than silently signing
+ * everyone out. Only an explicit 'false' opts out.</p>
+ */
+export const setKeepSignedIn = async (keep: boolean): Promise<void> => {
+  try {
+    await SecureStore.setItemAsync(KEEP_SIGNED_IN_KEY, keep ? 'true' : 'false');
+  } catch {
+    // A preference is not worth failing a sign-in over.
+  }
+};
 
 export const PayrollAuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<PayrollUser | null>(null);
@@ -71,23 +91,64 @@ export const PayrollAuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Update auth status when user/employee changes
   useEffect(() => {
+    let cancelled = false;
+
     if (isLoading) {
       setAuthStatus('loading');
     } else if (!user) {
       setAuthStatus('unauthenticated');
     } else if (!user.tenantId && (!user.availableTenants || user.availableTenants.length === 0)) {
-      // No tenant at all — user needs to join a company
+      // No tenant yet. Two very different situations wear this shape: somebody who has
+      // not asked to join anywhere, and somebody who asked and is waiting on HR.
+      //
+      // 'pending_approval' has existed in the type and in App.tsx's navigator since the
+      // beginning but was NEVER assigned, so the waiting screen was only ever reached by
+      // navigating to it straight after submitting. Close the app and reopen it and the
+      // person landed back on "join a company" with no sign their request existed — so
+      // they sent it again, and the backend answered "You already have a pending
+      // request", which reads like the app is broken.
+      //
+      // Optimistic: show 'no_company' now and upgrade if a pending request comes back.
+      // Getting this wrong must not strand anyone, so a failed lookup leaves them on the
+      // screen that can still take an action.
       setAuthStatus('no_company');
+      companyService
+        .getJoinRequests()
+        .then((requests) => {
+          if (cancelled) return;
+          if (requests.some((r) => r.status === 'PENDING')) {
+            setAuthStatus('pending_approval');
+          }
+        })
+        .catch(() => {
+          // Offline, or the endpoint failed. 'no_company' is the safe landing.
+        });
     } else {
       // User has at least one tenant (or tenantId set) — fully authenticated.
       // employeeId may be null for HR/admin users who were added directly
       // without an Employee record — that's fine, they can still access the app.
       setAuthStatus('authenticated');
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [user, isLoading]);
 
   const checkStoredAuth = async () => {
     try {
+      // "Keep me signed in", unticked on the login screen, means the stored
+      // session must not be restored. Only an explicit 'false' opts out, so a
+      // missing value (every install before this setting existed) still
+      // restores exactly as before.
+      const keepSignedIn = await SecureStore.getItemAsync(KEEP_SIGNED_IN_KEY);
+      if (keepSignedIn === 'false') {
+        await SecureStore.deleteItemAsync(USER_STORE_KEY);
+        await SecureStore.deleteItemAsync(EMPLOYEE_STORE_KEY);
+        await tokenManager.clearTokens();
+        return;
+      }
+
       const storedUser = await SecureStore.getItemAsync(USER_STORE_KEY);
       const storedEmployee = await SecureStore.getItemAsync(EMPLOYEE_STORE_KEY);
       const accessToken = await tokenManager.getAccessToken();
@@ -256,6 +317,10 @@ export const PayrollAuthProvider = ({ children }: { children: ReactNode }) => {
       await SecureStore.deleteItemAsync(EMPLOYEE_STORE_KEY);
       setUser(null);
       setEmployee(null);
+      // The Firebase session is persisted across restarts now, so it has to be
+      // ended here as well or the next person on this phone inherits it.
+      const firebaseAuth = getFirebaseAuth();
+      if (firebaseAuth?.currentUser) await signOut(firebaseAuth).catch(() => {});
       console.log('User logged out');
     } catch (error) {
       console.error('Logout error:', error);
@@ -326,13 +391,16 @@ export const PayrollAuthProvider = ({ children }: { children: ReactNode }) => {
       let updatedTenants = user.availableTenants;
 
       if (employeeData?.tenantId && !updatedTenantId) {
-        updatedTenantId = employeeData.tenantId;
-        updatedTenantName = employeeData.tenantName ?? null;
+        // Captured because the narrowing is lost inside the closure below: employeeData
+        // is reassignable, so TypeScript cannot know it is still non-null in there.
+        const linked = employeeData;
+        updatedTenantId = linked.tenantId;
+        updatedTenantName = linked.tenantName ?? null;
         // Add the new tenant to the list if not already present
-        if (!updatedTenants.some(t => t.id === employeeData.tenantId)) {
+        if (!updatedTenants.some(t => t.id === linked.tenantId)) {
           updatedTenants = [
             ...updatedTenants,
-            { id: employeeData.tenantId, name: employeeData.tenantName ?? '', role: 'Employee', logoUrl: null },
+            { id: linked.tenantId, name: linked.tenantName ?? '', role: 'Employee', logoUrl: null },
           ];
         }
       }
@@ -364,6 +432,12 @@ export const PayrollAuthProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       const tenants = await authService.getMyTenants();
+      // Write back only a real change. An equal-but-new user object re-rendered every consumer and
+      // recreated this callback (it depends on `user`); UserHomeScreen's focus effect depends on the
+      // callback, so it called it again — about once a second, until the API's limit of 200 requests
+      // a minute answered 429 and the app showed "Error refreshing tenants" on every visit.
+      if (JSON.stringify(tenants) === JSON.stringify(user.availableTenants)) return;
+
       const updatedUser: PayrollUser = {
         ...user,
         availableTenants: tenants,
@@ -375,6 +449,23 @@ export const PayrollAuthProvider = ({ children }: { children: ReactNode }) => {
       console.error('Error refreshing tenants:', error);
     }
   }, [user, employee]);
+
+  const updateUserProfile = useCallback(
+    async (patch: { firstName?: string; lastName?: string }) => {
+      if (!user) return;
+      const firstName = (patch.firstName ?? user.firstName).trim();
+      const lastName = (patch.lastName ?? user.lastName).trim();
+      const updated: PayrollUser = {
+        ...user,
+        firstName,
+        lastName,
+        name: `${firstName} ${lastName}`.trim(),
+      };
+      await persistUserState(updated, employee);
+      setUser(updated);
+    },
+    [user, employee],
+  );
 
   const value = {
     user,
@@ -392,6 +483,7 @@ export const PayrollAuthProvider = ({ children }: { children: ReactNode }) => {
     logout,
     refreshAuthState,
     refreshTenants,
+    updateUserProfile,
   };
 
   return <PayrollAuthContext.Provider value={value}>{children}</PayrollAuthContext.Provider>;

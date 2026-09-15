@@ -1,329 +1,334 @@
 /**
- * Payslip Details Screen
- * Displays full payslip breakdown from API
+ * One payslip, in full.
+ *
+ * The sections, their order, their labels and the dash-for-zero rule all come
+ * from the server, which builds them from the same object it renders the PDF
+ * from — so this screen and the file an employee downloads cannot disagree, and
+ * neither can disagree with what HR sees in the web app. Nothing on this page
+ * decides which rows are worth showing.
+ *
+ * It is laid out as the document rather than as a feed of cards: company header,
+ * title bar, identity, the two money columns, overtime, leave, employer
+ * contributions and summary, then net pay, the signatures and the footer — the
+ * order of `WebAiPayroll/src/components/reports/HtmlPayslip.tsx`. Net pay in
+ * particular belongs at the end, after the summary that produces it. An earlier
+ * version opened with it as a hero figure, which read well but meant an employee
+ * checking the screen against the printed slip was reading two different
+ * documents.
+ *
+ * The two columns the web prints side by side are stacked here, and the wide
+ * tables scroll sideways inside their own sections. That is the only liberty
+ * taken: a phone is not 210mm.
  */
-
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
+  ActivityIndicator,
+  RefreshControl,
   ScrollView,
   StatusBar,
-  ActivityIndicator,
+  StyleSheet,
+  Text,
   TouchableOpacity,
-  Alert,
-  Platform,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
-import { Header } from '../components/payslips';
-import { BottomNavBar } from '../components/BottomNavBar';
-import payslipService, { PayslipDetail } from '../api/services/payslipService';
+import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
+import { PrimaryButton } from '../components/auth/PrimaryButton';
+import { useDialog } from '../components/ui/AppDialog';
+import payslipService, { PayslipDocument } from '../api/services/payslipService';
+import { serverMessage } from '../lib/serverMessage';
+import { payslipFileName, printPayslip, sharePayslipPdf } from '../lib/payslipPdf';
+import {
+  CompanyHeader,
+  DocumentFooter,
+  DocumentSheet,
+  EmptyDash,
+  FieldRow,
+  IdentityBlock,
+  LeaveMatrix,
+  MoneyRow,
+  NetPayRow,
+  OvertimeTable,
+  Panel,
+  PayslipState,
+  QuietLine,
+  SignatureBlock,
+  TitleBar,
+  count,
+  monthLabel,
+  ringgit,
+} from '../components/payslips/PayslipUi';
 
-type PayslipDetailsRouteParams = {
-  PayslipDetails: {
-    payrollRunId?: string;
-    payslip?: any;
-  };
-};
+type PayslipDetailsRoute = RouteProp<
+  { PayslipDetails: { payrollRunId?: string; payslip?: { payrollRunId?: string } } },
+  'PayslipDetails'
+>;
 
-type PayslipDetailsRouteProp = RouteProp<PayslipDetailsRouteParams, 'PayslipDetails'>;
+type Load =
+  | { kind: 'loading' }
+  | { kind: 'ready'; doc: PayslipDocument }
+  | { kind: 'failed'; message: string };
 
 export const PayslipDetailsScreen: React.FC = () => {
   const navigation = useNavigation();
-  const route = useRoute<PayslipDetailsRouteProp>();
-  const { payrollRunId, payslip: legacyPayslip } = route.params || {};
+  const route = useRoute<PayslipDetailsRoute>();
+  const dialog = useDialog();
 
-  const [detail, setDetail] = useState<PayslipDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [downloading, setDownloading] = useState(false);
+  // The list passes payrollRunId; older call sites passed the whole list row.
+  const payrollRunId = route.params?.payrollRunId ?? route.params?.payslip?.payrollRunId ?? null;
 
-  useEffect(() => {
-    loadDetail();
-  }, []);
+  const [load, setLoad] = useState<Load>({ kind: 'loading' });
+  const [refreshing, setRefreshing] = useState(false);
+  const [busy, setBusy] = useState<'share' | 'print' | null>(null);
+  const alive = useRef(true);
 
-  const loadDetail = async () => {
-    const id = payrollRunId || legacyPayslip?.payrollRunId;
-    if (!id) {
-      setLoading(false);
+  const fetch = useCallback(async () => {
+    if (!payrollRunId) {
+      setLoad({ kind: 'failed', message: 'This payslip could not be opened. Go back and pick it again.' });
       return;
     }
     try {
-      const data = await payslipService.getDetail(id);
-      setDetail(data);
-    } catch (err: any) {
-      console.error('Failed to load payslip detail:', err);
+      const doc = await payslipService.getDocument(payrollRunId);
+      if (!alive.current) return;
+      setLoad({ kind: 'ready', doc });
+    } catch (err) {
+      if (!alive.current) return;
+      setLoad({ kind: 'failed', message: serverMessage(err, 'Could not load this payslip.') });
+    }
+  }, [payrollRunId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      alive.current = true;
+      setLoad({ kind: 'loading' });
+      void fetch();
+      return () => {
+        alive.current = false;
+      };
+    }, [fetch]),
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetch();
+    if (alive.current) setRefreshing(false);
+  }, [fetch]);
+
+  const doc = load.kind === 'ready' ? load.doc : null;
+
+  const withHtml = async (what: 'share' | 'print', use: (html: string) => Promise<void>) => {
+    if (!payrollRunId || !doc || busy) return;
+    setBusy(what);
+    try {
+      const html = await payslipService.getHtml(payrollRunId);
+      await use(html);
+    } catch (err) {
+      await dialog.notify({
+        title: 'Could not create the PDF',
+        message: serverMessage(err, 'Something went wrong preparing your payslip. Please try again.'),
+        tone: 'danger',
+      });
     } finally {
-      setLoading(false);
+      if (alive.current) setBusy(null);
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
-
-  const formatDate = (dateStr: string) => {
-    try {
-      return new Date(dateStr).toLocaleDateString('en-US', {
-        day: 'numeric', month: 'short', year: 'numeric',
-      });
-    } catch { return dateStr; }
-  };
-
-  const handleDownloadPdf = async () => {
-    const id = payrollRunId || legacyPayslip?.payrollRunId;
-    if (!id) return;
-
-    setDownloading(true);
-    try {
-      const html = await payslipService.getPayslipHtml(id);
-
-      const { uri } = await Print.printToFileAsync({
-        html,
-        base64: false,
-      });
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, {
-          mimeType: 'application/pdf',
-          dialogTitle: 'Payslip PDF',
-          UTI: 'com.adobe.pdf',
-        });
-      } else {
-        Alert.alert('Success', `PDF saved to: ${uri}`);
+  const onShare = () =>
+    void withHtml('share', async (html) => {
+      const name = payslipFileName(doc!.year, doc!.month, doc!.employee.code);
+      const { uri, shared } = await sharePayslipPdf(html, name);
+      // The share sheet is its own confirmation; a dialog on top of it is noise.
+      // Only a phone that has no sheet needs to be told where the file went.
+      if (!shared) {
+        await dialog.notify({ title: 'Payslip saved', message: uri, tone: 'success' });
       }
-    } catch (err: any) {
-      console.error('Failed to download payslip PDF:', err);
-      Alert.alert('Error', 'Failed to generate PDF. Please try again.');
-    } finally {
-      setDownloading(false);
-    }
-  };
+    });
 
-  if (loading) {
-    return (
-      <View style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#F5F5F5" />
-        <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
-          <Header title="Payment Details" onBackPress={() => navigation.goBack()} showBackButton={true} />
-        </SafeAreaView>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color="#4285F4" />
-        </View>
-        <BottomNavBar />
-      </View>
-    );
-  }
+  const onPrint = () => void withHtml('print', (html) => printPayslip(html));
 
-  if (!detail) {
-    return (
-      <View style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#F5F5F5" />
-        <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
-          <Header title="Payment Details" onBackPress={() => navigation.goBack()} showBackButton={true} />
-        </SafeAreaView>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ fontSize: 16, color: '#999' }}>Payslip not found</Text>
-        </View>
-        <BottomNavBar />
-      </View>
-    );
-  }
-
-  const inc = detail.income;
-  const ded = detail.deductions;
-  const stat = detail.statutory;
-
-  const incomeItems = [
-    { label: 'Basic Wages', amount: inc?.wages },
-    { label: 'Allowance', amount: inc?.allowance },
-    { label: 'Overtime', amount: inc?.overtime },
-    { label: 'Commission', amount: inc?.commission },
-    { label: 'Bonus', amount: inc?.bonus },
-    { label: 'Claims', amount: inc?.claims },
-    { label: 'Others', amount: inc?.others },
-    { label: 'Director Fees', amount: inc?.directorFees },
-    { label: 'Advance Paid', amount: inc?.advancePaid },
-    { label: 'Gratuity', amount: inc?.gratuity },
-  ].filter(item => (item.amount ?? 0) > 0);
-
-  const deductionItems = [
-    { label: 'Deduction', amount: ded?.deduction },
-    { label: 'Loan', amount: ded?.loan },
-    { label: 'Advance Deduction', amount: ded?.advanceDeduct },
-    { label: 'Unpaid Leave', amount: ded?.unpaidLeaveDeduct },
-  ].filter(item => (item.amount ?? 0) > 0);
-
-  const statutoryItems = [
-    { label: 'EPF (Employee)', amount: stat?.epfEmployee },
-    { label: 'SOCSO (Employee)', amount: stat?.socsoEmployee },
-    { label: 'EIS (Employee)', amount: stat?.eisEmployee },
-    { label: 'PCB / Tax', amount: stat?.pcbPayable },
-    { label: 'Zakat', amount: stat?.zakat },
-    { label: 'CP38', amount: stat?.cp38 },
-  ].filter(item => (item.amount ?? 0) > 0);
-
-  const employerItems = [
-    { label: 'EPF (Employer)', amount: stat?.epfEmployer },
-    { label: 'SOCSO (Employer)', amount: stat?.socsoEmployer },
-    { label: 'EIS (Employer)', amount: stat?.eisEmployer },
-  ].filter(item => (item.amount ?? 0) > 0);
+  const title = doc ? monthLabel(doc.year, doc.month) : 'Payslip';
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F5F5F5" />
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <AuthBackdrop scriptLines={[]} />
 
-      <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
-        <Header title="Payslip Details" onBackPress={() => navigation.goBack()} showBackButton={true} />
-      </SafeAreaView>
-
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Employee Info */}
-        <View style={styles.card}>
-          <Text style={styles.employeeName}>{detail.employeeName}</Text>
-          <Text style={styles.employeeCode}>{detail.employeeCode}</Text>
-          <Text style={styles.period}>
-            {formatDate(detail.periodStart)} - {formatDate(detail.periodEnd)}
-          </Text>
-        </View>
-
-        {/* Net Pay Highlight */}
-        <View style={styles.netPayCard}>
-          <Text style={styles.netPayLabel}>Net Pay</Text>
-          <Text style={styles.netPayAmount}>{formatCurrency(detail.netPay)}</Text>
-        </View>
-
-        {/* Income */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Income</Text>
-          {incomeItems.map((item, i) => (
-            <View key={i} style={styles.lineItem}>
-              <Text style={styles.lineLabel}>{item.label}</Text>
-              <Text style={styles.lineAmount}>{formatCurrency(item.amount)}</Text>
-            </View>
-          ))}
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Gross Pay</Text>
-            <Text style={styles.totalAmount}>{formatCurrency(detail.grossPay)}</Text>
+      <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.back}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={26} color={C.ink} />
+          </TouchableOpacity>
+          <View style={styles.headerText} pointerEvents="none">
+            <Text style={styles.headerTitle}>Payslip</Text>
+            <Text style={styles.headerSubtitle}>{title}</Text>
           </View>
         </View>
 
-        {/* Deductions */}
-        {deductionItems.length > 0 && (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Deductions</Text>
-            {deductionItems.map((item, i) => (
-              <View key={i} style={styles.lineItem}>
-                <Text style={styles.lineLabel}>{item.label}</Text>
-                <Text style={[styles.lineAmount, { color: '#EA4335' }]}>-{formatCurrency(item.amount)}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Statutory Deductions */}
-        {statutoryItems.length > 0 && (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Statutory Deductions</Text>
-            {statutoryItems.map((item, i) => (
-              <View key={i} style={styles.lineItem}>
-                <Text style={styles.lineLabel}>{item.label}</Text>
-                <Text style={[styles.lineAmount, { color: '#EA4335' }]}>-{formatCurrency(item.amount)}</Text>
-              </View>
-            ))}
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Total Deductions</Text>
-              <Text style={[styles.totalAmount, { color: '#EA4335' }]}>-{formatCurrency(detail.grossDeductions)}</Text>
-            </View>
-          </View>
-        )}
-
-        {/* Employer Contributions */}
-        {employerItems.length > 0 && (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Employer Contributions</Text>
-            {employerItems.map((item, i) => (
-              <View key={i} style={styles.lineItem}>
-                <Text style={styles.lineLabel}>{item.label}</Text>
-                <Text style={[styles.lineAmount, { color: '#1976D2' }]}>{formatCurrency(item.amount)}</Text>
-              </View>
-            ))}
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Total Employer</Text>
-              <Text style={[styles.totalAmount, { color: '#1976D2' }]}>
-                {formatCurrency((stat?.epfEmployer ?? 0) + (stat?.socsoEmployer ?? 0) + (stat?.eisEmployer ?? 0))}
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Others / Adjustments */}
-        {(detail.adjustment ?? 0) !== 0 && (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Others</Text>
-            <View style={styles.lineItem}>
-              <Text style={styles.lineLabel}>Adjustment</Text>
-              <Text style={[styles.lineAmount, { color: detail.adjustment > 0 ? '#2E7D32' : '#EA4335' }]}>
-                {detail.adjustment > 0 ? '' : '-'}{formatCurrency(Math.abs(detail.adjustment))}
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Download PDF */}
-        <TouchableOpacity
-          style={[styles.downloadButton, downloading && { opacity: 0.6 }]}
-          onPress={handleDownloadPdf}
-          disabled={downloading}
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.blue} colors={[C.blue]} />
+          }
         >
-          {downloading ? (
-            <ActivityIndicator size="small" color="#4285F4" />
+          {load.kind === 'loading' ? (
+            <View style={styles.centre}>
+              <ActivityIndicator color={C.blue} />
+            </View>
+          ) : load.kind === 'failed' ? (
+            <PayslipState
+              icon="cloud-off-outline"
+              title="Could not load this payslip"
+              body={load.message}
+              tone="danger"
+              onRetry={payrollRunId ? () => void onRefresh() : undefined}
+            />
           ) : (
-            <MaterialCommunityIcons name="download" size={20} color="#4285F4" />
-          )}
-          <Text style={styles.downloadText}>{downloading ? 'Generating PDF...' : 'Download PDF'}</Text>
-        </TouchableOpacity>
-      </ScrollView>
+            <>
+              <DocumentSheet>
+                <CompanyHeader
+                  name={doc!.company.name}
+                  registrationNumber={doc!.company.registrationNumber}
+                  address={doc!.company.address}
+                  logoUrl={doc!.company.logoUrl}
+                />
 
-      <BottomNavBar />
+                <TitleBar
+                  period={doc!.periodLabel}
+                  paymentDate={doc!.paymentDateLabel}
+                  payrollNumber={doc!.payrollNumber}
+                />
+
+                <IdentityBlock>
+                  <FieldRow label="Employee Name" value={doc!.employee.name || '-'} />
+                  <FieldRow label="Employee Code" value={doc!.employee.code || '-'} />
+                  <FieldRow label="IC No." value={doc!.employee.icNo ?? '-'} />
+                  <FieldRow label="Bank A/C" value={doc!.employee.bankAccount ?? '-'} />
+                  <FieldRow label="EPF No." value={doc!.employee.epfNo ?? '-'} />
+                  <FieldRow label="SOCSO No." value={doc!.employee.socsoNo ?? '-'} />
+                  <FieldRow
+                    label="Basic Salary"
+                    value={doc!.employee.basicSalary !== 0 ? ringgit(doc!.employee.basicSalary) : '-'}
+                  />
+                  <FieldRow
+                    label="Work Days"
+                    value={doc!.employee.workDays != null ? count(doc!.employee.workDays) : '-'}
+                    last
+                  />
+                </IdentityBlock>
+
+                <Panel title="Income & Allowances" currency>
+                  {doc!.income.length === 0 ? (
+                    <EmptyDash />
+                  ) : (
+                    doc!.income.map((row, i) => (
+                      <MoneyRow
+                        key={`${row.label}-${i}`}
+                        label={row.label}
+                        amount={row.amount}
+                        last={i === doc!.income.length - 1}
+                      />
+                    ))
+                  )}
+                </Panel>
+
+                <Panel title="Deductions" currency>
+                  {doc!.deductions.length === 0 ? (
+                    <EmptyDash />
+                  ) : (
+                    doc!.deductions.map((row, i) => (
+                      <MoneyRow
+                        key={`${row.label}-${i}`}
+                        label={row.label}
+                        amount={row.amount}
+                        last={i === doc!.deductions.length - 1}
+                      />
+                    ))
+                  )}
+                </Panel>
+
+                <Panel title="Overtime" flush>
+                  <OvertimeTable lines={doc!.overtimeLines} total={doc!.overtimeTotal} />
+                </Panel>
+
+                <Panel title="Leave" flush>
+                  {doc!.leave.length === 0 ? (
+                    <QuietLine>No leave data</QuietLine>
+                  ) : (
+                    <LeaveMatrix rows={doc!.leave} />
+                  )}
+                </Panel>
+
+                <Panel title="Employer Contributions" currency>
+                  {doc!.employerContributions.map((row, i) => (
+                    <MoneyRow
+                      key={row.label}
+                      label={row.label}
+                      amount={row.amount}
+                      last={i === doc!.employerContributions.length - 1}
+                    />
+                  ))}
+                </Panel>
+
+                <Panel title="Summary" currency>
+                  <MoneyRow label="Gross Pay" amount={doc!.grossPay} />
+                  <MoneyRow label="Total Deductions" amount={doc!.totalDeductions} last />
+                </Panel>
+
+                <NetPayRow amount={doc!.netPay} />
+
+                <SignatureBlock name={doc!.employee.name} date={doc!.paymentDateLabel} />
+
+                <DocumentFooter />
+              </DocumentSheet>
+
+              <View style={styles.actions}>
+                <PrimaryButton
+                  label="Save or share PDF"
+                  icon="tray-arrow-down"
+                  onPress={onShare}
+                  loading={busy === 'share'}
+                  disabled={busy === 'print'}
+                />
+                <PrimaryButton
+                  label="Print"
+                  icon="printer-outline"
+                  variant="outline"
+                  onPress={onPrint}
+                  loading={busy === 'print'}
+                  disabled={busy === 'share'}
+                />
+              </View>
+            </>
+          )}
+        </ScrollView>
+      </SafeAreaView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
-  safeAreaTop: { backgroundColor: '#FFFFFF' },
-  scrollView: { flex: 1 },
-  scrollContent: { padding: 20, paddingBottom: 100 },
-  card: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 20, marginBottom: 16 },
-  employeeName: { fontSize: 20, fontWeight: '700', color: '#000' },
-  employeeCode: { fontSize: 14, color: '#666', marginTop: 2 },
-  period: { fontSize: 14, color: '#4285F4', fontWeight: '600', marginTop: 8 },
-  netPayCard: {
-    backgroundColor: '#E8F5E9', borderRadius: 12, padding: 20, marginBottom: 16,
-    alignItems: 'center',
-  },
-  netPayLabel: { fontSize: 14, color: '#2E7D32', fontWeight: '600' },
-  netPayAmount: { fontSize: 36, fontWeight: '700', color: '#2E7D32', marginTop: 4 },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#000', marginBottom: 12 },
-  lineItem: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F5F5F5' },
-  lineLabel: { fontSize: 14, color: '#666' },
-  lineAmount: { fontSize: 14, fontWeight: '600', color: '#000' },
-  totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, borderTopWidth: 2, borderTopColor: '#E0E0E0', marginTop: 8 },
-  totalLabel: { fontSize: 16, fontWeight: '700', color: '#000' },
-  totalAmount: { fontSize: 16, fontWeight: '700', color: '#000' },
-  downloadButton: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, gap: 8,
-    borderWidth: 1, borderColor: '#4285F4', marginBottom: 16,
-  },
-  downloadText: { fontSize: 16, fontWeight: '600', color: '#4285F4' },
+  container: { flex: 1, backgroundColor: '#F6F8FF' },
+  flex: { flex: 1 },
+
+  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, justifyContent: 'center' },
+  back: { width: 40, height: 40, alignItems: 'flex-start', justifyContent: 'center' },
+  headerText: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: C.ink },
+  headerSubtitle: { fontSize: 13, color: C.body, marginTop: 2 },
+
+  scroll: { paddingHorizontal: 20, paddingBottom: 40 },
+  centre: { alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
+
+  actions: { gap: 12, marginTop: 8 },
 });
+
+export default PayslipDetailsScreen;

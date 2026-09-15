@@ -1,9 +1,4 @@
 /**
- * Payslips Components Index
- * Export all payslip-related components
+ * The payslip module's shared pieces. One import path for both screens.
  */
-
-export { Header } from './Header';
-export { FilterTabs } from './FilterTabs';
-export { PayslipCard } from './PayslipCard';
-export { PayslipList } from './PayslipList';
+export * from './PayslipUi';

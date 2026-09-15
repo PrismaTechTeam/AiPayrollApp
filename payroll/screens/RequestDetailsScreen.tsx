@@ -1,613 +1,574 @@
 /**
- * Request Details Screen
- * Displays detailed information about a specific request
+ * Request Details
+ * One request, both sides of it: what was asked, the files that came with it,
+ * HR's reply, and the files HR sent back.
+ *
+ * The screen always re-fetches on open. It used to render whatever object the
+ * list handed it, so a request decided while the list was on screen still read
+ * as pending, and an attachment added from the web never appeared at all.
  */
 
-import React, { useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
+  StatusBar,
   ScrollView,
   TouchableOpacity,
-  StatusBar,
-  Alert,
   ActivityIndicator,
-  TextInput,
-  Modal,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { Header } from '../components/requests';
-import { BottomNavBar } from '../components/BottomNavBar';
-import requestService, { EmployeeRequest } from '../api/services/requestService';
+import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
+import PrimaryButton from '../components/auth/PrimaryButton';
+import { useDialog } from '../components/ui/AppDialog';
+import requestService, { EmployeeRequest, RequestAttachment } from '../api/services/requestService';
+import { openAttachment } from '../lib/downloadAttachment';
+import { pickFile, rejectionReason, MAX_FILES_PER_SIDE, type PickSource, type PickedFile } from '../lib/requestAttachments';
+import { serverMessage } from '../lib/serverMessage';
+import {
+  StatusPill,
+  AttachmentRow,
+  AttachButton,
+  PickSourceSheet,
+  statusOf,
+  shortDate,
+  dateAndTime,
+} from '../components/requests/RequestUi';
 
-type RequestDetailsRouteParams = {
+type Params = {
   RequestDetails: {
-    request: EmployeeRequest;
+    /** Preferred. The screen fetches the rest itself. */
+    requestId?: string;
+    /** Older callers passed the whole row; used only as a first paint. */
+    request?: EmployeeRequest;
     canApprove?: boolean;
   };
 };
 
-type RequestDetailsRouteProp = RouteProp<RequestDetailsRouteParams, 'RequestDetails'>;
-
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'PENDING':
-      return '#FF9800';
-    case 'APPROVED':
-      return '#4CAF50';
-    case 'REJECTED':
-      return '#F44336';
-    case 'CANCELLED':
-      return '#9E9E9E';
-    default:
-      return '#9E9E9E';
-  }
-};
-
-const getStatusLabel = (status: string) => {
-  switch (status) {
-    case 'PENDING':
-      return 'Pending Approval';
-    case 'APPROVED':
-      return 'Approved';
-    case 'REJECTED':
-      return 'Rejected';
-    case 'CANCELLED':
-      return 'Cancelled';
-    default:
-      return status;
-  }
-};
-
-const formatDate = (dateStr: string | null) => {
-  if (!dateStr) return 'N/A';
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
-};
-
-const getTimeAgo = (dateStr: string) => {
-  const now = new Date();
-  const date = new Date(dateStr);
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  if (diffDays === 0) return 'Today';
-  if (diffDays === 1) return '1 day ago';
-  if (diffDays < 30) return `${diffDays} days ago`;
-  const diffMonths = Math.floor(diffDays / 30);
-  if (diffMonths === 1) return '1 month ago';
-  return `${diffMonths} months ago`;
-};
-
 export const RequestDetailsScreen: React.FC = () => {
   const navigation = useNavigation();
-  const route = useRoute<RequestDetailsRouteProp>();
-  const { request, canApprove = false } = route.params;
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  const [rejectionReason, setRejectionReason] = useState('');
+  const route = useRoute<RouteProp<Params, 'RequestDetails'>>();
+  const dialog = useDialog();
 
-  const statusColor = getStatusColor(request.status);
+  const params = route.params ?? {};
+  const canApprove = params.canApprove === true;
+  const requestId = params.requestId ?? params.request?.id ?? '';
 
-  const handleApprove = () => {
-    Alert.alert('Approve Request', 'Are you sure you want to approve this request?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Approve',
-        onPress: async () => {
-          setIsProcessing(true);
-          try {
-            await requestService.approveRequest(request.id);
-            Alert.alert('Success', 'Request approved successfully.', [
-              { text: 'OK', onPress: () => navigation.goBack() },
-            ]);
-          } catch (error) {
-            console.error('Failed to approve request:', error);
-            Alert.alert('Error', 'Failed to approve request. Please try again.');
-          } finally {
-            setIsProcessing(false);
-          }
-        },
-      },
-    ]);
-  };
+  const [request, setRequest] = useState<EmployeeRequest | null>(params.request ?? null);
+  const [files, setFiles] = useState<RequestAttachment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
-  const handleRejectConfirm = async () => {
-    if (!rejectionReason.trim()) {
-      Alert.alert('Validation Error', 'Please provide a reason for rejection.');
+  const load = useCallback(async () => {
+    if (!requestId) {
+      setError('This request could not be opened.');
+      setLoading(false);
       return;
     }
-    setShowRejectModal(false);
-    setIsProcessing(true);
+    setError(null);
     try {
-      await requestService.rejectRequest(request.id, rejectionReason.trim());
-      Alert.alert('Success', 'Request rejected successfully.', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
-    } catch (error) {
-      console.error('Failed to reject request:', error);
-      Alert.alert('Error', 'Failed to reject request. Please try again.');
+      if (canApprove) {
+        // The approver reads through the HR endpoints, which are gated on the
+        // access right rather than on owning the record.
+        const [detail, attachments] = await Promise.all([
+          requestService.getRequestById(requestId),
+          requestService.getAttachmentsAsApprover(requestId),
+        ]);
+        setRequest(detail);
+        setFiles(attachments);
+      } else {
+        const detail = await requestService.getApplication(requestId);
+        setRequest(detail);
+        setFiles(detail.attachments ?? []);
+      }
+    } catch (err) {
+      setError(serverMessage(err, 'Could not load this request.'));
     } finally {
-      setIsProcessing(false);
-      setRejectionReason('');
+      setLoading(false);
+    }
+  }, [requestId, canApprove]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  };
+
+  const status = statusOf(request?.status);
+  const open = status === 'PENDING' || status === 'DRAFT';
+  const mine = files.filter((f) => f.uploadedByRole === 'EMPLOYEE');
+  const fromHr = files.filter((f) => f.uploadedByRole === 'HR');
+  const myCount = canApprove ? fromHr.length : mine.length;
+  const canAttach = canApprove ? true : open;
+
+  const contentUrl = useMemo(
+    () => (canApprove ? requestService.approverAttachmentContentUrl : requestService.attachmentContentUrl),
+    [canApprove],
+  );
+
+  // ── Files ───────────────────────────────────────────────────────────
+
+  const openFile = async (file: RequestAttachment) => {
+    try {
+      await openAttachment(contentUrl(file.id), file.fileName);
+    } catch (err) {
+      await dialog.notify({
+        title: 'Could not open the file',
+        message: serverMessage(err, 'Please try again.'),
+        tone: 'danger',
+      });
     }
   };
 
-  const handleCancel = () => {
-    Alert.alert('Cancel Request', 'Are you sure you want to cancel this request?', [
-      { text: 'No', style: 'cancel' },
-      {
-        text: 'Yes, Cancel',
-        style: 'destructive',
-        onPress: async () => {
-          setIsProcessing(true);
-          try {
-            await requestService.cancelApplication(request.id);
-            Alert.alert('Success', 'Request cancelled successfully.', [
-              { text: 'OK', onPress: () => navigation.goBack() },
-            ]);
-          } catch (error) {
-            console.error('Failed to cancel request:', error);
-            Alert.alert('Error', 'Failed to cancel request. Please try again.');
-          } finally {
-            setIsProcessing(false);
-          }
-        },
-      },
-    ]);
+  const addFile = async (source: PickSource) => {
+    setSheetOpen(false);
+    if (myCount >= MAX_FILES_PER_SIDE) {
+      await dialog.notify({
+        title: 'That is enough files',
+        message: `A request can carry at most ${MAX_FILES_PER_SIDE} files from each side.`,
+        tone: 'warning',
+      });
+      return;
+    }
+
+    let picked: PickedFile | null;
+    try {
+      picked = await pickFile(source);
+    } catch (err) {
+      await dialog.notify({ title: 'Cannot open the picker', message: serverMessage(err, 'Please try again.'), tone: 'warning' });
+      return;
+    }
+    if (!picked) return;
+
+    const why = rejectionReason(picked);
+    if (why) {
+      await dialog.notify({ title: 'That file cannot be attached', message: why, tone: 'warning' });
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const created = canApprove
+        ? await requestService.uploadAttachmentAsApprover(requestId, picked)
+        : await requestService.uploadAttachment(requestId, picked);
+      setFiles((prev) => [...prev, created]);
+    } catch (err) {
+      await dialog.notify({
+        title: 'Upload failed',
+        message: serverMessage(err, 'Could not attach the file. Please try again.'),
+        tone: 'danger',
+      });
+    } finally {
+      setUploading(false);
+    }
   };
+
+  const removeFile = async (file: RequestAttachment) => {
+    const ok = await dialog.confirm({
+      title: 'Remove this file?',
+      message: file.fileName,
+      confirmText: 'Remove',
+      destructive: true,
+    });
+    if (!ok) return;
+
+    try {
+      if (canApprove) await requestService.deleteAttachmentAsApprover(file.id);
+      else await requestService.deleteAttachment(file.id);
+      setFiles((prev) => prev.filter((f) => f.id !== file.id));
+    } catch (err) {
+      await dialog.notify({
+        title: 'Could not remove the file',
+        message: serverMessage(err, 'Please try again.'),
+        tone: 'danger',
+      });
+      // The server may have removed it anyway; re-read rather than guess.
+      void load();
+    }
+  };
+
+  // ── Decisions ───────────────────────────────────────────────────────
+
+  const approve = async () => {
+    const ok = await dialog.confirm({
+      title: 'Approve this request?',
+      message: `${request?.employeeName ?? 'The employee'} will be told straight away.`,
+      confirmText: 'Approve',
+    });
+    if (!ok) return;
+
+    setBusy(true);
+    try {
+      await requestService.approveRequest(requestId);
+      await dialog.notify({ title: 'Approved', tone: 'success' });
+      await load();
+    } catch (err) {
+      await dialog.notify({ title: 'Could not approve', message: serverMessage(err, 'Please try again.'), tone: 'danger' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reject = async () => {
+    const reason = await dialog.prompt({
+      title: 'Reject this request',
+      message: 'The employee sees this, so say what would make it approvable.',
+      placeholder: 'Reason for rejection',
+      confirmText: 'Reject',
+      required: true,
+      multiline: true,
+      maxLength: 1000,
+      destructive: true,
+    });
+    if (!reason) return;
+
+    setBusy(true);
+    try {
+      await requestService.rejectRequest(requestId, reason);
+      await dialog.notify({ title: 'Rejected', tone: 'success' });
+      await load();
+    } catch (err) {
+      await dialog.notify({ title: 'Could not reject', message: serverMessage(err, 'Please try again.'), tone: 'danger' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reply = async () => {
+    const message = await dialog.prompt({
+      title: request?.hrReply ? 'Edit your reply' : 'Reply to the employee',
+      message: 'They see this on their phone. Leave it empty to remove an existing reply.',
+      placeholder: 'e.g. Collect the letter from level 3 after Tuesday.',
+      initialValue: request?.hrReply ?? '',
+      confirmText: 'Send',
+      multiline: true,
+      maxLength: 2000,
+    });
+    if (message === null) return;
+
+    setBusy(true);
+    try {
+      await requestService.replyToRequest(requestId, message);
+      await load();
+    } catch (err) {
+      await dialog.notify({ title: 'Could not send the reply', message: serverMessage(err, 'Please try again.'), tone: 'danger' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancel = async () => {
+    const ok = await dialog.confirm({
+      title: 'Cancel this request?',
+      message: 'It will be withdrawn. You can submit a new one any time.',
+      confirmText: 'Yes, cancel',
+      cancelText: 'Keep it',
+      destructive: true,
+      tone: 'warning',
+    });
+    if (!ok) return;
+
+    setBusy(true);
+    try {
+      await requestService.cancelApplication(requestId);
+      navigation.goBack();
+    } catch (err) {
+      await dialog.notify({ title: 'Could not cancel', message: serverMessage(err, 'Please try again.'), tone: 'danger' });
+      setBusy(false);
+    }
+  };
+
+  // ── Render ──────────────────────────────────────────────────────────
+
+  const Row: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.rowValue}>{value}</Text>
+    </View>
+  );
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <AuthBackdrop scriptLines={[]} />
 
-      {/* Header with Safe Area */}
-      <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
-        <Header
-          title="Request Details"
-          onBackPress={() => navigation.goBack()}
-          showBackButton={true}
-        />
+      <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={26} color={C.ink} />
+          </TouchableOpacity>
+          <View style={styles.headerText} pointerEvents="none">
+            <Text style={styles.headerTitle}>Request</Text>
+          </View>
+        </View>
+
+        {loading && !request ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={C.blue} />
+          </View>
+        ) : !request ? (
+          <View style={styles.center}>
+            <View style={styles.card}>
+              <Text style={styles.emptyTitle}>Could not open this request</Text>
+              <Text style={styles.emptyBody}>{error ?? 'It may have been removed.'}</Text>
+              <View style={styles.gap} />
+              <PrimaryButton label="Go back" onPress={() => navigation.goBack()} variant="outline" />
+            </View>
+          </View>
+        ) : (
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            showsVerticalScrollIndicator={false}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.blue} colors={[C.blue]} />}
+          >
+            {/* Heading */}
+            <View style={styles.card}>
+              <View style={styles.titleRow}>
+                <Text style={styles.title} numberOfLines={2}>{request.requestTypeName || request.requestType}</Text>
+                <StatusPill status={request.status} large />
+              </View>
+              {canApprove && request.employeeName ? (
+                <Text style={styles.subtitle}>
+                  {request.employeeName}
+                  {request.employeeCode ? ` · ${request.employeeCode}` : ''}
+                  {request.departmentName ? ` · ${request.departmentName}` : ''}
+                </Text>
+              ) : null}
+
+              <View style={styles.divider} />
+              <Row label="Submitted" value={shortDate(request.createdAt)} />
+              {request.reviewedAt ? <Row label="Decided" value={shortDate(request.reviewedAt)} /> : null}
+
+              {request.notes ? (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.blockLabel}>Notes</Text>
+                  <Text style={styles.blockText}>{request.notes}</Text>
+                </>
+              ) : null}
+
+              {status === 'REJECTED' && request.rejectionReason ? (
+                <View style={styles.reasonBox}>
+                  <Text style={styles.reasonLabel}>Reason for rejection</Text>
+                  <Text style={styles.reasonText}>{request.rejectionReason}</Text>
+                </View>
+              ) : null}
+            </View>
+
+            {/* HR's reply */}
+            {request.hrReply || canApprove ? (
+              <View style={styles.card}>
+                <View style={styles.cardHead}>
+                  <View style={styles.cardIcon}>
+                    <MaterialCommunityIcons name="message-text-outline" size={20} color={C.blue} />
+                  </View>
+                  <Text style={styles.cardTitle}>Reply from HR</Text>
+                </View>
+
+                {request.hrReply ? (
+                  <>
+                    <Text style={styles.replyText}>{request.hrReply}</Text>
+                    <Text style={styles.replyMeta}>
+                      {request.hrReplyByName ? `${request.hrReplyByName} · ` : ''}
+                      {dateAndTime(request.hrReplyAt)}
+                    </Text>
+                  </>
+                ) : (
+                  <Text style={styles.blockText}>No reply yet.</Text>
+                )}
+
+                {canApprove ? (
+                  <>
+                    <View style={styles.gap} />
+                    <PrimaryButton
+                      icon={request.hrReply ? 'pencil-outline' : 'reply-outline'}
+                      label={request.hrReply ? 'Edit reply' : 'Write a reply'}
+                      onPress={() => { void reply(); }}
+                      variant="outline"
+                      loading={busy}
+                    />
+                  </>
+                ) : null}
+              </View>
+            ) : null}
+
+            {/* Files from the employee */}
+            <View style={styles.card}>
+              <View style={styles.cardHead}>
+                <View style={styles.cardIcon}>
+                  <MaterialCommunityIcons name="paperclip" size={20} color={C.blue} />
+                </View>
+                <Text style={styles.cardTitle}>{canApprove ? 'From the employee' : 'Your files'}</Text>
+                {mine.length > 0 ? <Text style={styles.cardCount}>{mine.length}</Text> : null}
+              </View>
+
+              {mine.length === 0 ? (
+                <Text style={styles.blockText}>No files attached.</Text>
+              ) : (
+                mine.map((f, index) => (
+                  <AttachmentRow
+                    key={f.id}
+                    file={f}
+                    onOpen={() => openFile(f)}
+                    onRemove={!canApprove && open ? () => removeFile(f) : undefined}
+                    last={index === mine.length - 1}
+                  />
+                ))
+              )}
+
+              {!canApprove && canAttach ? (
+                <>
+                  <View style={styles.gap} />
+                  <AttachButton onPress={() => setSheetOpen(true)} busy={uploading} disabled={mine.length >= MAX_FILES_PER_SIDE} />
+                </>
+              ) : null}
+              {!canApprove && !open ? (
+                <Text style={styles.lockedNote}>
+                  This request is {statusOf(request.status).toLowerCase()}, so its files can no longer be changed.
+                </Text>
+              ) : null}
+            </View>
+
+            {/* Files from HR */}
+            {fromHr.length > 0 || canApprove ? (
+              <View style={styles.card}>
+                <View style={styles.cardHead}>
+                  <View style={[styles.cardIcon, styles.cardIconHr]}>
+                    <MaterialCommunityIcons name="file-send-outline" size={20} color="#7C3AED" />
+                  </View>
+                  <Text style={styles.cardTitle}>From HR</Text>
+                  {fromHr.length > 0 ? <Text style={styles.cardCount}>{fromHr.length}</Text> : null}
+                </View>
+
+                {fromHr.length === 0 ? (
+                  <Text style={styles.blockText}>
+                    {canApprove ? 'Attach a letter or a form to send back.' : 'Nothing sent back yet.'}
+                  </Text>
+                ) : (
+                  fromHr.map((f, index) => (
+                    <AttachmentRow
+                      key={f.id}
+                      file={f}
+                      onOpen={() => openFile(f)}
+                      onRemove={canApprove ? () => removeFile(f) : undefined}
+                      last={index === fromHr.length - 1}
+                    />
+                  ))
+                )}
+
+                {canApprove ? (
+                  <>
+                    <View style={styles.gap} />
+                    <AttachButton
+                      onPress={() => setSheetOpen(true)}
+                      busy={uploading}
+                      disabled={fromHr.length >= MAX_FILES_PER_SIDE}
+                      label="Send a file back"
+                    />
+                  </>
+                ) : null}
+              </View>
+            ) : null}
+
+            {/* Actions */}
+            {canApprove && status === 'PENDING' ? (
+              <View style={styles.actions}>
+                <View style={styles.half}>
+                  <PrimaryButton icon="close" label="Reject" onPress={() => { void reject(); }} variant="danger" disabled={busy} />
+                </View>
+                <View style={styles.half}>
+                  <PrimaryButton icon="check" label="Approve" onPress={() => { void approve(); }} loading={busy} />
+                </View>
+              </View>
+            ) : null}
+
+            {!canApprove && status === 'PENDING' ? (
+              <PrimaryButton icon="close-circle-outline" label="Cancel request" onPress={() => { void cancel(); }} variant="danger" loading={busy} />
+            ) : null}
+          </ScrollView>
+        )}
       </SafeAreaView>
 
-      {/* Content Area */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Status Badge */}
-        <View style={styles.statusContainer}>
-          <View
-            style={[
-              styles.statusBadge,
-              { backgroundColor: statusColor + '20' },
-            ]}
-          >
-            <View
-              style={[
-                styles.statusDot,
-                { backgroundColor: statusColor },
-              ]}
-            />
-            <Text
-              style={[
-                styles.statusText,
-                { color: statusColor },
-              ]}
-            >
-              {getStatusLabel(request.status)}
-            </Text>
-          </View>
-        </View>
-
-        {/* Request Card */}
-        <View style={styles.detailsCard}>
-          {/* Avatar and Name */}
-          <View style={styles.userSection}>
-            <View style={styles.avatarContainer}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarInitial}>
-                  {(request.employeeName || 'U').charAt(0).toUpperCase()}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.userInfo}>
-              <Text style={styles.userName}>
-                {request.employeeName || 'Unknown Employee'}
-              </Text>
-              <Text style={styles.daysAgo}>{getTimeAgo(request.createdAt)}</Text>
-            </View>
-          </View>
-
-          {/* Divider */}
-          <View style={styles.divider} />
-
-          {/* Request Type */}
-          <View style={styles.detailRow}>
-            <View style={styles.detailLabelContainer}>
-              <MaterialCommunityIcons
-                name="file-document-outline"
-                size={20}
-                color="#666"
-              />
-              <Text style={styles.detailLabel}>Request Type</Text>
-            </View>
-            <Text style={styles.detailValue}>{request.requestType}</Text>
-          </View>
-
-          {/* Start Date */}
-          <View style={styles.detailRow}>
-            <View style={styles.detailLabelContainer}>
-              <MaterialCommunityIcons
-                name="calendar-range"
-                size={20}
-                color="#666"
-              />
-              <Text style={styles.detailLabel}>Start Date</Text>
-            </View>
-            <Text style={styles.detailValue}>{formatDate(request.startDate)}</Text>
-          </View>
-
-          {/* Request ID */}
-          <View style={styles.detailRow}>
-            <View style={styles.detailLabelContainer}>
-              <MaterialCommunityIcons name="identifier" size={20} color="#666" />
-              <Text style={styles.detailLabel}>Request ID</Text>
-            </View>
-            <Text style={styles.detailValue}>{request.id}</Text>
-          </View>
-
-          {/* Employee Code */}
-          {request.employeeCode && (
-            <View style={styles.detailRow}>
-              <View style={styles.detailLabelContainer}>
-                <MaterialCommunityIcons name="badge-account-outline" size={20} color="#666" />
-                <Text style={styles.detailLabel}>Employee Code</Text>
-              </View>
-              <Text style={styles.detailValue}>{request.employeeCode}</Text>
-            </View>
-          )}
-
-          {/* Notes */}
-          {request.notes && (
-            <View style={styles.detailRow}>
-              <View style={styles.detailLabelContainer}>
-                <MaterialCommunityIcons name="note-text-outline" size={20} color="#666" />
-                <Text style={styles.detailLabel}>Notes</Text>
-              </View>
-              <Text style={styles.detailValue}>{request.notes}</Text>
-            </View>
-          )}
-
-          {/* Rejection Reason */}
-          {request.status === 'REJECTED' && request.rejectionReason && (
-            <View style={styles.detailRow}>
-              <View style={styles.detailLabelContainer}>
-                <MaterialCommunityIcons name="alert-circle-outline" size={20} color="#F44336" />
-                <Text style={[styles.detailLabel, { color: '#F44336' }]}>Rejection Reason</Text>
-              </View>
-              <Text style={[styles.detailValue, { color: '#F44336' }]}>
-                {request.rejectionReason}
-              </Text>
-            </View>
-          )}
-
-          {/* Submitted Date */}
-          <View style={styles.detailRow}>
-            <View style={styles.detailLabelContainer}>
-              <MaterialCommunityIcons name="clock-outline" size={20} color="#666" />
-              <Text style={styles.detailLabel}>Submitted</Text>
-            </View>
-            <Text style={styles.detailValue}>{formatDate(request.createdAt)}</Text>
-          </View>
-        </View>
-
-        {/* Action Buttons for PENDING requests (owner: approve/reject) */}
-        {request.status === 'PENDING' && canApprove && (
-          <View style={styles.actionButtonsContainer}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.rejectButton]}
-              onPress={() => setShowRejectModal(true)}
-              disabled={isProcessing}
-            >
-              {isProcessing ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <>
-                  <MaterialCommunityIcons name="close" size={20} color="#FFFFFF" />
-                  <Text style={styles.actionButtonText}>Reject</Text>
-                </>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.approveButton]}
-              onPress={handleApprove}
-              disabled={isProcessing}
-            >
-              {isProcessing ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <>
-                  <MaterialCommunityIcons name="check" size={20} color="#FFFFFF" />
-                  <Text style={styles.actionButtonText}>Approve</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Cancel button for PENDING requests (employee only, not owner) */}
-        {request.status === 'PENDING' && !canApprove && (
-          <View style={styles.cancelContainer}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.cancelButton]}
-              onPress={handleCancel}
-              disabled={isProcessing}
-            >
-              {isProcessing ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <>
-                  <MaterialCommunityIcons name="close-circle" size={20} color="#FFFFFF" />
-                  <Text style={styles.actionButtonText}>Cancel Request</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
-      </ScrollView>
-
-      {/* Rejection Reason Modal */}
-      <Modal
-        visible={showRejectModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowRejectModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Reject Request</Text>
-            <Text style={styles.modalSubtitle}>
-              Please provide a reason for rejecting this request.
-            </Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Enter rejection reason..."
-              placeholderTextColor="#999"
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-              value={rejectionReason}
-              onChangeText={setRejectionReason}
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.modalCancelButton}
-                onPress={() => {
-                  setShowRejectModal(false);
-                  setRejectionReason('');
-                }}
-              >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalRejectButton}
-                onPress={handleRejectConfirm}
-              >
-                <Text style={styles.modalRejectText}>Reject</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Bottom Navigation Bar */}
-      <BottomNavBar />
+      <PickSourceSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} onPick={(source) => { void addFile(source); }} />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  safeAreaTop: {
+  container: { flex: 1, backgroundColor: '#F6F8FF' },
+  flex: { flex: 1 },
+  center: { flex: 1, justifyContent: 'center', paddingHorizontal: 20 },
+  gap: { height: 12 },
+
+  header: { flexDirection: 'row', alignItems: 'center', minHeight: 56, paddingHorizontal: 12, paddingTop: 4 },
+  backButton: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  headerText: { position: 'absolute', left: 88, right: 88, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: C.ink },
+
+  scroll: { paddingHorizontal: 16, paddingBottom: 28, gap: 12 },
+
+  card: {
     backgroundColor: '#FFFFFF',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 100,
-  },
-  statusContainer: {
-    marginBottom: 20,
-    alignItems: 'center',
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
     borderRadius: 20,
-    gap: 8,
+    padding: 18,
+    shadowColor: C.blue,
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2,
   },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statusText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  detailsCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
-  },
-  userSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  avatarContainer: {
-    marginRight: 16,
-  },
-  avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#E0E0E0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarInitial: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#666',
-  },
-  userInfo: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#000',
-    marginBottom: 4,
-  },
-  daysAgo: {
-    fontSize: 14,
-    color: '#999',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#E0E0E0',
-    marginVertical: 20,
-  },
-  detailRow: {
-    marginBottom: 20,
-  },
-  detailLabelContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    gap: 8,
-  },
-  detailLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-  },
-  detailValue: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#000',
-    marginLeft: 28,
-  },
-  actionButtonsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 10,
-  },
-  cancelContainer: {
-    marginTop: 12,
-  },
-  actionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 8,
-  },
-  approveButton: {
-    backgroundColor: '#4CAF50',
-  },
-  rejectButton: {
-    backgroundColor: '#FF5252',
-  },
-  cancelButton: {
-    backgroundColor: '#FF9800',
-  },
-  actionButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  // Modal styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 24,
-    width: '100%',
-    maxWidth: 400,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#000',
-    marginBottom: 8,
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 16,
-  },
-  modalInput: {
-    backgroundColor: '#F5F5F5',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    fontSize: 16,
-    color: '#000',
-    minHeight: 100,
-    marginBottom: 16,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 12,
-  },
-  modalCancelButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#F5F5F5',
-  },
-  modalCancelText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-  },
-  modalRejectButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#FF5252',
-  },
-  modalRejectText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  title: { flex: 1, fontSize: 20, fontWeight: '800', color: C.ink },
+  subtitle: { fontSize: 13, color: C.body, marginTop: 6 },
+
+  divider: { height: 1, backgroundColor: C.line, marginVertical: 14 },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 5 },
+  rowLabel: { fontSize: 14, color: C.body },
+  rowValue: { fontSize: 14, fontWeight: '700', color: C.ink },
+
+  blockLabel: { fontSize: 12, fontWeight: '700', color: C.body, letterSpacing: 0.3, marginBottom: 4 },
+  blockText: { fontSize: 14, lineHeight: 21, color: C.body },
+
+  reasonBox: { backgroundColor: C.dangerBg, borderRadius: 14, padding: 14, marginTop: 14 },
+  reasonLabel: { fontSize: 12, fontWeight: '700', color: C.danger, marginBottom: 4 },
+  reasonText: { fontSize: 14, lineHeight: 20, color: C.body },
+
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
+  cardIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#E6EEFF', justifyContent: 'center', alignItems: 'center' },
+  cardIconHr: { backgroundColor: '#F1EAFE' },
+  cardTitle: { flex: 1, fontSize: 16, fontWeight: '800', color: C.ink },
+  cardCount: { fontSize: 13, fontWeight: '700', color: C.muted },
+
+  replyText: { fontSize: 15, lineHeight: 22, color: C.ink },
+  replyMeta: { fontSize: 12, color: C.muted, marginTop: 8 },
+
+  lockedNote: { fontSize: 12, color: C.muted, marginTop: 10, lineHeight: 17 },
+
+  actions: { flexDirection: 'row', gap: 10 },
+  half: { flex: 1 },
+
+  emptyTitle: { fontSize: 17, fontWeight: '800', color: C.ink, textAlign: 'center' },
+  emptyBody: { fontSize: 14, lineHeight: 20, color: C.body, textAlign: 'center', marginTop: 6 },
 });
+
+export default RequestDetailsScreen;

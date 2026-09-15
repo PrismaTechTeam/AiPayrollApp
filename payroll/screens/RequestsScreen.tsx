@@ -1,4 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+/**
+ * Request Approval
+ * Every employee request in the company, for whoever can decide them. Approving
+ * and rejecting happen here for speed; anything that needs reading — the notes,
+ * the attached files, HR's reply — opens the detail screen.
+ */
+
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -6,452 +13,364 @@ import {
   StatusBar,
   FlatList,
   TouchableOpacity,
-  ActivityIndicator,
-  Alert,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { Header } from '../components/requests';
-import { BottomNavBar } from '../components/BottomNavBar';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
+import { BottomNavBar, BOTTOM_NAV_HEIGHT } from '../components/BottomNavBar';
+import { useDialog } from '../components/ui/AppDialog';
 import requestService, { EmployeeRequest } from '../api/services/requestService';
+import { serverMessage } from '../lib/serverMessage';
+import { StatusPill, shortDate, statusOf } from '../components/requests/RequestUi';
 
-type StatusFilter = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
-
-const STATUS_TABS: { key: StatusFilter; label: string }[] = [
-  { key: 'ALL', label: 'All' },
+const FILTERS = [
   { key: 'PENDING', label: 'Pending' },
+  { key: 'ALL', label: 'All' },
   { key: 'APPROVED', label: 'Approved' },
   { key: 'REJECTED', label: 'Rejected' },
   { key: 'CANCELLED', label: 'Cancelled' },
-];
+] as const;
 
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'PENDING':
-      return '#FF9800';
-    case 'APPROVED':
-      return '#4CAF50';
-    case 'REJECTED':
-      return '#F44336';
-    case 'CANCELLED':
-      return '#9E9E9E';
-    default:
-      return '#9E9E9E';
-  }
-};
+type FilterKey = (typeof FILTERS)[number]['key'];
 
-const formatDate = (dateStr: string | null) => {
-  if (!dateStr) return 'N/A';
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
-};
-
-interface RequestsScreenProps {
-  navigation?: any;
+function initials(name?: string | null): string {
+  if (!name) return '?';
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 }
 
-export const RequestsScreen: React.FC<RequestsScreenProps> = ({ navigation: navProp }) => {
-  const navigation = navProp || useNavigation();
-  const [activeTab, setActiveTab] = useState<StatusFilter>('ALL');
-  const [requests, setRequests] = useState<EmployeeRequest[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+export const RequestsScreen: React.FC = () => {
+  const navigation = useNavigation();
+  const dialog = useDialog();
 
-  const fetchRequests = useCallback(async (isRefresh = false) => {
-    if (isRefresh) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
+  const [filter, setFilter] = useState<FilterKey>('PENDING');
+  const [requests, setRequests] = useState<EmployeeRequest[] | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [actingOn, setActingOn] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
     try {
       const result = await requestService.getAllRequests({ pageSize: 100 });
-      setRequests(result.items);
-    } catch (error) {
-      console.error('Failed to fetch requests:', error);
-      Alert.alert('Error', 'Failed to load requests. Please try again.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      setRequests(result.items ?? []);
+    } catch (err) {
+      setRequests((prev) => prev ?? []);
+      setError(serverMessage(err, 'Could not load requests. Pull down to try again.'));
     }
   }, []);
 
-  useEffect(() => {
-    fetchRequests();
-  }, [fetchRequests]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
-  const filteredRequests =
-    activeTab === 'ALL'
-      ? requests
-      : requests.filter((r) => r.status === activeTab);
-
-  const handleApprove = (requestId: string) => {
-    Alert.alert('Approve Request', 'Are you sure you want to approve this request?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Approve',
-        onPress: async () => {
-          try {
-            await requestService.approveRequest(requestId);
-            Alert.alert('Success', 'Request approved successfully.');
-            fetchRequests();
-          } catch (error) {
-            console.error('Failed to approve request:', error);
-            Alert.alert('Error', 'Failed to approve request. Please try again.');
-          }
-        },
-      },
-    ]);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
   };
 
-  const handleReject = (requestId: string) => {
-    Alert.prompt(
-      'Reject Request',
-      'Please provide a reason for rejection:',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reject',
-          style: 'destructive',
-          onPress: async (reason?: string) => {
-            try {
-              await requestService.rejectRequest(requestId, reason || 'No reason provided');
-              Alert.alert('Success', 'Request rejected successfully.');
-              fetchRequests();
-            } catch (error) {
-              console.error('Failed to reject request:', error);
-              Alert.alert('Error', 'Failed to reject request. Please try again.');
-            }
-          },
-        },
-      ],
-      'plain-text',
-      '',
-      'default'
-    );
+  const visible = useMemo(() => {
+    const list = requests ?? [];
+    return filter === 'ALL' ? list : list.filter((r) => statusOf(r.status) === filter);
+  }, [requests, filter]);
+
+  const counts = useMemo(() => {
+    const map: Record<string, number> = { ALL: (requests ?? []).length };
+    (requests ?? []).forEach((r) => {
+      const key = statusOf(r.status);
+      map[key] = (map[key] ?? 0) + 1;
+    });
+    return map;
+  }, [requests]);
+
+  const openDetail = (request: EmployeeRequest) => {
+    navigation.navigate('RequestDetails', { requestId: request.id, canApprove: true });
   };
 
-  const handleViewDetails = (request: EmployeeRequest) => {
+  const approve = async (request: EmployeeRequest) => {
+    const ok = await dialog.confirm({
+      title: 'Approve this request?',
+      message: `${request.employeeName ?? 'The employee'} will be told straight away.`,
+      confirmText: 'Approve',
+    });
+    if (!ok) return;
+
+    setActingOn(request.id);
     try {
-      navigation?.navigate('RequestDetails', { request, canApprove: true });
-    } catch (error) {
-      console.error('Navigation error:', error);
+      await requestService.approveRequest(request.id);
+      await load();
+    } catch (err) {
+      await dialog.notify({ title: 'Could not approve', message: serverMessage(err, 'Please try again.'), tone: 'danger' });
+    } finally {
+      setActingOn(null);
     }
   };
 
-  const renderRequestItem = ({ item }: { item: EmployeeRequest }) => {
-    const statusColor = getStatusColor(item.status);
+  const reject = async (request: EmployeeRequest) => {
+    // Alert.prompt used to be the way in; it exists only on iOS, so rejecting
+    // from this list did nothing at all on Android.
+    const reason = await dialog.prompt({
+      title: 'Reject this request',
+      message: `${request.employeeName ?? 'The employee'} sees this, so say what would make it approvable.`,
+      placeholder: 'Reason for rejection',
+      confirmText: 'Reject',
+      required: true,
+      multiline: true,
+      maxLength: 1000,
+      destructive: true,
+    });
+    if (!reason) return;
+
+    setActingOn(request.id);
+    try {
+      await requestService.rejectRequest(request.id, reason);
+      await load();
+    } catch (err) {
+      await dialog.notify({ title: 'Could not reject', message: serverMessage(err, 'Please try again.'), tone: 'danger' });
+    } finally {
+      setActingOn(null);
+    }
+  };
+
+  const renderCard = ({ item }: { item: EmployeeRequest }) => {
+    const busy = actingOn === item.id;
+    const files = item.attachmentCount ?? 0;
+
     return (
-      <TouchableOpacity
-        style={styles.requestCard}
-        onPress={() => handleViewDetails(item)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.cardHeader}>
-          <View style={styles.avatarContainer}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarInitial}>
-                {(item.employeeName || 'U').charAt(0).toUpperCase()}
-              </Text>
-            </View>
+      <TouchableOpacity style={styles.card} onPress={() => openDetail(item)} activeOpacity={0.8} accessibilityRole="button">
+        <View style={styles.cardTop}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initials(item.employeeName)}</Text>
           </View>
-          <View style={styles.cardInfo}>
-            <Text style={styles.employeeName} numberOfLines={1}>
-              {item.employeeName || 'Unknown Employee'}
-            </Text>
-            <Text style={styles.requestType} numberOfLines={1}>
-              {item.requestType}
+          <View style={styles.cardHeadText}>
+            <Text style={styles.cardName} numberOfLines={1}>{item.employeeName ?? 'Employee'}</Text>
+            <Text style={styles.cardType} numberOfLines={1}>
+              {item.requestTypeName || item.requestType}
+              {item.employeeCode ? ` · ${item.employeeCode}` : ''}
             </Text>
           </View>
-          <View
-            style={[
-              styles.statusBadge,
-              { backgroundColor: statusColor + '20' },
-            ]}
-          >
-            <Text style={[styles.statusText, { color: statusColor }]}>
-              {item.status}
-            </Text>
-          </View>
+          <StatusPill status={item.status} />
         </View>
 
-        <View style={styles.cardDetails}>
-          <View style={styles.detailItem}>
-            <MaterialCommunityIcons name="calendar" size={14} color="#999" />
-            <Text style={styles.detailText}>{formatDate(item.startDate)}</Text>
-          </View>
-          <View style={styles.detailItem}>
-            <MaterialCommunityIcons name="clock-outline" size={14} color="#999" />
-            <Text style={styles.detailText}>{formatDate(item.createdAt)}</Text>
-          </View>
-        </View>
+        <Text style={styles.cardMeta}>
+          Submitted {shortDate(item.createdAt)}
+        </Text>
 
-        {item.status === 'PENDING' && (
-          <View style={styles.cardActions}>
+        {item.notes ? <Text style={styles.cardNotes} numberOfLines={2}>{item.notes}</Text> : null}
+
+        {(files > 0 || item.hrReply) ? (
+          <View style={styles.badgeRow}>
+            {files > 0 ? (
+              <View style={styles.badge}>
+                <MaterialCommunityIcons name="paperclip" size={14} color={C.body} />
+                <Text style={styles.badgeText}>{files} {files === 1 ? 'file' : 'files'}</Text>
+              </View>
+            ) : null}
+            {item.hrReply ? (
+              <View style={[styles.badge, styles.badgeReply]}>
+                <MaterialCommunityIcons name="message-text-outline" size={14} color={C.blue} />
+                <Text style={[styles.badgeText, styles.badgeTextReply]}>Replied</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {statusOf(item.status) === 'PENDING' ? (
+          <View style={styles.actions}>
             <TouchableOpacity
-              style={[styles.cardActionButton, styles.rejectActionButton]}
-              onPress={() => handleReject(item.id)}
+              style={[styles.action, styles.reject]}
+              onPress={() => { void reject(item); }}
+              disabled={busy}
+              accessibilityRole="button"
             >
-              <MaterialCommunityIcons name="close" size={16} color="#FF5252" />
-              <Text style={[styles.cardActionText, { color: '#FF5252' }]}>Reject</Text>
+              <MaterialCommunityIcons name="close" size={16} color={C.danger} />
+              <Text style={[styles.actionText, styles.rejectText]}>Reject</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.cardActionButton, styles.approveActionButton]}
-              onPress={() => handleApprove(item.id)}
+              style={[styles.action, styles.approve]}
+              onPress={() => { void approve(item); }}
+              disabled={busy}
+              accessibilityRole="button"
             >
-              <MaterialCommunityIcons name="check" size={16} color="#4CAF50" />
-              <Text style={[styles.cardActionText, { color: '#4CAF50' }]}>Approve</Text>
+              {busy ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <MaterialCommunityIcons name="check" size={16} color="#FFFFFF" />
+                  <Text style={[styles.actionText, styles.approveText]}>Approve</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
-        )}
+        ) : null}
       </TouchableOpacity>
     );
   };
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <AuthBackdrop scriptLines={[]} />
 
-      {/* Header with Safe Area */}
-      <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
-        <Header
-          title="Request Approval"
-          onBackPress={() => navigation?.goBack()}
-          showBackButton={true}
+      <SafeAreaView style={styles.flex} edges={['top']}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={26} color={C.ink} />
+          </TouchableOpacity>
+          <View style={styles.headerText} pointerEvents="none">
+            <Text style={styles.headerTitle}>Request Approval</Text>
+          </View>
+        </View>
+
+        <FlatList
+          horizontal
+          data={FILTERS}
+          keyExtractor={(f) => f.key}
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterStrip}
+          contentContainerStyle={styles.filterRow}
+          renderItem={({ item }) => {
+            const active = filter === item.key;
+            const n = counts[item.key] ?? 0;
+            return (
+              <TouchableOpacity
+                onPress={() => setFilter(item.key)}
+                style={[styles.chip, active && styles.chipActive]}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+              >
+                <Text style={[styles.chipText, active && styles.chipTextActive]}>{item.label}</Text>
+                {n > 0 ? (
+                  <View style={[styles.chipCount, active && styles.chipCountActive]}>
+                    <Text style={[styles.chipCountText, active && styles.chipCountTextActive]}>{n}</Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
+            );
+          }}
         />
+
+        {requests === null ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={C.blue} />
+          </View>
+        ) : (
+          <FlatList
+            data={visible}
+            keyExtractor={(r) => r.id}
+            renderItem={renderCard}
+            contentContainerStyle={styles.list}
+            showsVerticalScrollIndicator={false}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.blue} colors={[C.blue]} />}
+            ListEmptyComponent={
+              <View style={styles.emptyCard}>
+                <View style={styles.emptyIcon}>
+                  <MaterialCommunityIcons name={error ? 'wifi-off' : 'inbox-outline'} size={32} color={error ? C.danger : C.blue} />
+                </View>
+                <Text style={styles.emptyTitle}>
+                  {error ? 'Could not load' : filter === 'PENDING' ? 'Nothing waiting' : 'Nothing here'}
+                </Text>
+                <Text style={styles.emptyBody}>
+                  {error ?? (filter === 'PENDING' ? 'Every request has been decided.' : 'No requests match this filter.')}
+                </Text>
+              </View>
+            }
+          />
+        )}
       </SafeAreaView>
 
-      {/* Content Area */}
-      <View style={styles.content}>
-        {/* Filter Tabs */}
-        <View style={styles.filterContainer}>
-          <FlatList
-            horizontal
-            data={STATUS_TABS}
-            keyExtractor={(item) => item.key}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterList}
-            renderItem={({ item: tab }) => (
-              <TouchableOpacity
-                style={[
-                  styles.filterTab,
-                  activeTab === tab.key && styles.filterTabActive,
-                ]}
-                onPress={() => setActiveTab(tab.key)}
-              >
-                <Text
-                  style={[
-                    styles.filterTabText,
-                    activeTab === tab.key && styles.filterTabTextActive,
-                  ]}
-                >
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            )}
-          />
-        </View>
-
-        {/* Request List */}
-        <View style={styles.listContainer}>
-          {loading ? (
-            <View style={styles.centerContainer}>
-              <ActivityIndicator size="large" color="#4285F4" />
-              <Text style={styles.loadingText}>Loading requests...</Text>
-            </View>
-          ) : filteredRequests.length === 0 ? (
-            <View style={styles.centerContainer}>
-              <MaterialCommunityIcons name="file-document-outline" size={48} color="#CCC" />
-              <Text style={styles.emptyText}>No requests found</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={filteredRequests}
-              keyExtractor={(item) => item.id}
-              renderItem={renderRequestItem}
-              contentContainerStyle={styles.requestList}
-              showsVerticalScrollIndicator={false}
-              refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={() => fetchRequests(true)}
-                  colors={['#4285F4']}
-                  tintColor="#4285F4"
-                />
-              }
-            />
-          )}
-        </View>
-      </View>
-
-      {/* Bottom Navigation Bar */}
       <BottomNavBar activeScreen="requests" />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  safeAreaTop: {
-    backgroundColor: '#FFFFFF',
-  },
-  content: {
-    flex: 1,
-    paddingBottom: 80,
-  },
-  filterContainer: {
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  filterList: {
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-  filterTab: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#F5F5F5',
-    marginRight: 8,
-  },
-  filterTabActive: {
-    backgroundColor: '#4285F4',
-  },
-  filterTabText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#666',
-  },
-  filterTabTextActive: {
-    color: '#FFFFFF',
-  },
-  listContainer: {
-    flex: 1,
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  container: { flex: 1, backgroundColor: '#F6F8FF' },
+  flex: { flex: 1 },
+
+  header: { flexDirection: 'row', alignItems: 'center', minHeight: 56, paddingHorizontal: 12, paddingTop: 4 },
+  backButton: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  headerText: { position: 'absolute', left: 88, right: 88, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: C.ink },
+
+  filterStrip: { flexGrow: 0, maxHeight: 60 },
+  filterRow: { paddingHorizontal: 16, paddingVertical: 10, gap: 8 },
+  chip: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 60,
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    borderWidth: 1,
+    borderColor: C.line,
   },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#999',
-  },
-  emptyText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: '#999',
-  },
-  requestList: {
-    padding: 16,
-    gap: 12,
-  },
-  requestCard: {
+  chipActive: { backgroundColor: C.blue, borderColor: C.blue },
+  chipText: { fontSize: 13, fontWeight: '700', color: '#3B4A63' },
+  chipTextActive: { color: '#FFFFFF' },
+  chipCount: { minWidth: 20, paddingHorizontal: 5, height: 20, borderRadius: 10, backgroundColor: '#E6EEFF', justifyContent: 'center', alignItems: 'center' },
+  chipCountActive: { backgroundColor: 'rgba(255,255,255,0.25)' },
+  chipCountText: { fontSize: 11, fontWeight: '800', color: C.blue },
+  chipCountTextActive: { color: '#FFFFFF' },
+
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  list: { paddingHorizontal: 16, paddingBottom: BOTTOM_NAV_HEIGHT + 24, gap: 12 },
+
+  card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 20,
     padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowColor: C.blue,
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
     elevation: 2,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  avatarContainer: {
-    marginRight: 12,
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#E0E0E0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarInitial: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#666',
-  },
-  cardInfo: {
-    flex: 1,
-  },
-  employeeName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
-  },
-  requestType: {
-    fontSize: 13,
-    color: '#666',
-    marginTop: 2,
-  },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  cardDetails: {
-    flexDirection: 'row',
-    marginTop: 12,
-    gap: 16,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  detailText: {
-    fontSize: 12,
-    color: '#999',
-  },
-  cardActions: {
-    flexDirection: 'row',
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
-    gap: 12,
-  },
-  cardActionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: 8,
-    gap: 4,
-  },
-  approveActionButton: {
-    backgroundColor: '#4CAF5010',
-  },
-  rejectActionButton: {
-    backgroundColor: '#FF525210',
-  },
-  cardActionText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 },
+  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#D8E6FB', justifyContent: 'center', alignItems: 'center' },
+  avatarText: { fontSize: 15, fontWeight: '800', color: C.blue },
+  cardHeadText: { flex: 1 },
+  cardName: { fontSize: 15, fontWeight: '800', color: C.ink },
+  cardType: { fontSize: 13, color: C.body, marginTop: 2 },
+  cardMeta: { fontSize: 12, color: C.body },
+  cardNotes: { fontSize: 14, lineHeight: 20, color: C.body, marginTop: 8 },
+
+  badgeRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#EEF2F7', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
+  badgeReply: { backgroundColor: '#E6EEFF' },
+  badgeText: { fontSize: 12, fontWeight: '600', color: C.body },
+  badgeTextReply: { color: C.blue, fontWeight: '700' },
+
+  actions: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  action: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44, borderRadius: 12 },
+  reject: { borderWidth: 1, borderColor: C.dangerLine, backgroundColor: C.dangerBg },
+  approve: { backgroundColor: C.blue },
+  actionText: { fontSize: 14, fontWeight: '700' },
+  rejectText: { color: C.danger },
+  approveText: { color: '#FFFFFF' },
+
+  emptyCard: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 28, alignItems: 'center', gap: 8, marginTop: 20 },
+  emptyIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#E6EEFF', justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
+  emptyTitle: { fontSize: 17, fontWeight: '800', color: C.ink },
+  emptyBody: { fontSize: 14, lineHeight: 20, color: C.body, textAlign: 'center' },
 });
 
 export default RequestsScreen;

@@ -8,7 +8,13 @@
  * Restart Expo after changing .env.
  */
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth } from 'firebase/auth';
+import { getAuth, initializeAuth, Auth } from 'firebase/auth';
+// The React Native build of firebase/auth exports this; the type checker only
+// sees that build when it honours the "react-native" export condition, which
+// depends on the TypeScript version in use. Metro always resolves it.
+// @ts-ignore
+import { getReactNativePersistence } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 
 const getEnv = (key: string, extraKey: string): string => {
@@ -62,7 +68,16 @@ export function getFirebaseAuth(): Auth | null {
   } else {
     app = getApps()[0] as FirebaseApp;
   }
-  auth = getAuth(app);
+  // On React Native the SDK keeps the signed-in user in memory unless told where
+  // to persist it, and warns about it at every start. Persisting matters beyond
+  // the warning: the verification screen's "resend" needs currentUser, and it was
+  // null after any restart.
+  try {
+    auth = initializeAuth(app, { persistence: getReactNativePersistence(AsyncStorage) });
+  } catch {
+    // Already initialised for this app — fast refresh re-ran this module.
+    auth = getAuth(app);
+  }
   return auth;
 }
 

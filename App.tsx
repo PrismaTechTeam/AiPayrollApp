@@ -3,11 +3,11 @@ import { View, Text, ActivityIndicator, Linking } from 'react-native';
 import Constants from 'expo-constants';
 import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import type { RootStackParamList } from './payroll/navigation/types';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { PayrollAuthProvider, usePayrollAuth } from './payroll/context/PayrollAuthContext';
-import { ThemeProvider } from './payroll/context/ThemeContext';
-import { LanguageProvider } from './payroll/context/LanguageContext';
 import { NotificationProvider } from './payroll/components/NotificationProvider';
+import { DialogProvider } from './payroll/components/ui/AppDialog';
 
 // Auth screens
 import LoginScreen from './payroll/screens/LoginScreen';
@@ -19,6 +19,13 @@ import ForgotPasswordScreen from './payroll/screens/ForgotPasswordScreen';
 import { UserHomeScreen } from './payroll/screens/UserHomeScreen';
 import { JoinTenantScreen } from './payroll/screens/JoinTenantScreen';
 import { JoinRequestPendingScreen } from './payroll/screens/JoinRequestPendingScreen';
+import { AccountSettingsScreen } from './payroll/screens/AccountSettingsScreen';
+import { AccountProfileScreen } from './payroll/screens/AccountProfileScreen';
+import { AccountPasswordScreen } from './payroll/screens/AccountPasswordScreen';
+import { AccountTwoFactorScreen } from './payroll/screens/AccountTwoFactorScreen';
+import { AccountDevicesScreen } from './payroll/screens/AccountDevicesScreen';
+import { MyJoinRequestsScreen } from './payroll/screens/MyJoinRequestsScreen';
+import { ActivityScreen } from './payroll/screens/ActivityScreen';
 import { TenantHubScreen } from './payroll/screens/TenantHubScreen';
 
 // Main app screens
@@ -29,23 +36,15 @@ import { CreateRequestScreen } from './payroll/screens/CreateRequestScreen';
 import { LeavesScreen } from './payroll/screens/LeavesScreen';
 import { LeaveDetailsScreen } from './payroll/screens/LeaveDetailsScreen';
 import { CreateLeaveScreen } from './payroll/screens/CreateLeaveScreen';
-import { PayslipScreen } from './payroll/screens/PayslipScreen';
 import { PayslipDetailsScreen } from './payroll/screens/PayslipDetailsScreen';
 import { MyPayslipScreen } from './payroll/screens/MyPayslipScreen';
-import AttendanceScreen from './payroll/screens/AttendanceScreen';
+import MyAttendanceScreen from './payroll/screens/MyAttendanceScreen';
 import AttendanceDetailsScreen from './payroll/screens/AttendanceDetailsScreen';
-import { TodaysAttendanceScreen } from './payroll/screens/TodaysAttendanceScreen';
 import AttendanceCheckInScreen from './payroll/screens/AttendanceCheckInScreen';
 import EmployeeListScreen from './payroll/screens/EmployeeListScreen';
 import EmployeeMapScreen from './payroll/screens/EmployeeMapScreen';
-import ProfileScreen from './payroll/screens/ProfileScreen';
-import { SettingsScreen } from './payroll/screens/SettingsScreen';
 import { HelpScreen } from './payroll/screens/HelpScreen';
-import { EditProfileScreen } from './payroll/screens/EditProfileScreen';
-import { ChangePasswordScreen } from './payroll/screens/ChangePasswordScreen';
 import { NotificationsScreen } from './payroll/screens/NotificationsScreen';
-import { ThemeScreen } from './payroll/screens/ThemeScreen';
-import { LanguageScreen } from './payroll/screens/LanguageScreen';
 import { PrivacyPolicyScreen } from './payroll/screens/PrivacyPolicyScreen';
 import { AboutScreen } from './payroll/screens/AboutScreen';
 import { ClaimsScreen } from './payroll/screens/ClaimsScreen';
@@ -54,11 +53,17 @@ import { ClaimDetailsScreen } from './payroll/screens/ClaimDetailsScreen';
 import { ClaimsApprovalScreen } from './payroll/screens/ClaimsApprovalScreen';
 import { MyRequestsScreen } from './payroll/screens/MyRequestsScreen';
 import { MyLeavesScreen } from './payroll/screens/MyLeavesScreen';
+import { MyDocumentsScreen } from './payroll/screens/MyDocumentsScreen';
+import { MyTrainingScreen } from './payroll/screens/MyTrainingScreen';
+import { LeaveHistoryScreen } from './payroll/screens/LeaveHistoryScreen';
+import { LeaveTypeScreen } from './payroll/screens/LeaveTypeScreen';
 import { SearchScreen } from './payroll/screens/SearchScreen';
 import { RequestTypesScreen } from './payroll/screens/RequestTypesScreen';
 import { ClaimTypesScreen } from './payroll/screens/ClaimTypesScreen';
 
-const Stack = createNativeStackNavigator();
+// Typed, so a route name that does not exist is a build error rather than a
+// runtime no-op. Three screens sat registered and unreachable until this landed.
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 // Deep linking configuration
 const linking = {
@@ -84,10 +89,12 @@ function AuthenticatedApp() {
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
 
   if (isLoading) {
+    // Same light page as every other screen. This was the last saturated #4285F4 block of the old
+    // design, and it flashed on every cold start.
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#4285F4' }}>
-        <ActivityIndicator size="large" color="#FFFFFF" />
-        <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#FFFFFF', marginTop: 16 }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F6F8FF' }}>
+        <ActivityIndicator size="large" color="#2F6BFF" />
+        <Text style={{ fontSize: 15, fontWeight: '600', color: '#64748B', marginTop: 14 }}>
           Loading...
         </Text>
       </View>
@@ -116,6 +123,15 @@ function AuthenticatedApp() {
             <Stack.Screen name="UserHome" component={UserHomeScreen} />
             <Stack.Screen name="JoinTenant" component={JoinTenantScreen} />
             <Stack.Screen name="JoinRequestPending" component={JoinRequestPendingScreen} />
+            <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />
+            <Stack.Screen name="AccountProfile" component={AccountProfileScreen} />
+            <Stack.Screen name="AccountPassword" component={AccountPasswordScreen} />
+            <Stack.Screen name="AccountTwoFactor" component={AccountTwoFactorScreen} />
+            <Stack.Screen name="AccountDevices" component={AccountDevicesScreen} />
+            <Stack.Screen name="MyJoinRequests" component={MyJoinRequestsScreen} />
+            <Stack.Screen name="Help" component={HelpScreen} />
+            <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+            <Stack.Screen name="About" component={AboutScreen} />
           </>
         ) : authStatus === 'pending_approval' ? (
           // Waiting for HR approval
@@ -123,13 +139,29 @@ function AuthenticatedApp() {
             <Stack.Screen name="JoinRequestPending" component={JoinRequestPendingScreen} />
             <Stack.Screen name="UserHome" component={UserHomeScreen} />
             <Stack.Screen name="JoinTenant" component={JoinTenantScreen} />
+            <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />
+            <Stack.Screen name="AccountProfile" component={AccountProfileScreen} />
+            <Stack.Screen name="AccountPassword" component={AccountPasswordScreen} />
+            <Stack.Screen name="AccountTwoFactor" component={AccountTwoFactorScreen} />
+            <Stack.Screen name="AccountDevices" component={AccountDevicesScreen} />
+            <Stack.Screen name="MyJoinRequests" component={MyJoinRequestsScreen} />
+            <Stack.Screen name="Help" component={HelpScreen} />
+            <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+            <Stack.Screen name="About" component={AboutScreen} />
           </>
         ) : (
           // Full app — authenticated with linked employee
           // TenantHub is the entry point; user selects a tenant → PayrollHome
           <>
             <Stack.Screen name="TenantHub" component={TenantHubScreen} />
+            <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />
+            <Stack.Screen name="AccountProfile" component={AccountProfileScreen} />
+            <Stack.Screen name="AccountPassword" component={AccountPasswordScreen} />
+            <Stack.Screen name="AccountTwoFactor" component={AccountTwoFactorScreen} />
+            <Stack.Screen name="AccountDevices" component={AccountDevicesScreen} />
+            <Stack.Screen name="MyJoinRequests" component={MyJoinRequestsScreen} />
             <Stack.Screen name="PayrollHome" component={PayrollHomeScreen} />
+            <Stack.Screen name="Activity" component={ActivityScreen} />
             <Stack.Screen name="JoinTenant" component={JoinTenantScreen} />
             <Stack.Screen name="JoinRequestPending" component={JoinRequestPendingScreen} />
             <Stack.Screen name="Requests" component={RequestsScreen} />
@@ -138,23 +170,15 @@ function AuthenticatedApp() {
             <Stack.Screen name="Leaves" component={LeavesScreen} />
             <Stack.Screen name="LeaveDetails" component={LeaveDetailsScreen} />
             <Stack.Screen name="CreateLeave" component={CreateLeaveScreen} />
-            <Stack.Screen name="Payslip" component={PayslipScreen} />
             <Stack.Screen name="MyPayslip" component={MyPayslipScreen} />
             <Stack.Screen name="PayslipDetails" component={PayslipDetailsScreen} />
-            <Stack.Screen name="Attendance" component={AttendanceScreen} />
-            <Stack.Screen name="TodaysAttendance" component={TodaysAttendanceScreen} />
+            <Stack.Screen name="Attendance" component={MyAttendanceScreen} />
             <Stack.Screen name="AttendanceDetails" component={AttendanceDetailsScreen} />
             <Stack.Screen name="AttendanceCheckIn" component={AttendanceCheckInScreen} />
             <Stack.Screen name="EmployeeList" component={EmployeeListScreen} />
             <Stack.Screen name="EmployeeMap" component={EmployeeMapScreen} />
-            <Stack.Screen name="Profile" component={ProfileScreen} />
-            <Stack.Screen name="Settings" component={SettingsScreen} />
             <Stack.Screen name="Help" component={HelpScreen} />
-            <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-            <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
             <Stack.Screen name="Notifications" component={NotificationsScreen} />
-            <Stack.Screen name="Theme" component={ThemeScreen} />
-            <Stack.Screen name="Language" component={LanguageScreen} />
             <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
             <Stack.Screen name="About" component={AboutScreen} />
             <Stack.Screen name="Claims" component={ClaimsScreen} />
@@ -163,6 +187,11 @@ function AuthenticatedApp() {
             <Stack.Screen name="ClaimsApproval" component={ClaimsApprovalScreen} />
             <Stack.Screen name="MyRequests" component={MyRequestsScreen} />
             <Stack.Screen name="MyLeaves" component={MyLeavesScreen} />
+            <Stack.Screen name="MyDocuments" component={MyDocumentsScreen} />
+            <Stack.Screen name="MyTraining" component={MyTrainingScreen} />
+            {/* Reached from My Leaves: the full year of applications, and one leave type's usage. */}
+            <Stack.Screen name="LeaveHistory" component={LeaveHistoryScreen} />
+            <Stack.Screen name="LeaveType" component={LeaveTypeScreen} />
             <Stack.Screen name="Search" component={SearchScreen} />
             <Stack.Screen name="RequestTypes" component={RequestTypesScreen} />
             <Stack.Screen name="ClaimTypes" component={ClaimTypesScreen} />
@@ -183,14 +212,12 @@ export default function App() {
   }, []);
 
   return (
-    <SafeAreaProvider>
-      <ThemeProvider>
-        <LanguageProvider>
-          <PayrollAuthProvider>
-            <AuthenticatedApp />
-          </PayrollAuthProvider>
-        </LanguageProvider>
-      </ThemeProvider>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+      <DialogProvider>
+        <PayrollAuthProvider>
+          <AuthenticatedApp />
+        </PayrollAuthProvider>
+      </DialogProvider>
     </SafeAreaProvider>
   );
 }

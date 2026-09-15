@@ -37,6 +37,17 @@ export interface CompanyInfoResponse {
   logoUrl: string | null;
 }
 
+/** One live session, as the server lists it (newest activity first). */
+export interface SignedInDevice {
+  id: number;
+  deviceType: string | null;
+  platform: string | null;
+  deviceModel: string | null;
+  osVersion: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
 const profileService = {
   async getProfile(): Promise<UserProfile> {
     const response = await axiosInstance.get(ENDPOINTS.PROFILE.GET);
@@ -57,12 +68,12 @@ const profileService = {
     return response.data.content;
   },
 
-  async getDevices(): Promise<Array<{ id: string; deviceName: string; lastActive: string }>> {
+  async getDevices(): Promise<SignedInDevice[]> {
     const response = await axiosInstance.get(ENDPOINTS.PROFILE.DEVICES);
-    return response.data.content;
+    return Array.isArray(response.data?.content) ? response.data.content : [];
   },
 
-  async removeDevice(deviceId: string): Promise<void> {
+  async removeDevice(deviceId: number): Promise<void> {
     await axiosInstance.delete(`${ENDPOINTS.PROFILE.DEVICES}/${deviceId}`);
   },
 };

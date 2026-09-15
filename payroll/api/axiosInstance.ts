@@ -62,13 +62,22 @@ axiosInstance.interceptors.request.use(
 );
 
 // Response interceptor: handle 401 with token refresh
+// A 401 normally means the access token expired. A few calls answer 401 to say
+// "wrong code" (two-factor verify), and refreshing — or signing the person out —
+// on that would be wrong; those calls set this flag.
+declare module 'axios' {
+  export interface AxiosRequestConfig {
+    skipAuthRefresh?: boolean;
+  }
+}
+
 axiosInstance.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
     // Handle 401 Unauthorized
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.skipAuthRefresh) {
       originalRequest._retry = true;
 
       if (isRefreshing) {

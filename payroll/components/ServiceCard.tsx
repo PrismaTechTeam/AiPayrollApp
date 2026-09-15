@@ -1,64 +1,55 @@
+/**
+ * One service in the View All grid.
+ *
+ * Matches the Home screen's Quick Access tile deliberately: a pale tinted card, the
+ * icon in a white square, the title in ink. These two grids list overlapping things
+ * one tap apart, and when the same service was a saturated block here and a soft tile
+ * there, the screen read as a different app.
+ */
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { AUTH_COLORS as C } from './auth/AuthBackdrop';
 
 interface ServiceCardProps {
   title: string;
-  count?: number;
   icon: string;
-  color: string;
+  /** The service's colour, used for the icon and the chevron. */
+  tint: string;
+  /** The pale wash behind the card. */
+  bg: string;
   onPress: () => void;
 }
 
-export const ServiceCard: React.FC<ServiceCardProps> = ({ title, count, icon, color, onPress }) => {
-  return (
-    <TouchableOpacity
-      style={[styles.card, { backgroundColor: color, shadowColor: color }]}
-      onPress={onPress}
-    >
-      <View style={styles.iconContainer}>
-        <MaterialCommunityIcons name={icon as any} size={32} color="#FFFFFF" />
+export const ServiceCard: React.FC<ServiceCardProps> = ({ title, icon, tint, bg, onPress }) => (
+  <TouchableOpacity
+    style={[styles.card, { backgroundColor: bg }]}
+    onPress={onPress}
+    activeOpacity={0.8}
+    accessibilityRole="button"
+  >
+    <View style={styles.top}>
+      <View style={styles.iconBox}>
+        <MaterialCommunityIcons name={icon as never} size={22} color={tint} />
       </View>
-      <Text style={styles.title}>{title}</Text>
-      {count !== undefined && (
-        <Text style={styles.count}>{count}</Text>
-      )}
-    </TouchableOpacity>
-  );
-};
+      <MaterialCommunityIcons name="chevron-right" size={18} color={tint} />
+    </View>
+    <Text style={styles.title} numberOfLines={2}>
+      {title}
+    </Text>
+  </TouchableOpacity>
+);
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: 20,
-    padding: 16,
-    alignItems: 'center',
+  card: { width: '48.5%', borderRadius: 18, padding: 14, minHeight: 112 },
+  top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  iconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
     justifyContent: 'center',
-    width: 115,
-    marginRight: 12,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 6,
-  },
-  iconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
   },
-  title: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 4,
-    textAlign: 'center',
-  },
-  count: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
+  title: { fontSize: 14, fontWeight: '800', color: C.ink },
 });

@@ -1,455 +1,162 @@
 /**
- * About Screen
- * App information, version, and credits
+ * About.
+ *
+ * Rebuilt from the Material prototype. Every number on the old page was typed
+ * in by hand: "Version 1.0.0 (Build 100)" when the build number was 1, a
+ * release date, and an install size of "45.2 MB" that nobody measured. A
+ * version string that disagrees with the binary is worse than none at all --
+ * it is the first thing anyone reports a bug with. Everything here now comes
+ * from the manifest the app was actually built with.
+ *
+ * The feature list lost "Multi-Language Support" and "Theme Customization"
+ * along with the two screens that claimed them.
  */
-
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  StatusBar,
-  Image,
-  Linking,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Linking, StyleSheet, Text, View } from 'react-native';
+import Constants from 'expo-constants';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
+import { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
+import { AccountPage, Card, MenuRow, SectionHeader } from '../components/account/AccountUi';
+import { useDialog } from '../components/ui/AppDialog';
+import type { IconName } from '../components/auth/PrimaryButton';
+
+const FEATURES: { icon: IconName; label: string }[] = [
+  { icon: 'fingerprint', label: 'Clock in and out from your phone' },
+  { icon: 'calendar-clock-outline', label: 'Leave applications and balances' },
+  { icon: 'text-box-outline', label: 'Requests and approvals' },
+  { icon: 'wallet-outline', label: 'Payslips you can open and download' },
+  { icon: 'receipt-text-outline', label: 'Expense claims with receipts' },
+  { icon: 'file-document-outline', label: 'Your document checklist' },
+  { icon: 'school-outline', label: 'Training records and certificates' },
+];
+
+/**
+ * The manifest the running bundle was built from. In Expo Go and in a dev
+ * client this is the config being served, which is exactly what you want when
+ * someone reports a bug against a build you cannot see.
+ */
+function buildInfo(): { version: string; build: string; runtime: string } {
+  const config = Constants.expoConfig;
+  const android = config?.android?.versionCode;
+  const ios = config?.ios?.buildNumber;
+  return {
+    version: config?.version ?? 'unknown',
+    build: String(android ?? ios ?? '—'),
+    runtime: config?.sdkVersion ?? Constants.expoVersion ?? '—',
+  };
+}
 
 export const AboutScreen: React.FC = () => {
   const navigation = useNavigation();
+  const dialog = useDialog();
+  const { version, build, runtime } = buildInfo();
 
-  const handleOpenLink = (url: string) => {
-    Linking.openURL(url).catch(err => console.error('Failed to open URL:', err));
+  const open = async (url: string, what: string) => {
+    try {
+      const can = await Linking.canOpenURL(url);
+      if (!can) throw new Error('no handler');
+      await Linking.openURL(url);
+    } catch {
+      await dialog.notify({
+        title: `Could not open ${what}`,
+        message: 'This phone has nothing set up to open that link.',
+        tone: 'warning',
+      });
+    }
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
-      {/* Header */}
-      <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>About</Text>
-          <View style={{ width: 40 }} />
-        </View>
-      </SafeAreaView>
-
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* App Logo & Name */}
-        <View style={styles.logoSection}>
-          <View style={styles.logoContainer}>
-            <MaterialCommunityIcons name="briefcase-outline" size={80} color="#4285F4" />
+    <AccountPage title="About" subtitle="What this app is, and which build you have">
+      <Card>
+        <View style={styles.hero}>
+          <View style={styles.logo}>
+            <MaterialCommunityIcons name="briefcase-check-outline" size={38} color={C.blue} />
           </View>
-          <Text style={styles.appName}>Payroll Mobile App</Text>
-          <View style={styles.versionBadge}>
-            <Text style={styles.versionText}>Version 1.0.0</Text>
-          </View>
-          <Text style={styles.tagline}>Employee Management Made Simple</Text>
-        </View>
-
-        {/* App Description */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>About This App</Text>
-          <Text style={styles.description}>
-            Payroll Mobile App is a comprehensive employee management solution designed to streamline 
-            your workplace operations. Manage leave requests, track attendance, view payslips, and 
-            stay connected with your team—all in one place.
+          <Text style={styles.name}>
+            <Text style={styles.nameAccent}>Ai</Text>Payroll
           </Text>
-        </View>
-
-        {/* Features */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Key Features</Text>
-          <View style={styles.featuresList}>
-            <View style={styles.featureItem}>
-              <MaterialCommunityIcons name="check-circle" size={20} color="#34A853" />
-              <Text style={styles.featureText}>Leave Management & Approval</Text>
-            </View>
-            <View style={styles.featureItem}>
-              <MaterialCommunityIcons name="check-circle" size={20} color="#34A853" />
-              <Text style={styles.featureText}>Request Submission & Tracking</Text>
-            </View>
-            <View style={styles.featureItem}>
-              <MaterialCommunityIcons name="check-circle" size={20} color="#34A853" />
-              <Text style={styles.featureText}>Payslip Access & Download</Text>
-            </View>
-            <View style={styles.featureItem}>
-              <MaterialCommunityIcons name="check-circle" size={20} color="#34A853" />
-              <Text style={styles.featureText}>Attendance Monitoring</Text>
-            </View>
-            <View style={styles.featureItem}>
-              <MaterialCommunityIcons name="check-circle" size={20} color="#34A853" />
-              <Text style={styles.featureText}>Role-Based Access Control</Text>
-            </View>
-            <View style={styles.featureItem}>
-              <MaterialCommunityIcons name="check-circle" size={20} color="#34A853" />
-              <Text style={styles.featureText}>Multi-Language Support</Text>
-            </View>
-            <View style={styles.featureItem}>
-              <MaterialCommunityIcons name="check-circle" size={20} color="#34A853" />
-              <Text style={styles.featureText}>Theme Customization</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* App Information */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Application Information</Text>
-          <View style={styles.infoCard}>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Version</Text>
-              <Text style={styles.infoValue}>1.0.0 (Build 100)</Text>
-            </View>
-            <View style={styles.divider} />
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Release Date</Text>
-              <Text style={styles.infoValue}>January 2026</Text>
-            </View>
-            <View style={styles.divider} />
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Platform</Text>
-              <Text style={styles.infoValue}>iOS & Android</Text>
-            </View>
-            <View style={styles.divider} />
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Size</Text>
-              <Text style={styles.infoValue}>45.2 MB</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Developer Information */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Developer</Text>
-          <View style={styles.developerCard}>
-            <View style={styles.developerHeader}>
-              <View style={styles.developerIcon}>
-                <MaterialCommunityIcons name="account-group" size={32} color="#FFFFFF" />
-              </View>
-              <View style={styles.developerInfo}>
-                <Text style={styles.developerName}>Prisma Tech</Text>
-                <Text style={styles.developerRole}>Software Development Company</Text>
-              </View>
-            </View>
-            <Text style={styles.developerDescription}>
-              Building innovative solutions for modern workplaces. Committed to excellence 
-              in employee management and workplace productivity.
+          <Text style={styles.tagline}>Your workplace, in your pocket</Text>
+          <View style={styles.versionPill}>
+            <Text style={styles.versionPillText}>
+              Version {version} · Build {build}
             </Text>
           </View>
         </View>
+      </Card>
 
-        {/* Contact Links */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Get In Touch</Text>
-          
-          <TouchableOpacity
-            style={styles.linkCard}
-            onPress={() => handleOpenLink('https://www.prismatech.com')}
-          >
-            <View style={[styles.linkIcon, { backgroundColor: '#4285F4' }]}>
-              <MaterialCommunityIcons name="web" size={24} color="#FFFFFF" />
-            </View>
-            <View style={styles.linkInfo}>
-              <Text style={styles.linkLabel}>Website</Text>
-              <Text style={styles.linkValue}>www.prismatech.com</Text>
-            </View>
-            <MaterialCommunityIcons name="open-in-new" size={20} color="#999" />
-          </TouchableOpacity>
+      <SectionHeader title="What it does" description="Everything you can do from this app today." />
+      <Card>
+        {FEATURES.map((f) => (
+          <View key={f.label} style={styles.featureRow}>
+            <MaterialCommunityIcons name={f.icon} size={20} color={C.blue} />
+            <Text style={styles.featureText}>{f.label}</Text>
+          </View>
+        ))}
+      </Card>
 
-          <TouchableOpacity
-            style={styles.linkCard}
-            onPress={() => handleOpenLink('mailto:support@prismatech.com')}
-          >
-            <View style={[styles.linkIcon, { backgroundColor: '#EA4335' }]}>
-              <MaterialCommunityIcons name="email-outline" size={24} color="#FFFFFF" />
-            </View>
-            <View style={styles.linkInfo}>
-              <Text style={styles.linkLabel}>Email</Text>
-              <Text style={styles.linkValue}>support@prismatech.com</Text>
-            </View>
-            <MaterialCommunityIcons name="open-in-new" size={20} color="#999" />
-          </TouchableOpacity>
+      <SectionHeader title="This build" description="Quote these if you report a problem." />
+      <Card>
+        <Fact label="Version" value={version} />
+        <Fact label="Build" value={build} />
+        <Fact label="Expo SDK" value={runtime} />
+        <Fact label="Package" value={Constants.expoConfig?.android?.package ?? Constants.expoConfig?.ios?.bundleIdentifier ?? '—'} last />
+      </Card>
 
-          <TouchableOpacity
-            style={styles.linkCard}
-            onPress={() => handleOpenLink('tel:+18001234567')}
-          >
-            <View style={[styles.linkIcon, { backgroundColor: '#34A853' }]}>
-              <MaterialCommunityIcons name="phone-outline" size={24} color="#FFFFFF" />
-            </View>
-            <View style={styles.linkInfo}>
-              <Text style={styles.linkLabel}>Phone</Text>
-              <Text style={styles.linkValue}>+1 (800) 123-4567</Text>
-            </View>
-            <MaterialCommunityIcons name="open-in-new" size={20} color="#999" />
-          </TouchableOpacity>
-        </View>
+      <SectionHeader title="Who made it" />
+      <Card padded={false}>
+        <MenuRow
+          icon="domain"
+          title="Prisma Technology"
+          subtitle="prismatechnology.com.my"
+          onPress={() => { void open('https://prismatechnology.com.my', 'the website'); }}
+        />
+        <MenuRow icon="file-lock-outline" title="Privacy Policy" onPress={() => navigation.navigate('PrivacyPolicy')} last />
+      </Card>
 
-        {/* Legal */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Legal</Text>
-          <TouchableOpacity
-            style={styles.legalItem}
-            onPress={() => navigation.navigate('PrivacyPolicy' as never)}
-          >
-            <MaterialCommunityIcons name="file-document-outline" size={20} color="#666" />
-            <Text style={styles.legalText}>Privacy Policy</Text>
-            <MaterialCommunityIcons name="chevron-right" size={20} color="#999" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.legalItem}>
-            <MaterialCommunityIcons name="shield-check-outline" size={20} color="#666" />
-            <Text style={styles.legalText}>Terms of Service</Text>
-            <MaterialCommunityIcons name="chevron-right" size={20} color="#999" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.legalItem}>
-            <MaterialCommunityIcons name="license" size={20} color="#666" />
-            <Text style={styles.legalText}>Licenses</Text>
-            <MaterialCommunityIcons name="chevron-right" size={20} color="#999" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Copyright */}
-        <View style={styles.footer}>
-          <Text style={styles.copyright}>© 2026 Prisma Tech</Text>
-          <Text style={styles.copyright}>All rights reserved</Text>
-        </View>
-
-        <SafeAreaView edges={['bottom']} style={{ paddingBottom: 20 }} />
-      </ScrollView>
-    </View>
+      <Text style={styles.copyright}>© {new Date().getFullYear()} Prisma Technology</Text>
+    </AccountPage>
   );
 };
 
+const Fact: React.FC<{ label: string; value: string; last?: boolean }> = ({ label, value, last = false }) => (
+  <View style={[styles.fact, !last && styles.factDivider]}>
+    <Text style={styles.factLabel}>{label}</Text>
+    <Text style={styles.factValue} numberOfLines={1}>{value}</Text>
+  </View>
+);
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  safeAreaTop: {
-    backgroundColor: '#FFFFFF',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#000',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
-  },
-  logoSection: {
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    paddingVertical: 32,
-    marginBottom: 20,
-  },
-  logoContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#E8F0FE',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  appName: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#000',
-    marginBottom: 12,
-  },
-  versionBadge: {
-    backgroundColor: '#E8F0FE',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginBottom: 8,
-  },
-  versionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#4285F4',
-  },
-  tagline: {
-    fontSize: 14,
-    color: '#666',
-  },
-  section: {
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#000',
-    marginBottom: 12,
-  },
-  description: {
-    fontSize: 15,
-    lineHeight: 24,
-    color: '#666',
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-  },
-  featuresList: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-  },
-  featureItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  featureText: {
-    fontSize: 15,
-    color: '#333',
-    marginLeft: 12,
-  },
-  infoCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  infoLabel: {
-    fontSize: 15,
-    color: '#666',
-  },
-  infoValue: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#000',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#F0F0F0',
-  },
-  developerCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 20,
-  },
-  developerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  developerIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#4285F4',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  developerInfo: {
-    flex: 1,
-  },
-  developerName: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#000',
-    marginBottom: 4,
-  },
-  developerRole: {
-    fontSize: 14,
-    color: '#666',
-  },
-  developerDescription: {
-    fontSize: 14,
-    lineHeight: 22,
-    color: '#666',
-  },
-  linkCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  linkIcon: {
-    width: 48,
-    height: 48,
+  hero: { alignItems: 'center', paddingVertical: 8 },
+  logo: {
+    width: 76,
+    height: 76,
     borderRadius: 24,
+    backgroundColor: '#E8F0FE',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
   },
-  linkInfo: {
-    flex: 1,
+  name: { fontSize: 24, fontWeight: '800', color: C.ink, marginTop: 14, letterSpacing: -0.4 },
+  nameAccent: { color: C.blue },
+  tagline: { fontSize: 14, color: C.body, marginTop: 4 },
+  versionPill: {
+    marginTop: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#EEF3FF',
   },
-  linkLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 2,
-  },
-  linkValue: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#000',
-  },
-  legalItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  legalText: {
-    flex: 1,
-    fontSize: 15,
-    color: '#333',
-    marginLeft: 12,
-  },
-  footer: {
-    alignItems: 'center',
-    paddingVertical: 20,
-    marginTop: 8,
-  },
-  copyright: {
-    fontSize: 13,
-    color: '#999',
-    marginBottom: 4,
-  },
+  versionPillText: { fontSize: 13, fontWeight: '700', color: C.blue },
+
+  featureRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
+  featureText: { flex: 1, fontSize: 14, color: C.ink },
+
+  fact: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingVertical: 11 },
+  factDivider: { borderBottomWidth: 1, borderBottomColor: C.line },
+  factLabel: { fontSize: 14, color: C.body },
+  factValue: { flex: 1, fontSize: 14, fontWeight: '700', color: C.ink, textAlign: 'right' },
+
+  copyright: { fontSize: 12, color: C.muted, textAlign: 'center', marginTop: 6, marginBottom: 10 },
 });
 
 export default AboutScreen;

@@ -1,3 +1,12 @@
+/**
+ * The employee's own payslips.
+ *
+ * The detail call does not return raw payroll columns any more. It returns the
+ * payslip already reduced to the rows that get printed — the same object the
+ * server renders the PDF from — so the screen cannot decide a row is worth
+ * showing that the PDF leaves out, or label one differently. See
+ * `Payroll/Application/DTOs/Mobile/PayslipDocumentDto.cs`.
+ */
 import axiosInstance from '../axiosInstance';
 import { ENDPOINTS } from '../endpoints';
 
@@ -5,11 +14,12 @@ export interface PayslipListItem {
   payrollRunId: string;
   payrollYear: number;
   payrollMonth: number;
+  runType: string;
+  payrollNumber: string | null;
+  description1: string | null;
   periodStart: string;
   periodEnd: string;
   processedDate: string;
-  runType: string;
-  description1: string | null;
   employeeCode: string;
   employeeName: string;
   grossPay: number;
@@ -17,71 +27,94 @@ export interface PayslipListItem {
   netPay: number;
 }
 
-export interface PayslipDetail {
+export interface PayslipListPage {
+  items: PayslipListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface PayslipLine {
+  label: string;
+  amount: number;
+}
+
+export interface PayslipOvertimeLine {
+  type: string;
+  /** Multiplier, e.g. 1.5. Null when the source line carries none. */
+  rate: number | null;
+  hours: number | null;
+  amount: number;
+}
+
+export interface PayslipLeaveRow {
+  code: string;
+  description: string;
+  /** Entitlement plus carry forward — what the printed payslip calls "Entitlement". */
+  entitlement: number;
+  taken: number;
+  balance: number;
+}
+
+export interface PayslipCompany {
+  name: string;
+  registrationNumber: string | null;
+  address: string | null;
+  logoUrl: string | null;
+}
+
+export interface PayslipEmployee {
+  name: string;
+  code: string;
+  icNo: string | null;
+  bankAccount: string | null;
+  epfNo: string | null;
+  socsoNo: string | null;
+  basicSalary: number;
+  /** Days worked in the period. Null for companies that do not run attendance. */
+  workDays: number | null;
+}
+
+export interface PayslipDocument {
   payrollRunId: string;
-  employeeCode: string;
-  employeeName: string;
-  periodStart: string;
-  periodEnd: string;
-  processedDate: string;
-  payrollYear: number;
-  payrollMonth: number;
+  year: number;
+  month: number;
+  /** "1 Aug 2026 – 31 Aug 2026". Formatted server-side so it matches the PDF exactly. */
+  periodLabel: string;
+  paymentDateLabel: string;
+  payrollNumber: string | null;
 
-  // Income (nested under "income" from API)
-  income: {
-    wages: number;
-    allowance: number;
-    overtime: number;
-    commission: number;
-    bonus: number;
-    claims: number;
-    others: number;
-    directorFees: number;
-    advancePaid: number;
-    gratuity: number;
-  };
+  company: PayslipCompany;
+  employee: PayslipEmployee;
 
-  // Deductions (nested under "deductions" from API)
-  deductions: {
-    deduction: number;
-    loan: number;
-    advanceDeduct: number;
-    unpaidLeaveDeduct: number;
-  };
+  income: PayslipLine[];
+  deductions: PayslipLine[];
 
-  // Statutory (nested under "statutory" from API)
-  statutory: {
-    epfEmployee: number;
-    epfEmployer: number;
-    socsoEmployee: number;
-    socsoEmployer: number;
-    eisEmployee: number;
-    eisEmployer: number;
-    pcbPayable: number;
-    zakat: number;
-    cp38: number;
-  };
+  overtimeLines: PayslipOvertimeLine[];
+  overtimeTotal: number;
 
-  // Totals
+  leave: PayslipLeaveRow[];
+  employerContributions: PayslipLine[];
+
   grossPay: number;
-  grossDeductions: number;
+  totalDeductions: number;
   netPay: number;
-  adjustment: number;
 }
 
 const payslipService = {
-  async getList(params?: { year?: number; page?: number; pageSize?: number }): Promise<{ items: PayslipListItem[]; totalCount: number }> {
+  async getList(params?: { year?: number; page?: number; pageSize?: number }): Promise<PayslipListPage> {
     const response = await axiosInstance.get(ENDPOINTS.PAYSLIP.LIST, { params });
     return response.data.content;
   },
 
-  async getDetail(payrollRunId: string): Promise<PayslipDetail> {
-    const response = await axiosInstance.get(`/api/mobile/payslip/${payrollRunId}`);
+  async getDocument(payrollRunId: string): Promise<PayslipDocument> {
+    const response = await axiosInstance.get(`${ENDPOINTS.PAYSLIP.DETAIL}/${payrollRunId}`);
     return response.data.content;
   },
 
-  async getPayslipHtml(payrollRunId: string): Promise<string> {
-    const response = await axiosInstance.get(`/api/mobile/payslip/${payrollRunId}/html`);
+  /** The printable payslip, as HTML. expo-print turns it into the PDF the employee keeps. */
+  async getHtml(payrollRunId: string): Promise<string> {
+    const response = await axiosInstance.get(`${ENDPOINTS.PAYSLIP.DETAIL}/${payrollRunId}/html`);
     return response.data.content.html;
   },
 };

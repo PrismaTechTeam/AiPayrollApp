@@ -24,8 +24,25 @@ const companyService = {
     return response.data.content;
   },
 
-  async submitJoinRequest(tenantId: string, message?: string): Promise<JoinRequest> {
-    const response = await axiosInstance.post(ENDPOINTS.COMPANY.JOIN_REQUEST, { tenantId, message });
+  /**
+   * Ask to join a company.
+   *
+   * `employeeCode` / `icNumber` are what HR uses to work out which employee record
+   * this account belongs to. Without them the request reaches HR as a name and an
+   * email, and at a company with ninety operators that leaves them guessing — a wrong
+   * guess connects somebody to another person's payslips.
+   */
+  async submitJoinRequest(
+    tenantId: string,
+    message?: string,
+    identity?: { employeeCode?: string; icNumber?: string },
+  ): Promise<JoinRequest> {
+    const response = await axiosInstance.post(ENDPOINTS.COMPANY.JOIN_REQUEST, {
+      tenantId,
+      message,
+      employeeCode: identity?.employeeCode?.trim() || undefined,
+      icNumber: identity?.icNumber?.trim() || undefined,
+    });
     return response.data.content;
   },
 
@@ -40,8 +57,16 @@ const companyService = {
     await axiosInstance.delete(url);
   },
 
-  async joinViaCode(code: string): Promise<JoinRequest> {
-    const response = await axiosInstance.post(ENDPOINTS.COMPANY.JOIN_VIA_CODE, { code });
+  async joinViaCode(
+    code: string,
+    identity?: { employeeCode?: string; icNumber?: string; message?: string },
+  ): Promise<JoinRequest> {
+    const response = await axiosInstance.post(ENDPOINTS.COMPANY.JOIN_VIA_CODE, {
+      code,
+      message: identity?.message,
+      employeeCode: identity?.employeeCode?.trim() || undefined,
+      icNumber: identity?.icNumber?.trim() || undefined,
+    });
     return response.data.content;
   },
 };

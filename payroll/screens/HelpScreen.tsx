@@ -1,20 +1,28 @@
 /**
- * Help & Support Screen
- * FAQ with expandable accordion items
+ * Help and Support.
+ *
+ * Rebuilt from the Material prototype, which was wrong twice over. It printed a
+ * support address and a helpdesk number that belong to nobody -- a person in
+ * trouble would have written to a dead mailbox and waited. And its answers
+ * described a hamburger menu, a Settings page and an Edit Profile button that
+ * no longer exist, so following them led nowhere.
+ *
+ * There is no support desk to name, so this page does not invent one. Payroll
+ * questions are answered by the employer's own HR, and that is what it says.
+ * The answers below describe the navigation the app actually has today: a
+ * bottom bar, a quick-access grid, and the person icon for account settings.
  */
-
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  StatusBar,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { LayoutAnimation, Platform, StyleSheet, Text, TouchableOpacity, UIManager, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useNavigation } from '@react-navigation/native';
+import { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
+import { AccountPage, Card, SectionHeader } from '../components/account/AccountUi';
+
+// Android opts out of layout animation by default; without this the accordion
+// snaps open instead of growing.
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 interface FAQItem {
   id: string;
@@ -22,291 +30,172 @@ interface FAQItem {
   answer: string;
 }
 
-const FAQ_DATA: FAQItem[] = [
+const FAQ: FAQItem[] = [
   {
-    id: '1',
-    question: 'How do I submit a leave request?',
-    answer: 'To submit a leave request, go to the Home screen, tap on "Leave Application" card, fill in the leave type, start date, end date, and any additional notes. Then tap the "Submit Leave Request" button. Your HR/Owner will be notified and can approve or reject your request.',
+    id: 'punch',
+    question: 'How do I clock in and out?',
+    answer:
+      'Tap the round fingerprint button in the middle of the bottom bar. It is the same button for both: if you are not clocked in yet it starts your day, and if you already are it ends it. The Attendance tile on Home shows the month you have built up so far.',
   },
   {
-    id: '2',
-    question: 'How can I check my attendance?',
-    answer: 'Tap on the "Attendance" card from the Home screen. You\'ll see a scrollable date selector at the top showing the current week. Select any date to view attendance records for that day. Tap on any member card to see detailed check-in and check-out times.',
+    id: 'leave',
+    question: 'How do I apply for leave?',
+    answer:
+      'Tap Leave in the bottom bar, then the add button to start an application. Pick the leave type, the dates and a reason, and send it. The same screen lists everything you have applied for and how much of each entitlement you have left.',
   },
   {
-    id: '3',
-    question: 'How do I view my payslip?',
-    answer: 'If you\'re an employee, tap on "My Payslip" from the Home screen to view your latest payslip details. If you\'re an owner/HR, you can access "Payslip Management" to view and manage all employee payslips.',
+    id: 'leave-status',
+    question: 'How do I know whether my leave was approved?',
+    answer:
+      'Open Leave from the bottom bar and tap the application. Its status is on the row, and the detail page shows who has approved it so far and who it is waiting on. You also get a notification when a decision is made.',
   },
   {
-    id: '4',
-    question: 'How do I switch between Employee and Owner roles?',
-    answer: 'Tap the hamburger menu (☰) at the top left of the screen. Under the "SWITCH ROLE" section, tap on the role button showing your current role. A modal will appear with available roles. Select the role you want to switch to, and the app will update to show features specific to that role.',
+    id: 'request',
+    question: 'How do I submit a request?',
+    answer:
+      'Tap Requests in the bottom bar, then the add button. Choose the request type, fill in the dates and notes, and attach a file if the type asks for one. Your approver is notified straight away.',
   },
   {
-    id: '5',
-    question: 'How can I submit a request?',
-    answer: 'From the Home screen, tap on "Request Application" (for employees) or "Request Approval" (for owners/HR). If you\'re an employee, tap the "+" button to create a new request. Select the request type, enter dates, add notes, and submit. Your HR/Owner will receive the request for approval.',
+    id: 'payslip',
+    question: 'Where is my payslip?',
+    answer:
+      'Home, then the My Payslip tile. It lists every pay run you have been paid in, newest first; tapping one opens the full payslip, which you can download.',
   },
   {
-    id: '6',
-    question: 'How do I approve or reject requests?',
-    answer: 'As an owner/HR, go to "Request Approval" or "Leave Approval" from the Home screen. You\'ll see a list of pending requests. Tap the green checkmark (✓) to approve or the red X (✗) to reject any request. You can also tap on a request card to view full details before making a decision.',
+    id: 'claims',
+    question: 'How do I claim an expense?',
+    answer:
+      'Home, then the My Claims tile. Create a claim, pick the claim type, enter the amount and attach the receipt. Claims without a receipt are usually sent back, so add it before submitting.',
   },
   {
-    id: '7',
-    question: 'How can I change my password?',
-    answer: 'Go to the hamburger menu (☰) → Settings → Change Password. Enter your current password, then your new password twice to confirm. Tap "Update Password" to save the changes.',
+    id: 'documents',
+    question: 'What does "needs you" mean on My Documents?',
+    answer:
+      'It is the number of documents HR is still waiting on from you, or that were sent back or have expired. Open My Documents and the ones you have to act on are grouped at the top.',
   },
   {
-    id: '8',
-    question: 'What should I do if I forgot my password?',
-    answer: 'On the login screen, tap "Forgot Password?" below the password field. Enter your registered email address, and you\'ll receive a password reset link. Follow the instructions in the email to create a new password.',
+    id: 'training',
+    question: 'How do I see the training I am required to do?',
+    answer:
+      'Home, then the My Training tile. It lists every course required of your role, what you have completed, what is outstanding and anything about to expire. Where a session recorded proof of attendance, you can open your certificate from the course.',
   },
   {
-    id: '9',
-    question: 'How do I update my profile information?',
-    answer: 'Tap the hamburger menu (☰) → Profile. Here you can view your profile information, current role, and email. To update details, tap the "Edit Profile" button and make your changes, then save.',
+    id: 'account',
+    question: 'How do I change my password or my details?',
+    answer:
+      'Tap the person icon at the top right of Home to open Settings. Profile changes your photo and name; Change Password takes your current password and the new one twice. Two-Factor Authentication and the list of devices you are signed in on are on the same page.',
   },
   {
-    id: '10',
-    question: 'Who can I contact for technical support?',
-    answer: 'For technical support or questions not covered in this FAQ, please email support@payroll.com or call our helpdesk at 1-800-PAYROLL (1-800-729-7655) during business hours (9 AM - 6 PM, Monday to Friday).',
+    id: 'forgot',
+    question: 'I forgot my password. What now?',
+    answer:
+      'On the sign-in screen tap "Forgot Password" under the password field and enter your registered email. A reset link is sent to that address. If it does not arrive, check your spam folder before asking for another.',
+  },
+  {
+    id: 'company',
+    question: 'How do I switch between companies?',
+    answer:
+      'Tap the company name at the top of Home. The sheet lists every company you belong to; picking one switches the whole app to it. "Manage companies" at the bottom of that sheet opens the full list, where you can also join another company.',
+  },
+  {
+    id: 'wrong',
+    question: 'Something in my payslip or attendance looks wrong.',
+    answer:
+      'The app shows what your employer has recorded; it cannot change it. Anything that looks wrong -- hours, deductions, leave balance, a missing payslip -- has to be corrected by your own HR or payroll team, who can amend the record at source.',
   },
 ];
 
 export const HelpScreen: React.FC = () => {
-  const navigation = useNavigation();
-  const [expandedId, setExpandedId] = useState<string | null>('1'); // First item expanded by default
+  const [openId, setOpenId] = useState<string | null>(FAQ[0].id);
 
-  const toggleExpand = (id: string) => {
-    setExpandedId(expandedId === id ? null : id);
+  const toggle = (id: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setOpenId(openId === id ? null : id);
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
-      {/* Header */}
-      <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Help & Support</Text>
-          <View style={{ width: 40 }} />
-        </View>
-      </SafeAreaView>
+    <AccountPage title="Help" subtitle="Answers to the usual questions">
+      <SectionHeader title="Frequently asked" description="Tap a question to read the answer." />
 
-      {/* FAQ List */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {FAQ_DATA.map((item) => {
-          const isExpanded = expandedId === item.id;
-          
+      <Card padded={false}>
+        {FAQ.map((item, index) => {
+          const open = openId === item.id;
+          const last = index === FAQ.length - 1;
           return (
-            <View key={item.id} style={styles.faqCard}>
+            <View key={item.id} style={!last && styles.divider}>
               <TouchableOpacity
-                style={styles.faqHeader}
-                onPress={() => toggleExpand(item.id)}
+                style={styles.question}
+                onPress={() => toggle(item.id)}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: open }}
               >
-                <Text style={styles.question}>{item.question}</Text>
-                <View style={styles.iconButton}>
-                  <MaterialCommunityIcons
-                    name={isExpanded ? 'chevron-down' : 'chevron-right'}
-                    size={24}
-                    color="#FFFFFF"
-                  />
-                </View>
+                <Text style={[styles.questionText, open && styles.questionTextOpen]}>{item.question}</Text>
+                <MaterialCommunityIcons
+                  name={open ? 'chevron-up' : 'chevron-down'}
+                  size={22}
+                  color={open ? C.blue : C.muted}
+                />
               </TouchableOpacity>
-
-              {isExpanded && (
-                <View style={styles.answerContainer}>
-                  <Text style={styles.answer}>{item.answer}</Text>
+              {open ? (
+                <View style={styles.answer}>
+                  <Text style={styles.answerText}>{item.answer}</Text>
                 </View>
-              )}
+              ) : null}
             </View>
           );
         })}
+      </Card>
 
-        {/* Contact Section */}
-        <View style={styles.contactSection}>
-          <MaterialCommunityIcons name="help-circle-outline" size={48} color="#4285F4" />
-          <Text style={styles.contactTitle}>Still need help?</Text>
-          <Text style={styles.contactText}>
-            Get in touch with us through any of the following channels.
-          </Text>
-
-          {/* Contact Dealer */}
-          <TouchableOpacity style={styles.contactCard}>
-            <View style={[styles.contactIconContainer, { backgroundColor: '#4285F4' }]}>
-              <MaterialCommunityIcons name="phone-outline" size={24} color="#FFFFFF" />
-            </View>
-            <View style={styles.contactInfo}>
-              <Text style={styles.contactLabel}>Contact Your Dealer</Text>
-              <Text style={styles.contactValue}>+1 (800) 123-4567</Text>
-            </View>
-            <MaterialCommunityIcons name="chevron-right" size={24} color="#999" />
-          </TouchableOpacity>
-
-          {/* Contact HR */}
-          <TouchableOpacity style={styles.contactCard}>
-            <View style={[styles.contactIconContainer, { backgroundColor: '#34A853' }]}>
-              <MaterialCommunityIcons name="account-tie-outline" size={24} color="#FFFFFF" />
-            </View>
-            <View style={styles.contactInfo}>
-              <Text style={styles.contactLabel}>Contact Your HR</Text>
-              <Text style={styles.contactValue}>+1 (800) 765-4321</Text>
-            </View>
-            <MaterialCommunityIcons name="chevron-right" size={24} color="#999" />
-          </TouchableOpacity>
-
-          {/* Email Support */}
-          <TouchableOpacity style={styles.contactCard}>
-            <View style={[styles.contactIconContainer, { backgroundColor: '#EA4335' }]}>
-              <MaterialCommunityIcons name="email-outline" size={24} color="#FFFFFF" />
-            </View>
-            <View style={styles.contactInfo}>
-              <Text style={styles.contactLabel}>Email Support</Text>
-              <Text style={styles.contactValue}>support@payroll.com</Text>
-            </View>
-            <MaterialCommunityIcons name="chevron-right" size={24} color="#999" />
-          </TouchableOpacity>
+      <SectionHeader title="Still stuck?" />
+      <Card>
+        <View style={styles.helpRow}>
+          <View style={styles.helpIcon}>
+            <MaterialCommunityIcons name="account-tie-outline" size={22} color={C.blue} />
+          </View>
+          <View style={styles.flex}>
+            <Text style={styles.helpTitle}>Ask your HR team</Text>
+            {/* No support address is printed here on purpose. The app is used by
+                many employers and none of them share a helpdesk, so any number
+                shown would be wrong for almost everyone reading it. */}
+            <Text style={styles.helpBody}>
+              Your employer holds your payroll records and is the only one who can change them. For anything about your
+              pay, leave balance, attendance or documents, speak to whoever handles HR where you work.
+            </Text>
+          </View>
         </View>
-      </ScrollView>
-    </View>
+      </Card>
+    </AccountPage>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  safeAreaTop: {
-    backgroundColor: '#FFFFFF',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#000',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  faqCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginBottom: 12,
-    overflow: 'hidden',
-  },
-  faqHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-  },
+  flex: { flex: 1 },
+
+  divider: { borderBottomWidth: 1, borderBottomColor: C.line },
   question: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
-    marginRight: 12,
-  },
-  iconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#4285F4',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  answerContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    paddingTop: 0,
-  },
-  answer: {
-    fontSize: 14,
-    lineHeight: 22,
-    color: '#666',
-  },
-  contactSection: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 24,
-    marginTop: 12,
-    alignItems: 'center',
-  },
-  contactTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#000',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  contactText: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 20,
-    lineHeight: 20,
-  },
-  contactCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F9F9F9',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: 12,
-    marginBottom: 12,
-    width: '100%',
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
   },
-  contactIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  questionText: { flex: 1, fontSize: 15, fontWeight: '700', color: C.ink, lineHeight: 21 },
+  questionTextOpen: { color: C.blue },
+  answer: { paddingHorizontal: 18, paddingBottom: 16, marginTop: -2 },
+  answerText: { fontSize: 14, lineHeight: 21, color: C.body },
+
+  helpRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  helpIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#E6EEFF',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
   },
-  contactInfo: {
-    flex: 1,
-  },
-  contactLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
-    marginBottom: 4,
-  },
-  contactValue: {
-    fontSize: 14,
-    color: '#666',
-  },
+  helpTitle: { fontSize: 16, fontWeight: '800', color: C.ink },
+  helpBody: { fontSize: 14, lineHeight: 21, color: C.body, marginTop: 6 },
 });
 
 export default HelpScreen;

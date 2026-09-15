@@ -48,8 +48,12 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
 
         // Setup foreground notification handler
         Notifications.setNotificationHandler({
+          // shouldShowAlert was split into banner + list in expo-notifications; it is
+          // kept for older runtimes, which ignore the two newer fields.
           handleNotification: async () => ({
             shouldShowAlert: true,
+            shouldShowBanner: true,
+            shouldShowList: true,
             shouldPlaySound: true,
             shouldSetBadge: true,
           }),

@@ -15,19 +15,44 @@ export interface EmployeeRequest {
   requestTypeId?: string | null;
   requestType: string;
   requestTypeName?: string | null;
-  startDate: string | null;
+  /** Historic only — no longer collected or shown. Kept so old rows still parse. */
+  startDate?: string | null;
   notes: string | null;
   status: string; // PENDING, APPROVED, REJECTED, CANCELLED
   reviewedByUserId?: string | null;
   reviewedAt?: string | null;
   rejectionReason?: string | null;
+  /** HR's written answer. Separate from the approve/reject decision. */
+  hrReply?: string | null;
+  hrReplyAt?: string | null;
+  hrReplyByName?: string | null;
+  attachmentCount?: number;
+  /** Present on the detail endpoints only. */
+  attachments?: RequestAttachment[];
   createdAt: string;
   updatedAt: string;
 }
 
+export interface RequestAttachment {
+  id: string;
+  requestId: string;
+  fileName: string;
+  fileSizeBytes: number;
+  mimeType: string | null;
+  uploadedByRole: 'EMPLOYEE' | 'HR';
+  uploadedByName: string | null;
+  createdAt: string;
+}
+
+/** What the picker produced, in the shape React Native's FormData needs. */
+export interface UploadableFile {
+  uri: string;
+  name: string;
+  mimeType: string;
+}
+
 export interface CreateRequestPayload {
   requestType: string;
-  startDate?: string;
   notes?: string;
   isDraft?: boolean;
 }
@@ -172,6 +197,78 @@ const requestService = {
   async deleteRequestType(id: string): Promise<void> {
     await axiosInstance.delete(`${ENDPOINTS.WEB_REQUEST.TYPES}/${id}`);
   },
+  // ==========================================
+  // Attachments — employee side
+  // ==========================================
+
+  /** One of the employee's own requests, with HR's reply and every file on it. */
+  async getApplication(id: string): Promise<EmployeeRequest> {
+    const response = await axiosInstance.get(`${ENDPOINTS.REQUEST.APPLICATIONS}/${id}`);
+    return response.data.content;
+  },
+
+  async getAttachments(requestId: string): Promise<RequestAttachment[]> {
+    const response = await axiosInstance.get(`${ENDPOINTS.REQUEST.APPLICATIONS}/${requestId}/attachments`);
+    return Array.isArray(response.data?.content) ? response.data.content : [];
+  },
+
+  /**
+   * Attach a file to the employee's own request. A photo on a slow connection
+   * outlives the default API timeout, so this call gets its own.
+   */
+  async uploadAttachment(requestId: string, file: UploadableFile): Promise<RequestAttachment> {
+    const form = new FormData();
+    form.append('file', { uri: file.uri, name: file.name, type: file.mimeType } as unknown as Blob);
+    const response = await axiosInstance.post(
+      `${ENDPOINTS.REQUEST.APPLICATIONS}/${requestId}/attachments`,
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 },
+    );
+    return response.data.content;
+  },
+
+  async deleteAttachment(attachmentId: string): Promise<void> {
+    await axiosInstance.delete(`${ENDPOINTS.REQUEST.ATTACHMENTS}/${attachmentId}`);
+  },
+
+  /** Absolute URL of the file's bytes, for the download helper. */
+  attachmentContentUrl(attachmentId: string): string {
+    return `${ENDPOINTS.REQUEST.ATTACHMENTS}/${attachmentId}/content`;
+  },
+
+  // ==========================================
+  // Attachments + reply — approver side (web API)
+  // ==========================================
+
+  async getAttachmentsAsApprover(requestId: string): Promise<RequestAttachment[]> {
+    const response = await axiosInstance.get(`${ENDPOINTS.WEB_REQUEST.APPLICATIONS}/${requestId}/attachments`);
+    return Array.isArray(response.data?.content) ? response.data.content : [];
+  },
+
+  async uploadAttachmentAsApprover(requestId: string, file: UploadableFile): Promise<RequestAttachment> {
+    const form = new FormData();
+    form.append('file', { uri: file.uri, name: file.name, type: file.mimeType } as unknown as Blob);
+    const response = await axiosInstance.post(
+      `${ENDPOINTS.WEB_REQUEST.APPLICATIONS}/${requestId}/attachments`,
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 },
+    );
+    return response.data.content;
+  },
+
+  async deleteAttachmentAsApprover(attachmentId: string): Promise<void> {
+    await axiosInstance.delete(`${ENDPOINTS.WEB_REQUEST.APPLICATIONS}/attachments/${attachmentId}`);
+  },
+
+  approverAttachmentContentUrl(attachmentId: string): string {
+    return `${ENDPOINTS.WEB_REQUEST.APPLICATIONS}/attachments/${attachmentId}/content`;
+  },
+
+  /** Send, edit, or (with an empty message) clear HR's reply. */
+  async replyToRequest(requestId: string, message: string): Promise<void> {
+    await axiosInstance.post(`${ENDPOINTS.WEB_REQUEST.APPLICATIONS}/${requestId}/reply`, { message });
+  },
+
 };
 
 export default requestService;

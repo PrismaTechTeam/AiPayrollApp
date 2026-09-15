@@ -1,484 +1,262 @@
-/**
- * My Leaves Screen (Employee View)
- * Display employee's own leave applications with status filtering and withdraw action
+﻿/**
+ * My Leaves — what the employee has left, and what they last took.
+ *
+ * Two facts, in the order people ask for them. "Did my leave go through?" is
+ * answered by the card at the top; "how many days do I have left?" by the list
+ * under it. Everything else — the full history, and when a particular leave was
+ * used — is one tap away rather than crammed onto this page.
+ *
+ * Applying is the one action on the page, and it opens its own screen rather
+ * than unfolding here: mixing a form into the page that answers "how many days
+ * do I have" is what made the old version unreadable. It was reachable only
+ * from Search, which is nowhere near where anyone looks for it.
  */
-
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  StatusBar,
-  Alert,
   ActivityIndicator,
   RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useNavigation } from '@react-navigation/native';
-import { Header } from '../components/leaves';
-import { BottomNavBar } from '../components/BottomNavBar';
-import leaveService, { LeaveApplication } from '../api/services/leaveService';
-import { STATUSES, STATUS_COLORS } from '../constants/statuses';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
+import PrimaryButton from '../components/auth/PrimaryButton';
+import leaveService, { LeaveApplication, MyLeaveEntitlement } from '../api/services/leaveService';
+import { serverMessage } from '../lib/serverMessage';
+import {
+  EntitlementRow,
+  LeaveCard,
+  LeaveState,
+  SectionHeading,
+  YearBar,
+  annualEntitlement,
+  dayNumber,
+  goTo,
+} from '../components/leave/LeaveUi';
 
-type StatusFilter = 'ALL' | 'DRAFT' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'WITHDRAWN';
-
-const STATUS_TABS: { key: StatusFilter; label: string }[] = [
-  { key: 'ALL', label: 'All' },
-  { key: 'DRAFT', label: 'Draft' },
-  { key: 'PENDING', label: 'Pending' },
-  { key: 'APPROVED', label: 'Approved' },
-  { key: 'REJECTED', label: 'Rejected' },
-  { key: 'WITHDRAWN', label: 'Withdrawn' },
-];
-
-const getStatusColor = (status: string) => {
-  const colors = STATUS_COLORS[status as keyof typeof STATUS_COLORS];
-  return colors?.text || '#9E9E9E';
-};
-
-const getStatusBg = (status: string) => {
-  const colors = STATUS_COLORS[status as keyof typeof STATUS_COLORS];
-  return colors?.bg || '#F5F5F5';
-};
-
-const formatDate = (dateStr: string) => {
-  try {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-  } catch {
-    return dateStr;
-  }
-};
-
-const formatDateRange = (start: string, end: string) => {
-  try {
-    const s = new Date(start);
-    const e = new Date(end);
-    const startStr = s.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
-    const endStr = e.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
-    return `${startStr} - ${endStr}`;
-  } catch {
-    return `${start} - ${end}`;
-  }
-};
+type Load =
+  | { kind: 'loading' }
+  | { kind: 'ready'; items: MyLeaveEntitlement[]; latest: LeaveApplication | null }
+  | { kind: 'failed'; message: string };
 
 export const MyLeavesScreen: React.FC = () => {
   const navigation = useNavigation();
-  const [activeTab, setActiveTab] = useState<StatusFilter>('ALL');
-  const [leaves, setLeaves] = useState<LeaveApplication[]>([]);
-  const [loading, setLoading] = useState(true);
+  const thisYear = useRef(new Date().getFullYear()).current;
+
+  const [year, setYear] = useState(thisYear);
+  const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [refreshing, setRefreshing] = useState(false);
+  const alive = useRef(true);
 
-  const fetchLeaves = useCallback(async (isRefresh = false) => {
-    if (isRefresh) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
+  const fetchYear = useCallback(async (target: number) => {
     try {
-      const status = activeTab === 'ALL' ? undefined : activeTab;
-      const result = await leaveService.getApplications({ page: 1, pageSize: 50, status });
-      setLeaves(result.items || []);
-    } catch (error) {
-      console.error('Failed to fetch leaves:', error);
-      Alert.alert('Error', 'Failed to load leave applications. Please try again.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      // Both halves of the page, one round trip each, in parallel — the
+      // entitlement list must not wait on the latest application to render.
+      const [entitlements, applications] = await Promise.all([
+        leaveService.getMyEntitlements(target),
+        leaveService.getApplications({ page: 1, pageSize: 1, year: target }),
+      ]);
+      if (!alive.current) return;
+      setLoad({
+        kind: 'ready',
+        items: entitlements.items,
+        latest: applications.items[0] ?? null,
+      });
+    } catch (err) {
+      if (!alive.current) return;
+      setLoad({ kind: 'failed', message: serverMessage(err, 'Could not load your leave.') });
     }
-  }, [activeTab]);
+  }, []);
 
-  useEffect(() => {
-    fetchLeaves();
-  }, [fetchLeaves]);
+  useFocusEffect(
+    useCallback(() => {
+      alive.current = true;
+      setLoad({ kind: 'loading' });
+      void fetchYear(year);
+      return () => {
+        alive.current = false;
+      };
+    }, [fetchYear, year]),
+  );
 
-  const filteredLeaves =
-    activeTab === 'ALL'
-      ? leaves
-      : leaves.filter((l) => l.status === activeTab);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchYear(year);
+    if (alive.current) setRefreshing(false);
+  }, [fetchYear, year]);
 
-  const handleWithdraw = (leaveId: string) => {
-    Alert.alert('Withdraw Leave', 'Are you sure you want to withdraw this leave application?', [
-      { text: 'No', style: 'cancel' },
-      {
-        text: 'Yes, Withdraw',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await leaveService.withdrawApplication(leaveId, 'Withdrawn by employee');
-            Alert.alert('Success', 'Leave application withdrawn successfully.');
-            fetchLeaves();
-          } catch (error: any) {
-            console.error('Failed to withdraw leave:', error);
-            Alert.alert('Error', error?.response?.data?.message || 'Failed to withdraw leave. Please try again.');
-          }
-        },
-      },
-    ]);
+  /**
+   * The one balance worth putting in the header — annual leave, named as such.
+   *
+   * It used to be every entitled type added together, which produced "43 days
+   * left" out of annual plus sick plus hospitalisation plus compassionate. No
+   * employee can book 43 days of anything; most of that total is leave they
+   * hope never to use, and raw float addition made "12.500000000000002"
+   * reachable on top of it. One type, its own name, its available figure.
+   */
+  const headline = useMemo(() => {
+    if (load.kind !== 'ready') return null;
+    return annualEntitlement(load.items);
+  }, [load]);
+
+  const openHistory = () => {
+    goTo(navigation, 'LeaveHistory', { year });
   };
 
-  const handleViewDetails = (leave: LeaveApplication) => {
-    try {
-      (navigation as any).navigate('LeaveDetails', { leaveId: leave.id, leave, canApprove: false });
-    } catch (error) {
-      console.error('Navigation error:', error);
-    }
+  const openApply = () => {
+    goTo(navigation, 'CreateLeave');
   };
 
-  const renderLeaveItem = ({ item }: { item: LeaveApplication }) => {
-    const statusColor = getStatusColor(item.status);
-    const statusBg = getStatusBg(item.status);
-    const leaveColor = item.leaveTypeColor || '#4285F4';
-
-    return (
-      <TouchableOpacity
-        style={styles.leaveCard}
-        onPress={() => handleViewDetails(item)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.cardHeader}>
-          <View style={[styles.iconContainer, { backgroundColor: leaveColor + '20' }]}>
-            <MaterialCommunityIcons name="calendar-clock" size={24} color={leaveColor} />
-          </View>
-          <View style={styles.cardInfo}>
-            <Text style={styles.leaveType} numberOfLines={1}>
-              {item.leaveTypeDescription || 'Leave'}
-            </Text>
-            <Text style={styles.dateRange}>
-              {formatDateRange(item.startDate, item.endDate)}
-            </Text>
-          </View>
-          <View style={[styles.statusBadge, { backgroundColor: statusBg }]}>
-            <Text style={[styles.statusText, { color: statusColor }]}>
-              {item.status}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.cardDetails}>
-          <View style={styles.detailItem}>
-            <MaterialCommunityIcons name="clock-outline" size={14} color="#999" />
-            <Text style={styles.detailText}>
-              {item.totalDays} {item.totalDays === 1 ? 'day' : 'days'}
-            </Text>
-          </View>
-          <View style={styles.detailItem}>
-            <MaterialCommunityIcons name="calendar-check" size={14} color="#999" />
-            <Text style={styles.detailText}>Submitted {formatDate(item.createdAt)}</Text>
-          </View>
-        </View>
-
-        {item.reason && (
-          <Text style={styles.reasonText} numberOfLines={2}>
-            {item.reason}
-          </Text>
-        )}
-
-        {item.rejectionReason && (
-          <View style={styles.rejectionContainer}>
-            <MaterialCommunityIcons name="information-outline" size={14} color="#C62828" />
-            <Text style={styles.rejectionText} numberOfLines={2}>
-              {item.rejectionReason}
-            </Text>
-          </View>
-        )}
-
-        {(item.status === STATUSES.PENDING || item.status === STATUSES.APPROVED) && (
-          <View style={styles.cardActions}>
-            <TouchableOpacity
-              style={styles.withdrawButton}
-              onPress={() => handleWithdraw(item.id)}
-            >
-              <MaterialCommunityIcons name="undo-variant" size={16} color="#FF5252" />
-              <Text style={styles.withdrawButtonText}>Withdraw</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </TouchableOpacity>
-    );
+  const openType = (item: MyLeaveEntitlement) => {
+    goTo(navigation, 'LeaveType', {
+      leaveTypeId: item.leaveTypeId,
+      leaveTypeName: item.description,
+      year,
+    });
   };
+
+  const openLeave = (leave: LeaveApplication) => {
+    goTo(navigation, 'LeaveDetails', { leaveId: leave.id, canApprove: false });
+  };
+
+  // Pulled out of the union so the card's onPress closes over a value TypeScript
+  // has already narrowed, instead of re-checking it with a cast.
+  const latest = load.kind === 'ready' ? load.latest : null;
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <AuthBackdrop scriptLines={[]} />
 
-      <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
-        <Header
-          title="My Leaves"
-          onBackPress={() => navigation.goBack()}
-          showBackButton={true}
-        />
-      </SafeAreaView>
-
-      <View style={styles.content}>
-        {/* Filter Tabs */}
-        <View style={styles.filterContainer}>
-          <FlatList
-            horizontal
-            data={STATUS_TABS}
-            keyExtractor={(item) => item.key}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterList}
-            renderItem={({ item: tab }) => (
-              <TouchableOpacity
-                style={[
-                  styles.filterTab,
-                  activeTab === tab.key && styles.filterTabActive,
-                ]}
-                onPress={() => setActiveTab(tab.key)}
-              >
-                <Text
-                  style={[
-                    styles.filterTabText,
-                    activeTab === tab.key && styles.filterTabTextActive,
-                  ]}
-                >
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            )}
-          />
+      <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.back}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={26} color={C.ink} />
+          </TouchableOpacity>
+          <View style={styles.headerText} pointerEvents="none">
+            <Text style={styles.headerTitle}>My Leaves</Text>
+            <Text style={styles.headerSubtitle} numberOfLines={1}>
+              {headline === null
+                ? 'Your leave, year by year'
+                : `${dayNumber(headline.availableDays)} days of ${headline.description} available in ${year}`}
+            </Text>
+          </View>
         </View>
 
-        {/* Leave List */}
-        <View style={styles.listContainer}>
-          {loading ? (
-            <View style={styles.centerContainer}>
-              <ActivityIndicator size="large" color="#4285F4" />
-              <Text style={styles.loadingText}>Loading leave applications...</Text>
+        <View style={styles.yearWrap}>
+          <YearBar year={year} maxYear={thisYear} onChange={setYear} />
+        </View>
+
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.blue} colors={[C.blue]} />}
+        >
+          {load.kind === 'loading' ? (
+            <View style={styles.centre}>
+              <ActivityIndicator color={C.blue} />
             </View>
-          ) : filteredLeaves.length === 0 ? (
-            <View style={styles.centerContainer}>
-              <MaterialCommunityIcons name="calendar-blank-outline" size={48} color="#CCC" />
-              <Text style={styles.emptyText}>No leave applications found</Text>
-              <Text style={styles.emptySubtext}>
-                {activeTab === 'ALL'
-                  ? 'Apply for leave using the + button'
-                  : `No ${activeTab.toLowerCase()} leave applications`}
-              </Text>
-            </View>
-          ) : (
-            <FlatList
-              data={filteredLeaves}
-              keyExtractor={(item) => item.id}
-              renderItem={renderLeaveItem}
-              contentContainerStyle={styles.leaveList}
-              showsVerticalScrollIndicator={false}
-              refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={() => fetchLeaves(true)}
-                  colors={['#4285F4']}
-                  tintColor="#4285F4"
-                />
-              }
+          ) : load.kind === 'failed' ? (
+            <LeaveState
+              icon="cloud-off-outline"
+              title="Could not load your leave"
+              body={load.message}
+              tone="danger"
+              onRetry={() => void onRefresh()}
             />
+          ) : (
+            <>
+              {/* The reason most people open this page. Above the numbers, because
+                  wanting time off is what brought them here — the balance is what
+                  they check on the way. */}
+              <PrimaryButton icon="calendar-plus" label="Apply for Leave" onPress={openApply} />
+
+              <View style={styles.gap} />
+
+              <SectionHeading
+                title="LATEST LEAVE"
+                actionLabel={load.latest ? 'View All' : undefined}
+                onAction={load.latest ? openHistory : undefined}
+              />
+              {latest ? (
+                <LeaveCard leave={latest} onPress={() => openLeave(latest)} />
+              ) : (
+                <View style={styles.quietCard}>
+                  <MaterialCommunityIcons name="calendar-blank-outline" size={20} color={C.muted} />
+                  <Text style={styles.quietText}>You have not applied for any leave in {year}.</Text>
+                </View>
+              )}
+
+              <View style={styles.gap} />
+
+              <SectionHeading title="LEAVE ENTITLEMENT" />
+              {load.items.length === 0 ? (
+                <View style={styles.quietCard}>
+                  <MaterialCommunityIcons name="information-outline" size={20} color={C.muted} />
+                  <Text style={styles.quietText}>
+                    No leave types are set up for you in {year}. HR assigns these.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.panel}>
+                  {load.items.map((item, index) => (
+                    <EntitlementRow
+                      key={item.leaveTypeId}
+                      item={item}
+                      onPress={() => openType(item)}
+                      last={index === load.items.length - 1}
+                    />
+                  ))}
+                </View>
+              )}
+            </>
           )}
-        </View>
-      </View>
-
-      {/* FAB - Create Leave */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => (navigation as any).navigate('CreateLeave')}
-      >
-        <MaterialCommunityIcons name="plus" size={28} color="#FFFFFF" />
-      </TouchableOpacity>
-
-      <BottomNavBar />
+        </ScrollView>
+      </SafeAreaView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  safeAreaTop: {
+  container: { flex: 1, backgroundColor: '#F6F8FF' },
+  flex: { flex: 1 },
+
+  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, justifyContent: 'center' },
+  back: { width: 40, height: 40, alignItems: 'flex-start', justifyContent: 'center' },
+  headerText: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: C.ink },
+  headerSubtitle: { fontSize: 13, color: C.body, marginTop: 2 },
+
+  yearWrap: { marginHorizontal: 20, marginBottom: 14 },
+
+  scroll: { paddingHorizontal: 20, paddingBottom: 40 },
+  centre: { alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
+  gap: { height: 24 },
+
+  panel: { backgroundColor: '#FFFFFF', borderRadius: 16, paddingHorizontal: 14 },
+
+  quietCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 16,
   },
-  content: {
-    flex: 1,
-    paddingBottom: 80,
-  },
-  filterContainer: {
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  filterList: {
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-  filterTab: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#F5F5F5',
-    marginRight: 8,
-  },
-  filterTabActive: {
-    backgroundColor: '#4285F4',
-  },
-  filterTabText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#666',
-  },
-  filterTabTextActive: {
-    color: '#FFFFFF',
-  },
-  listContainer: {
-    flex: 1,
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: 60,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#999',
-  },
-  emptyText: {
-    marginTop: 12,
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#999',
-  },
-  emptySubtext: {
-    marginTop: 4,
-    fontSize: 13,
-    color: '#CCC',
-    textAlign: 'center',
-    paddingHorizontal: 40,
-  },
-  leaveList: {
-    padding: 16,
-    paddingBottom: 100,
-  },
-  leaveCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  iconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  cardInfo: {
-    flex: 1,
-  },
-  leaveType: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
-  },
-  dateRange: {
-    fontSize: 13,
-    color: '#666',
-    marginTop: 2,
-  },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  cardDetails: {
-    flexDirection: 'row',
-    marginTop: 12,
-    gap: 16,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  detailText: {
-    fontSize: 12,
-    color: '#999',
-  },
-  reasonText: {
-    fontSize: 13,
-    color: '#666',
-    marginTop: 8,
-    lineHeight: 18,
-  },
-  rejectionContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 4,
-    marginTop: 8,
-    backgroundColor: '#FFEBEE',
-    padding: 8,
-    borderRadius: 8,
-  },
-  rejectionText: {
-    fontSize: 12,
-    color: '#C62828',
-    flex: 1,
-  },
-  cardActions: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
-  },
-  withdrawButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#FF525210',
-    gap: 4,
-  },
-  withdrawButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FF5252',
-  },
-  fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 100,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#4285F4',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
+  quietText: { flex: 1, fontSize: 13, color: C.body },
 });
 
 export default MyLeavesScreen;
