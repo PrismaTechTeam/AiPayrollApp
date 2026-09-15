@@ -48,6 +48,8 @@ export const ENDPOINTS = {
     APPLICATION_CANCEL: (id: string) => `/api/mobile/leave/applications/${id}/cancel`,
     PENDING_APPROVALS: '/api/mobile/leave/pending-approvals',
     APPROVER_LEAVES: '/api/mobile/leave/approver-leaves',
+    // The departments the employee approves leave for (set by HR on the web).
+    APPROVER_STATUS: '/api/mobile/leave/approver-status',
   },
   ATTENDANCE: {
     CLOCK: '/api/mobile/attendance/clock',

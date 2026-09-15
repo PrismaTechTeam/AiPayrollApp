@@ -49,6 +49,9 @@ export interface LeaveApprovalStep {
   stepName: string;
   approverId: string | null;
   approverRoleId: string | null;
+  /** Set on a department step: any approver of this department can decide it. */
+  approverDepartmentId?: string | null;
+  /** Every approver's name until someone decides the step, then the one who did. */
   approverName: string | null;
   status: string;
   approvedAt: string | null;
@@ -205,6 +208,12 @@ export interface PreviewLeaveRequest {
   startTime?: string;
   endTime?: string;
   hasAttachment: boolean;
+}
+
+/** Whether the employee approves leave for a department, and which. */
+export interface DepartmentApproverStatus {
+  isDepartmentApprover: boolean;
+  departmentIds: string[];
 }
 
 const leaveService = {
@@ -440,6 +449,15 @@ const leaveService = {
   async getPendingApprovals(params?: { page?: number; pageSize?: number }): Promise<{ items: LeaveApplication[]; total: number }> {
     const response = await axiosInstance.get(ENDPOINTS.LEAVE.PENDING_APPROVALS, { params });
     return response.data.content;
+  },
+
+  async getApproverStatus(): Promise<DepartmentApproverStatus> {
+    const response = await axiosInstance.get(ENDPOINTS.LEAVE.APPROVER_STATUS);
+    const content = response.data?.content;
+    return {
+      isDepartmentApprover: content?.isDepartmentApprover === true,
+      departmentIds: Array.isArray(content?.departmentIds) ? content.departmentIds : [],
+    };
   },
 
   async getApproverLeaves(params?: { page?: number; pageSize?: number; status?: string }): Promise<{ items: LeaveApplication[]; total: number }> {

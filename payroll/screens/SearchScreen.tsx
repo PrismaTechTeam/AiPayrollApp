@@ -22,6 +22,7 @@ import { ServiceCard } from '../components/ServiceCard';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
 import { useDialog } from '../components/ui/AppDialog';
 import { useApproverAccess } from '../hooks/useApproverAccess';
+import { useDepartmentApprover } from '../hooks/useDepartmentApprover';
 import { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
 
 interface Service {
@@ -155,9 +156,13 @@ export const SearchScreen: React.FC = () => {
     ClaimTypes: access.claims,
     RequestTypes: access.requestTypes,
   };
+  // A department approver is still an employee, with Leave Approval added.
+  const { isDepartmentApprover } = useDepartmentApprover();
   const services = isOwner
     ? ownerServices.filter((s) => allowedRoute[s.route] ?? true)
-    : employeeServices;
+    : isDepartmentApprover
+      ? [...employeeServices, ...ownerServices.filter((s) => s.route === 'Leaves').map((s) => ({ ...s, id: 'dept-leave' }))]
+      : employeeServices;
   const screenTitle = isOwner ? 'Search Services' : 'Search Categories';
 
   const filteredServices = services.filter((service) =>

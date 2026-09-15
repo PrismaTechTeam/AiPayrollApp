@@ -31,6 +31,7 @@ import PrimaryButton from '../components/auth/PrimaryButton';
 import { useDialog } from '../components/ui/AppDialog';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
 import { useApproverAccess } from '../hooks/useApproverAccess';
+import { useDepartmentApprover } from '../hooks/useDepartmentApprover';
 import { STATUSES } from '../constants/statuses';
 import leaveService, { LeaveApplication } from '../api/services/leaveService';
 import { serverMessage } from '../lib/serverMessage';
@@ -91,6 +92,7 @@ export const LeaveDetailsScreen: React.FC = () => {
   // employees and approvers read through the mobile one, which does.
   const leaveApprover = useApproverAccess().leave;
   const asHr = canApprove && leaveApprover;
+  const { departmentIds } = useDepartmentApprover();
 
   const fetch = useCallback(async () => {
     if (!id) {
@@ -134,6 +136,11 @@ export const LeaveDetailsScreen: React.FC = () => {
   const isDecider = waitingStep != null && (
     (waitingStep.approverId != null && user?.employeeId === waitingStep.approverId)
     || (waitingStep.approverId == null && waitingStep.approverRoleId != null && asHr)
+    // A department step: any of that department's approvers, or HR on their behalf.
+    || (waitingStep.approverId == null && waitingStep.approverDepartmentId != null && canApprove && (
+      asHr
+      || (departmentIds.includes(waitingStep.approverDepartmentId) && leave?.employeeId !== user?.employeeId)
+    ))
   );
 
   const isMine = !canApprove;

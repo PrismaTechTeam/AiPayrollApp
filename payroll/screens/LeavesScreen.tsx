@@ -117,6 +117,9 @@ export const LeavesScreen: React.FC<LeavesScreenProps> = ({ navigation: navProp 
   const dialog = useDialog();
   // Everyone's leave, for whoever holds the leave approval right (useApproverAccess).
   const isHR = useApproverAccess().leave;
+  // Department approvers see the leave of their departments; they may decide only what is
+  // waiting on them right now, not a leave their step already passed on to HR.
+  const [waitingOnMe, setWaitingOnMe] = useState<Set<string>>(new Set());
 
   const [activeTab, setActiveTab] = useState<FilterKey>('ALL');
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
@@ -125,6 +128,12 @@ export const LeavesScreen: React.FC<LeavesScreenProps> = ({ navigation: navProp 
 
   const fetchLeaves = useCallback(async () => {
     try {
+      if (!isHR) {
+        leaveService
+          .getPendingApprovals({ page: 1, pageSize: 200 })
+          .then((r) => setWaitingOnMe(new Set((r?.items ?? []).map((l) => l.id))))
+          .catch(() => setWaitingOnMe(new Set()));
+      }
       const fetchFn = isHR
         ? leaveService.getAllLeaveApplications.bind(leaveService)
         : leaveService.getApproverLeaves.bind(leaveService);
@@ -313,7 +322,7 @@ export const LeavesScreen: React.FC<LeavesScreenProps> = ({ navigation: navProp 
           ) : null}
         </View>
 
-        {pending ? (
+        {pending && (isHR || waitingOnMe.has(item.id)) ? (
           <View style={styles.actions}>
             <TouchableOpacity
               style={[styles.action, styles.rejectAction]}

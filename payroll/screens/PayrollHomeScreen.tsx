@@ -23,6 +23,8 @@ import { BottomNavBar, BOTTOM_NAV_HEIGHT } from '../components/BottomNavBar';
 import { CompanySwitcher } from '../components/CompanySwitcher';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
 import { useApproverAccess } from '../hooks/useApproverAccess';
+import { useDepartmentApprover } from '../hooks/useDepartmentApprover';
+import leaveService from '../api/services/leaveService';
 import dashboardService from '../api/services/dashboardService';
 import documentService from '../api/services/documentService';
 import { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
@@ -60,6 +62,11 @@ export const PayrollHomeScreen: React.FC<PayrollHomeScreenProps> = ({ navigation
   const owner = access.any;
   const [unread, setUnread] = useState(0);
   const [docsToDo, setDocsToDo] = useState<number | null>(null);
+  // An employee who approves leave for a department keeps the employee home, plus one row
+  // for the leave waiting on them; the six tiles stay as they are.
+  const { isDepartmentApprover } = useDepartmentApprover();
+  const deptApprover = !owner && isDepartmentApprover;
+  const [leaveWaiting, setLeaveWaiting] = useState<number | null>(null);
   const { pendingRequests, leaveHeadline, latestPayslip } = useRecentActivity(owner, 5);
 
   useFocusEffect(
@@ -75,8 +82,14 @@ export const PayrollHomeScreen: React.FC<PayrollHomeScreenProps> = ({ navigation
         .getActionNeeded()
         .then((n) => { if (!cancelled) setDocsToDo(n); })
         .catch(() => {});
+      if (deptApprover) {
+        leaveService
+          .getPendingApprovals({ page: 1, pageSize: 1 })
+          .then((r) => { if (!cancelled) setLeaveWaiting(r?.total ?? 0); })
+          .catch(() => {});
+      }
       return () => { cancelled = true; };
-    }, []),
+    }, [deptApprover]),
   );
 
   const go = (screen: string) => navigation?.navigate(screen);
@@ -165,6 +178,22 @@ export const PayrollHomeScreen: React.FC<PayrollHomeScreenProps> = ({ navigation
           ))}
         </View>
 
+        {deptApprover ? (
+          <TouchableOpacity style={styles.linkRow} onPress={() => go('Leaves')} activeOpacity={0.8} accessibilityRole="button">
+            <View style={[styles.linkIcon, { backgroundColor: '#F1EAFE' }]}>
+              <MaterialCommunityIcons name="calendar-check-outline" size={22} color="#7C3AED" />
+            </View>
+            <View style={styles.flex}>
+              <Text style={styles.linkTitle}>Leave Approval</Text>
+              <Text style={styles.linkNote}>
+                {leaveWaiting === null ? 'Your department\'s leave' : leaveWaiting > 0 ? `${leaveWaiting} waiting for you` : 'Nothing waiting for you'}
+              </Text>
+            </View>
+            {leaveWaiting ? <View style={styles.countPill}><Text style={styles.countPillText}>{leaveWaiting}</Text></View> : null}
+            <MaterialCommunityIcons name="chevron-right" size={22} color={C.muted} />
+          </TouchableOpacity>
+        ) : null}
+
         {/* Activity lives on its own page */}
         <TouchableOpacity style={styles.linkRow} onPress={() => go('Activity')} activeOpacity={0.8} accessibilityRole="button">
           <View style={styles.linkIcon}>
@@ -244,6 +273,8 @@ const styles = StyleSheet.create({
   linkIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#E6EEFF', justifyContent: 'center', alignItems: 'center' },
   linkTitle: { fontSize: 15, fontWeight: '800', color: C.ink },
   linkNote: { fontSize: 12, color: C.body, marginTop: 2 },
+  countPill: { minWidth: 24, height: 24, borderRadius: 12, paddingHorizontal: 7, backgroundColor: '#7C3AED', justifyContent: 'center', alignItems: 'center' },
+  countPillText: { fontSize: 12, fontWeight: '800', color: '#FFFFFF' },
 });
 
 export default PayrollHomeScreen;
