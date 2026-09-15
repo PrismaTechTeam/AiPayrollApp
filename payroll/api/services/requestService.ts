@@ -26,6 +26,9 @@ export interface EmployeeRequest {
   hrReply?: string | null;
   hrReplyAt?: string | null;
   hrReplyByName?: string | null;
+  /** The employee's answer to HR. Written from the app; HR reads it. */
+  employeeReply?: string | null;
+  employeeReplyAt?: string | null;
   attachmentCount?: number;
   /** Present on the detail endpoints only. */
   attachments?: RequestAttachment[];
@@ -262,6 +265,11 @@ const requestService = {
 
   approverAttachmentContentUrl(attachmentId: string): string {
     return `${ENDPOINTS.WEB_REQUEST.APPLICATIONS}/attachments/${attachmentId}/content`;
+  },
+
+  /** The employee's own answer to HR on their request. An empty message clears it. */
+  async replyAsEmployee(requestId: string, message: string): Promise<void> {
+    await axiosInstance.post(`${ENDPOINTS.REQUEST.APPLICATIONS}/${requestId}/reply`, { message });
   },
 
   /** Send, edit, or (with an empty message) clear HR's reply. */

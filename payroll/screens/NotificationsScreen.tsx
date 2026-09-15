@@ -21,6 +21,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
 import { Busy, DocumentState } from '../components/documents/DocumentUi';
 import { useDialog } from '../components/ui/AppDialog';
+import { usePayrollAuth } from '../context/PayrollAuthContext';
 import { serverMessage } from '../lib/serverMessage';
 import notificationService, { NotificationItem } from '../api/services/notificationService';
 import type { IconName } from '../components/auth/PrimaryButton';
@@ -33,12 +34,16 @@ type Load =
 type Kind = 'leave' | 'claim' | 'payslip' | 'attendance' | 'request' | 'training' | 'general';
 
 /**
- * The server sends one free-text line and no type, so the icon is inferred from
- * the wording. Wrong guesses cost nothing -- the message is always shown in
- * full underneath, and the icon is decoration rather than meaning.
+ * What the notification is about. Newer notifications carry a type from the server (leave_approved,
+ * claim_rejected, request_reply, ...); older ones are one free-text line, so the icon falls back to
+ * the wording. The message is always shown in full, so a wrong guess costs nothing.
  */
-function kindOf(message: string): Kind {
-  const m = message.toLowerCase();
+function kindOf(item: NotificationItem): Kind {
+  const t = (item.type ?? '').toLowerCase();
+  if (t.startsWith('leave_')) return 'leave';
+  if (t.startsWith('claim_')) return 'claim';
+  if (t.startsWith('request_')) return 'request';
+  const m = item.message.toLowerCase();
   if (m.includes('leave')) return 'leave';
   if (m.includes('claim')) return 'claim';
   if (m.includes('payslip') || m.includes('salary') || m.includes('payroll')) return 'payslip';
@@ -46,6 +51,19 @@ function kindOf(message: string): Kind {
   if (m.includes('training') || m.includes('course') || m.includes('certificate')) return 'training';
   if (m.includes('request')) return 'request';
   return 'general';
+}
+
+/** The screen a notification opens, or null for ones that are only news (and all older ones). */
+function destinationOf(item: NotificationItem): { screen: string; params: object } | null {
+  const id = item.relatedId;
+  const type = item.type ?? '';
+  if (!id) return null;
+  // HR is told an employee answered on a request, so it opens as the approver.
+  if (type === 'request_employee_reply') return { screen: 'RequestDetails', params: { requestId: id, canApprove: true } };
+  if (type.startsWith('request_')) return { screen: 'RequestDetails', params: { requestId: id } };
+  if (type.startsWith('claim_')) return { screen: 'ClaimDetails', params: { claimId: id } };
+  if (type.startsWith('leave_')) return { screen: 'LeaveDetails', params: { leaveId: id } };
+  return null;
 }
 
 const LOOK: Record<Kind, { icon: IconName; fg: string; bg: string }> = {
@@ -74,6 +92,7 @@ function timeAgo(iso: string): string {
 export const NotificationsScreen: React.FC = () => {
   const navigation = useNavigation();
   const dialog = useDialog();
+  const { user } = usePayrollAuth();
 
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unread, setUnread] = useState(0);
@@ -109,17 +128,31 @@ export const NotificationsScreen: React.FC = () => {
   }, [fetch]);
 
   // Marked read optimistically: the row is already open in front of the person,
-  // so waiting on a round trip to un-bold it only looks broken.
+  // so waiting on a round trip to un-bold it only looks broken. Then it opens
+  // the request, claim or leave it is about.
   const openItem = async (item: NotificationItem) => {
-    if (item.isRead) return;
-    setItems((prev) => prev.map((n) => (n.id === item.id ? { ...n, isRead: true } : n)));
-    setUnread((n) => Math.max(0, n - 1));
-    try {
-      await notificationService.markAsRead(item.id);
-    } catch {
-      // Left as read on screen. A failed mark is invisible and harmless; it
-      // corrects itself on the next load.
+    if (!item.isRead) {
+      setItems((prev) => prev.map((n) => (n.id === item.id ? { ...n, isRead: true } : n)));
+      setUnread((n) => Math.max(0, n - 1));
+      try {
+        await notificationService.markAsRead(item.id);
+      } catch {
+        // Left as read on screen. A failed mark is invisible and harmless; it
+        // corrects itself on the next load.
+      }
     }
+
+    const target = destinationOf(item);
+    if (!target) return;
+    if (item.tenantId && user?.tenantId && item.tenantId !== user.tenantId) {
+      await dialog.notify({
+        title: 'This is in another company',
+        message: 'Switch to that company first, then open it from here.',
+        tone: 'info',
+      });
+      return;
+    }
+    (navigation.navigate as (screen: string, params: object) => void)(target.screen, target.params);
   };
 
   const markAll = async () => {
@@ -162,7 +195,7 @@ export const NotificationsScreen: React.FC = () => {
   };
 
   const renderItem = ({ item }: { item: NotificationItem }) => {
-    const look = LOOK[kindOf(item.message)];
+    const look = LOOK[kindOf(item)];
     return (
       <TouchableOpacity
         style={[styles.row, !item.isRead && styles.rowUnread]}
@@ -175,6 +208,9 @@ export const NotificationsScreen: React.FC = () => {
           <MaterialCommunityIcons name={look.icon} size={22} color={look.fg} />
         </View>
         <View style={styles.rowBody}>
+          {item.title ? (
+            <Text style={[styles.rowTitle, !item.isRead && styles.rowTextUnread]}>{item.title}</Text>
+          ) : null}
           <Text style={[styles.rowText, !item.isRead && styles.rowTextUnread]}>{item.message}</Text>
           <Text style={styles.rowTime}>{timeAgo(item.createdAt)}</Text>
         </View>
@@ -310,6 +346,7 @@ const styles = StyleSheet.create({
   rowIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   rowBody: { flex: 1, gap: 4 },
   rowText: { fontSize: 14, lineHeight: 20, color: C.body },
+  rowTitle: { fontSize: 14, fontWeight: '700', color: C.ink, marginBottom: 2 },
   rowTextUnread: { color: C.ink, fontWeight: '700' },
   rowTime: { fontSize: 12, color: C.muted },
   unreadDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: C.blue },

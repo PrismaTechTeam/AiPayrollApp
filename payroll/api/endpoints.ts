@@ -60,6 +60,11 @@ export const ENDPOINTS = {
     // The employee's own month, in the same detail HR sees in the Work Card grid.
     WORK_CARD: '/api/mobile/attendance/work-card',
     TEAM_TODAY: '/api/mobile/attendance/team-today',
+    // "I forgot to punch": the employee's own requests (GET, newest first) and a
+    // new one (POST). Nothing lands on the work card until HR approves it on the web.
+    PUNCH_REQUESTS: '/api/mobile/attendance/punch-requests',
+    // DELETE withdraws one still waiting for HR; the server refuses once it is decided.
+    PUNCH_REQUEST: (id: string) => `/api/mobile/attendance/punch-requests/${id}`,
   },
   PAYSLIP: {
     LIST: '/api/mobile/payslip/list',

@@ -11,7 +11,15 @@ export interface NotificationPreferences {
 
 export interface NotificationItem {
   id: number;
+  /** Push title, e.g. "Leave Approved". Null on notifications from before titles were stored. */
+  title?: string | null;
   message: string;
+  /** leave_approved, claim_rejected, request_reply, ... Null on older notifications. */
+  type?: string | null;
+  /** The request, claim or leave application it is about. */
+  relatedId?: string | null;
+  /** The company that item belongs to. */
+  tenantId?: string | null;
   isRead: boolean;
   createdAt: string;
 }

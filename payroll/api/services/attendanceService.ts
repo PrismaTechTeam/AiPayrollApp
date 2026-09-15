@@ -190,6 +190,36 @@ export interface AttendanceSummary {
   exceptionDays: number;
 }
 
+/** REQUESTED is waiting for HR; CANCELLED is one the employee withdrew. */
+export type PunchRequestStatus = 'REQUESTED' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+
+/** One "I forgot to punch" request, as GET /mobile/attendance/punch-requests lists it. */
+export interface PunchRequest {
+  id: string;
+  punchType: PunchType;
+  /** ISO with offset, e.g. "2026-09-09T09:01:00+08:00". */
+  punchTime: string;
+  reason: string;
+  status: PunchRequestStatus;
+  /** HR's note on an approval, or the reason for a rejection. */
+  approverNotes: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+}
+
+export interface CreatePunchRequest {
+  /** ISO carrying the phone's own UTC offset, so the server knows which wall-clock time was meant. */
+  punchTime: string;
+  punchType: PunchType;
+  /** Required, at most 500 characters. */
+  reason: string;
+}
+
+export interface CreatedPunchRequest {
+  id: string;
+  status: PunchRequestStatus;
+}
+
 const attendanceService = {
   async clock(data: ClockRequest): Promise<ClockResponse> {
     const response = await axiosInstance.post(ENDPOINTS.ATTENDANCE.CLOCK, data);
@@ -282,6 +312,31 @@ const attendanceService = {
       timeout: 120000,
     });
     return response.data.content;
+  },
+
+  /** The caller's own punch requests, newest first. Bound to the caller server-side. */
+  async getPunchRequests(): Promise<PunchRequest[]> {
+    const response = await axiosInstance.get(ENDPOINTS.ATTENDANCE.PUNCH_REQUESTS);
+    const content = response.data?.content;
+    return Array.isArray(content) ? content : [];
+  },
+
+  /**
+   * Ask HR to add a punch that never happened on the device.
+   *
+   * The server refuses (400/409, with a message written for the person) a time in
+   * the future, one older than 60 days, one in a finalised month, a duplicate,
+   * and a reason that is missing or too long.
+   */
+  async createPunchRequest(data: CreatePunchRequest): Promise<CreatedPunchRequest> {
+    const response = await axiosInstance.post(ENDPOINTS.ATTENDANCE.PUNCH_REQUESTS, data);
+    const content = response.data?.content;
+    return { id: content?.id ?? '', status: (content?.status as PunchRequestStatus) ?? 'REQUESTED' };
+  },
+
+  /** Withdraw a request still waiting for HR. Refused with a 400 once HR has decided it. */
+  async cancelPunchRequest(id: string): Promise<void> {
+    await axiosInstance.delete(ENDPOINTS.ATTENDANCE.PUNCH_REQUEST(id));
   },
 };
 

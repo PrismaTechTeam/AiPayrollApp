@@ -146,6 +146,23 @@ export const MyAttendanceScreen: React.FC = () => {
           </View>
         </View>
 
+        {/* A missed punch is fixed by asking HR, not on this page, which only reads.
+            Above the month bar because it is not about the month on screen. */}
+        <TouchableOpacity
+          style={styles.forgot}
+          onPress={() => navigation.navigate('PunchRequests')}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Forgot to punch? Ask HR"
+        >
+          <View style={styles.forgotIcon}>
+            <MaterialCommunityIcons name="clock-edit-outline" size={18} color={C.blue} />
+          </View>
+          <Text style={styles.forgotText}>Forgot to punch?</Text>
+          <Text style={styles.forgotAction}>Ask HR</Text>
+          <MaterialCommunityIcons name="chevron-right" size={20} color={C.muted} />
+        </TouchableOpacity>
+
         {/* Month */}
         <View style={styles.monthBar}>
           <TouchableOpacity onPress={() => step(-1)} style={styles.monthArrow} accessibilityRole="button" accessibilityLabel="Previous month">
@@ -306,6 +323,22 @@ const styles = StyleSheet.create({
   headerText: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 22, fontWeight: '800', color: C.ink },
   headerSubtitle: { fontSize: 13, color: C.body, marginTop: 2 },
+
+  forgot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 20,
+    marginBottom: 10,
+    paddingLeft: 8,
+    paddingRight: 8,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+  },
+  forgotIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#E6EEFF', alignItems: 'center', justifyContent: 'center' },
+  forgotText: { flex: 1, fontSize: 14, fontWeight: '700', color: C.ink },
+  forgotAction: { fontSize: 13, fontWeight: '700', color: C.blue },
 
   monthBar: {
     flexDirection: 'row',

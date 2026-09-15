@@ -271,6 +271,29 @@ export const RequestDetailsScreen: React.FC = () => {
     }
   };
 
+  const replyToHr = async () => {
+    const message = await dialog.prompt({
+      title: request?.employeeReply ? 'Edit your reply' : 'Reply to HR',
+      message: 'HR sees this with your request. Leave it empty to remove your reply.',
+      placeholder: 'e.g. I have attached the letter.',
+      initialValue: request?.employeeReply ?? '',
+      confirmText: 'Send',
+      multiline: true,
+      maxLength: 2000,
+    });
+    if (message === null) return;
+
+    setBusy(true);
+    try {
+      await requestService.replyAsEmployee(requestId, message);
+      await load();
+    } catch (err) {
+      await dialog.notify({ title: 'Could not send the reply', message: serverMessage(err, 'Please try again.'), tone: 'danger' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const cancel = async () => {
     const ok = await dialog.confirm({
       title: 'Cancel this request?',
@@ -404,6 +427,40 @@ export const RequestDetailsScreen: React.FC = () => {
                       icon={request.hrReply ? 'pencil-outline' : 'reply-outline'}
                       label={request.hrReply ? 'Edit reply' : 'Write a reply'}
                       onPress={() => { void reply(); }}
+                      variant="outline"
+                      loading={busy}
+                    />
+                  </>
+                ) : null}
+              </View>
+            ) : null}
+
+            {/* The employee's answer to HR */}
+            {request.employeeReply || (!canApprove && request.hrReply) ? (
+              <View style={styles.card}>
+                <View style={styles.cardHead}>
+                  <View style={styles.cardIcon}>
+                    <MaterialCommunityIcons name="message-reply-text-outline" size={20} color={C.blue} />
+                  </View>
+                  <Text style={styles.cardTitle}>{canApprove ? 'Reply from the employee' : 'Your reply'}</Text>
+                </View>
+
+                {request.employeeReply ? (
+                  <>
+                    <Text style={styles.replyText}>{request.employeeReply}</Text>
+                    <Text style={styles.replyMeta}>{dateAndTime(request.employeeReplyAt)}</Text>
+                  </>
+                ) : (
+                  <Text style={styles.blockText}>You have not replied yet.</Text>
+                )}
+
+                {!canApprove ? (
+                  <>
+                    <View style={styles.gap} />
+                    <PrimaryButton
+                      icon={request.employeeReply ? 'pencil-outline' : 'reply-outline'}
+                      label={request.employeeReply ? 'Edit reply' : 'Reply to HR'}
+                      onPress={() => { void replyToHr(); }}
                       variant="outline"
                       loading={busy}
                     />

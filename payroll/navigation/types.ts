@@ -53,6 +53,9 @@ export type RootStackParamList = {
   Attendance: undefined;
   AttendanceCheckIn: undefined;
   AttendanceDetails: { attendance: unknown };
+  /** "Forgot to punch": the employee's own requests, reached from My Attendance. */
+  PunchRequests: undefined;
+  CreatePunchRequest: undefined;
 
   // ── Claims ──────────────────────────────────────────────────────────
   Claims: undefined;

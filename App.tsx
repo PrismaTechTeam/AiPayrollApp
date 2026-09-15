@@ -41,6 +41,8 @@ import { MyPayslipScreen } from './payroll/screens/MyPayslipScreen';
 import MyAttendanceScreen from './payroll/screens/MyAttendanceScreen';
 import AttendanceDetailsScreen from './payroll/screens/AttendanceDetailsScreen';
 import AttendanceCheckInScreen from './payroll/screens/AttendanceCheckInScreen';
+import { PunchRequestsScreen } from './payroll/screens/PunchRequestsScreen';
+import { CreatePunchRequestScreen } from './payroll/screens/CreatePunchRequestScreen';
 import EmployeeListScreen from './payroll/screens/EmployeeListScreen';
 import EmployeeMapScreen from './payroll/screens/EmployeeMapScreen';
 import { HelpScreen } from './payroll/screens/HelpScreen';
@@ -175,6 +177,9 @@ function AuthenticatedApp() {
             <Stack.Screen name="Attendance" component={MyAttendanceScreen} />
             <Stack.Screen name="AttendanceDetails" component={AttendanceDetailsScreen} />
             <Stack.Screen name="AttendanceCheckIn" component={AttendanceCheckInScreen} />
+            {/* Reached from My Attendance: missed punches the employee asked HR to add. */}
+            <Stack.Screen name="PunchRequests" component={PunchRequestsScreen} />
+            <Stack.Screen name="CreatePunchRequest" component={CreatePunchRequestScreen} />
             <Stack.Screen name="EmployeeList" component={EmployeeListScreen} />
             <Stack.Screen name="EmployeeMap" component={EmployeeMapScreen} />
             <Stack.Screen name="Help" component={HelpScreen} />
