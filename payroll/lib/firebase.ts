@@ -17,9 +17,20 @@ import { getReactNativePersistence } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 
+// Spelled out one by one: Expo inlines process.env.EXPO_PUBLIC_NAME into a release bundle, but
+// process.env[key] is empty there, which left a release build with no Firebase config.
+const PUBLIC_ENV: Record<string, string | undefined> = {
+  EXPO_PUBLIC_FIREBASE_API_KEY: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  EXPO_PUBLIC_FIREBASE_PROJECT_ID: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  EXPO_PUBLIC_FIREBASE_APP_ID: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+};
+
 const getEnv = (key: string, extraKey: string): string => {
   const fromExtra = Constants.expoConfig?.extra?.[extraKey];
-  const fromProcess = process.env[key];
+  const fromProcess = PUBLIC_ENV[key];
   if (typeof fromExtra === 'string' && fromExtra && !fromExtra.includes('${')) return fromExtra;
   if (typeof fromProcess === 'string' && fromProcess) return fromProcess;
   return '';

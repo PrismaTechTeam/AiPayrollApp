@@ -13,10 +13,18 @@
 import Constants from 'expo-constants';
 import { ENDPOINTS } from './endpoints';
 
+// Expo writes EXPO_PUBLIC_* values into a release bundle only where the code spells out
+// process.env.EXPO_PUBLIC_NAME. process.env[key] works under Metro in development and is empty in
+// a release build, which sent the preview APK to the fallback tunnel URL below.
+const PUBLIC_ENV: Record<string, string | undefined> = {
+  EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
+  EXPO_PUBLIC_WEBSOCKET_URL: process.env.EXPO_PUBLIC_WEBSOCKET_URL,
+};
+
 // Get environment variable, avoiding unresolved template placeholders like "${EXPO_PUBLIC_API_URL}"
 const getEnvVar = (key: string, fallback: string): string => {
   const expoValue = Constants.expoConfig?.extra?.[key];
-  const processValue = process.env[key];
+  const processValue = PUBLIC_ENV[key];
 
   if (expoValue && typeof expoValue === 'string' && !expoValue.includes('${')) {
     return expoValue;
