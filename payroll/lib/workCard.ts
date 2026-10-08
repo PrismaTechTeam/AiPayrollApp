@@ -85,7 +85,9 @@ export interface DayLook {
  */
 export function dayLook(day: WorkCardDay): DayLook {
   if (day.isAbsent || day.status === 'ABSENT') return { label: 'Absent', fg: '#B91C1C', bg: '#FEF2F2' };
-  if (day.hasException || day.status === 'EXCEPTION') return { label: 'Check', fg: '#B45309', bg: '#FFF7ED' };
+  // Nearly every exception the engine writes is a punch that is not there ("No punch records",
+  // "Missing check-out"). "Check" told the employee something was wrong without saying what.
+  if (day.hasException || day.status === 'EXCEPTION') return { label: 'Missing punch', fg: '#B45309', bg: '#FFF7ED' };
 
   switch (day.status) {
     case 'LATE':
@@ -135,12 +137,38 @@ function leaveWord(code: string): string {
   }
 }
 
-/** A day nobody was meant to work: no times, no "absent", nothing to explain. */
+/**
+ * A day nobody was meant to work: no times, no "absent", nothing to explain.
+ * Leave counts: a leave day under a "No punches" line read as if something were missing.
+ */
 export function isOffDay(day: WorkCardDay): boolean {
   return (
-    (day.dayType === 'REST' || day.dayType === 'HOLIDAY' || day.dayType === 'NOT_EMPLOYED') &&
+    (day.dayType === 'REST' ||
+      day.dayType === 'HOLIDAY' ||
+      day.dayType === 'LEAVE' ||
+      day.dayType === 'NOT_EMPLOYED') &&
     (day.punches?.length ?? 0) === 0
   );
+}
+
+/**
+ * Whether a day is missing a punch the employee can ask HR to add, and which one.
+ *
+ * An open pair says exactly which half is gone. An absence or an exception with no
+ * times at all is most likely a missed clock-in. An exception whose pairs are all
+ * complete is still worth asking about, but the phone cannot tell which punch, so
+ * the form opens with the type unchosen rather than guessing.
+ */
+export function missingPunch(day: WorkCardDay): { missing: boolean; punchType: 'IN' | 'OUT' | null } {
+  if (isOffDay(day)) return { missing: false, punchType: null };
+
+  const pairs = dayPairs(day);
+  const open = pairs.find((p) => !p.in || !p.out);
+  if (open) return { missing: true, punchType: open.in ? 'OUT' : 'IN' };
+
+  const flagged = day.isAbsent || day.status === 'ABSENT' || day.hasException || day.status === 'EXCEPTION';
+  if (!flagged) return { missing: false, punchType: null };
+  return { missing: true, punchType: pairs.length === 0 ? 'IN' : null };
 }
 
 export interface MonthTotals {

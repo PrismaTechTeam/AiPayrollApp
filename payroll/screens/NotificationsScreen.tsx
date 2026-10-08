@@ -12,18 +12,27 @@
  * an empty inbox looked identical -- the one moment you must not tell somebody
  * "nothing to see" is when you do not know. Loading, failed and empty are three
  * states here, and only one of them claims there is no news.
+ *
+ * The list holds the person's notifications from every company they belong to.
+ * One from another company offers to switch and open it in one step.
+ *
+ * It is a work screen like All services: the flat page, a centred title, white
+ * bordered cards. "Mark all read" is an icon in the header that exists only
+ * while something is unread, and "Clear all" waits at the end of the list, so
+ * the first notification starts right under the title instead of under a row
+ * of buttons, one of which was usually greyed out.
  */
 import React, { useCallback, useRef, useState } from 'react';
-import { FlatList, RefreshControl, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, RefreshControl, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
+import { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
 import { Busy, DocumentState } from '../components/documents/DocumentUi';
 import { useDialog } from '../components/ui/AppDialog';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
 import { serverMessage } from '../lib/serverMessage';
-import notificationService, { NotificationItem } from '../api/services/notificationService';
+import notificationService, { NotificationItem, notificationTarget } from '../api/services/notificationService';
 import type { IconName } from '../components/auth/PrimaryButton';
 
 type Load =
@@ -32,6 +41,9 @@ type Load =
   | { kind: 'failed'; message: string };
 
 type Kind = 'leave' | 'claim' | 'payslip' | 'attendance' | 'request' | 'training' | 'general';
+
+/** One page of the list. The rest arrives as the person scrolls to the end. */
+const PAGE_SIZE = 30;
 
 /**
  * What the notification is about. Newer notifications carry a type from the server (leave_approved,
@@ -53,27 +65,16 @@ function kindOf(item: NotificationItem): Kind {
   return 'general';
 }
 
-/** The screen a notification opens, or null for ones that are only news (and all older ones). */
-function destinationOf(item: NotificationItem): { screen: string; params: object } | null {
-  const id = item.relatedId;
-  const type = item.type ?? '';
-  if (!id) return null;
-  // HR is told an employee answered on a request, so it opens as the approver.
-  if (type === 'request_employee_reply') return { screen: 'RequestDetails', params: { requestId: id, canApprove: true } };
-  if (type.startsWith('request_')) return { screen: 'RequestDetails', params: { requestId: id } };
-  if (type.startsWith('claim_')) return { screen: 'ClaimDetails', params: { claimId: id } };
-  if (type.startsWith('leave_')) return { screen: 'LeaveDetails', params: { leaveId: id } };
-  return null;
-}
-
+// The icon alone says what a notification is about; every one sits on the same soft blue wash
+// in navy, like the tiles on All services. Blue is kept for the unread dot.
 const LOOK: Record<Kind, { icon: IconName; fg: string; bg: string }> = {
-  leave: { icon: 'calendar-clock-outline', fg: '#7C3AED', bg: '#F1EAFE' },
-  claim: { icon: 'receipt-text-outline', fg: '#D97706', bg: '#FFF4E5' },
-  payslip: { icon: 'wallet-outline', fg: '#16A34A', bg: '#E7F7EE' },
-  attendance: { icon: 'clock-check-outline', fg: '#0891B2', bg: '#E0F5F8' },
-  request: { icon: 'text-box-outline', fg: C.blue, bg: '#E8F0FE' },
-  training: { icon: 'school-outline', fg: '#0D9488', bg: '#E4F6F4' },
-  general: { icon: 'bell-outline', fg: '#64748B', bg: '#EEF2F7' },
+  leave: { icon: 'calendar-clock-outline', fg: C.ink, bg: C.blueSoft },
+  claim: { icon: 'receipt-text-outline', fg: C.ink, bg: C.blueSoft },
+  payslip: { icon: 'wallet-outline', fg: C.ink, bg: C.blueSoft },
+  attendance: { icon: 'clock-check-outline', fg: C.ink, bg: C.blueSoft },
+  request: { icon: 'text-box-outline', fg: C.ink, bg: C.blueSoft },
+  training: { icon: 'school-outline', fg: C.ink, bg: C.blueSoft },
+  general: { icon: 'bell-outline', fg: C.ink, bg: C.blueSoft },
 };
 
 function timeAgo(iso: string): string {
@@ -86,29 +87,66 @@ function timeAgo(iso: string): string {
   if (hrs < 24) return `${hrs} ${hrs === 1 ? 'hour' : 'hours'} ago`;
   const days = Math.floor(hrs / 24);
   if (days < 7) return `${days} ${days === 1 ? 'day' : 'days'} ago`;
-  return new Date(then).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  // Malaysia time whatever the phone is set to, and the year once it is not this one, so last
+  // March's "3 Mar" cannot pass for this March's.
+  const date = new Date(then);
+  return date.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'Asia/Kuala_Lumpur',
+    ...(date.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' as const } : {}),
+  });
 }
 
 export const NotificationsScreen: React.FC = () => {
   const navigation = useNavigation();
   const dialog = useDialog();
-  const { user } = usePayrollAuth();
+  const { user, switchCompany } = usePayrollAuth();
 
   const [items, setItems] = useState<NotificationItem[]>([]);
+  const [total, setTotal] = useState(0);
   const [unread, setUnread] = useState(0);
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [refreshing, setRefreshing] = useState(false);
+  const [more, setMore] = useState<'idle' | 'loading' | 'failed'>('idle');
+  const [opening, setOpening] = useState<number | null>(null);
   const alive = useRef(true);
+  const page = useRef(1);
+  const loadedOnce = useRef(false);
+  // The last page came back short: there is nothing further. Counting rows against totalCount
+  // alone never stopped, because rows that shift onto the next page while the list is open are
+  // dropped as duplicates, so the count of rows shown never reached the total.
+  const done = useRef(false);
 
-  const fetch = useCallback(async () => {
+  /**
+   * 'replace' starts the list over (first load, pull to refresh). 'merge' is coming back from an
+   * item: the person may be deep in page three, and starting over shrank the list to thirty rows
+   * and threw away their place every time they pressed Back. It puts anything new on top and
+   * refreshes the counts, and leaves the pages already loaded alone.
+   */
+  const fetch = useCallback(async (mode: 'replace' | 'merge' = 'replace') => {
     try {
-      const result = await notificationService.getList({ page: 1, pageSize: 50 });
+      const result = await notificationService.getList({ page: 1, pageSize: PAGE_SIZE });
       if (!alive.current) return;
-      setItems(result.items ?? []);
+      const first = result.items ?? [];
+      if (mode === 'merge') {
+        const fresh = new Set(first.map((n) => n.id));
+        setItems((prev) => [...first, ...prev.filter((n) => !fresh.has(n.id))]);
+      } else {
+        page.current = 1;
+        done.current = first.length < PAGE_SIZE;
+        setItems(first);
+        setMore('idle');
+      }
+      loadedOnce.current = true;
+      setTotal(result.totalCount ?? 0);
       setUnread(result.unreadCount ?? 0);
       setLoad({ kind: 'ready' });
     } catch (err) {
       if (!alive.current) return;
+      // A failed refresh behind a list already on screen keeps that list; only a load with
+      // nothing to show turns into the failed state.
+      if (mode === 'merge') return;
       setLoad({ kind: 'failed', message: serverMessage(err, 'Could not load your notifications.') });
     }
   }, []);
@@ -116,7 +154,7 @@ export const NotificationsScreen: React.FC = () => {
   useFocusEffect(
     useCallback(() => {
       alive.current = true;
-      void fetch();
+      void fetch(loadedOnce.current ? 'merge' : 'replace');
       return () => { alive.current = false; };
     }, [fetch]),
   );
@@ -127,31 +165,78 @@ export const NotificationsScreen: React.FC = () => {
     if (alive.current) setRefreshing(false);
   }, [fetch]);
 
+  // Only the first page used to be fetched, so anything older than the fiftieth notification
+  // could never be reached at all.
+  const loadMore = async () => {
+    if (load.kind !== 'ready' || more === 'loading' || done.current || items.length >= total) return;
+    setMore('loading');
+    try {
+      const next = page.current + 1;
+      const result = await notificationService.getList({ page: next, pageSize: PAGE_SIZE });
+      if (!alive.current) return;
+      page.current = next;
+      done.current = (result.items ?? []).length < PAGE_SIZE;
+      // New notifications arriving meanwhile shift the pages; skip any row already shown.
+      setItems((prev) => {
+        const seen = new Set(prev.map((n) => n.id));
+        return [...prev, ...(result.items ?? []).filter((n) => !seen.has(n.id))];
+      });
+      setTotal(result.totalCount ?? 0);
+      setUnread(result.unreadCount ?? 0);
+      setMore('idle');
+    } catch {
+      if (alive.current) setMore('failed');
+    }
+  };
+
   // Marked read optimistically: the row is already open in front of the person,
   // so waiting on a round trip to un-bold it only looks broken. Then it opens
   // the request, claim or leave it is about.
   const openItem = async (item: NotificationItem) => {
+    if (opening !== null) return;
     if (!item.isRead) {
       setItems((prev) => prev.map((n) => (n.id === item.id ? { ...n, isRead: true } : n)));
       setUnread((n) => Math.max(0, n - 1));
-      try {
-        await notificationService.markAsRead(item.id);
-      } catch {
+      notificationService.markAsRead(item.id).catch(() => {
         // Left as read on screen. A failed mark is invisible and harmless; it
         // corrects itself on the next load.
+      });
+    }
+
+    const target = notificationTarget(item.type, item.relatedId);
+    if (!target) return;
+
+    const itemTenant = item.tenantId?.toLowerCase() ?? null;
+    if (itemTenant && user?.tenantId && itemTenant !== user.tenantId.toLowerCase()) {
+      // It belongs to another of the person's companies. Telling them to go and switch first was a
+      // five-step detour for something the app can do in one.
+      const company = (user.availableTenants ?? []).find((t) => t.id.toLowerCase() === itemTenant);
+      if (!company) {
+        await dialog.notify({
+          title: 'Not in your companies any more',
+          message: 'This is from a company you are no longer a member of, so it cannot be opened.',
+          tone: 'info',
+        });
+        return;
+      }
+      const ok = await dialog.confirm({
+        title: `Open in ${company.name}?`,
+        message: `This is from ${company.name}. The app will switch to that company.`,
+        confirmText: 'Switch and open',
+        cancelText: 'Stay here',
+      });
+      if (!ok) return;
+      setOpening(item.id);
+      try {
+        await switchCompany(company.id);
+      } catch (err) {
+        await dialog.notify({ title: 'Could not switch company', message: serverMessage(err, 'Please try again.'), tone: 'danger' });
+        return;
+      } finally {
+        if (alive.current) setOpening(null);
       }
     }
 
-    const target = destinationOf(item);
-    if (!target) return;
-    if (item.tenantId && user?.tenantId && item.tenantId !== user.tenantId) {
-      await dialog.notify({
-        title: 'This is in another company',
-        message: 'Switch to that company first, then open it from here.',
-        tone: 'info',
-      });
-      return;
-    }
     (navigation.navigate as (screen: string, params: object) => void)(target.screen, target.params);
   };
 
@@ -183,7 +268,9 @@ export const NotificationsScreen: React.FC = () => {
     if (!ok) return;
     try {
       await notificationService.clearAll();
+      done.current = true;
       setItems([]);
+      setTotal(0);
       setUnread(0);
     } catch (err) {
       await dialog.notify({
@@ -196,38 +283,62 @@ export const NotificationsScreen: React.FC = () => {
 
   const renderItem = ({ item }: { item: NotificationItem }) => {
     const look = LOOK[kindOf(item)];
+    const opensSomething = notificationTarget(item.type, item.relatedId) !== null;
     return (
       <TouchableOpacity
-        style={[styles.row, !item.isRead && styles.rowUnread]}
+        style={styles.row}
         onPress={() => { void openItem(item); }}
         activeOpacity={0.7}
         accessibilityRole="button"
-        accessibilityLabel={`${item.message}. ${timeAgo(item.createdAt)}${item.isRead ? '' : '. Unread'}`}
+        accessibilityLabel={`${item.title ? `${item.title}. ` : ''}${item.message}. ${timeAgo(item.createdAt)}${item.isRead ? '' : '. Unread'}`}
       >
         <View style={[styles.rowIcon, { backgroundColor: look.bg }]}>
-          <MaterialCommunityIcons name={look.icon} size={22} color={look.fg} />
+          <MaterialCommunityIcons name={look.icon} size={20} color={look.fg} />
         </View>
         <View style={styles.rowBody}>
           {item.title ? (
             <Text style={[styles.rowTitle, !item.isRead && styles.rowTextUnread]}>{item.title}</Text>
           ) : null}
-          <Text style={[styles.rowText, !item.isRead && styles.rowTextUnread]}>{item.message}</Text>
+          <Text style={[styles.rowText, !item.isRead && !item.title && styles.rowTextUnread]}>{item.message}</Text>
           <Text style={styles.rowTime}>{timeAgo(item.createdAt)}</Text>
         </View>
-        {!item.isRead ? <View style={styles.unreadDot} /> : null}
+        {opening === item.id ? (
+          <ActivityIndicator size="small" color={C.blue} />
+        ) : !item.isRead ? (
+          <View style={styles.unreadDot} />
+        ) : opensSomething ? (
+          <MaterialCommunityIcons name="chevron-right" size={20} color={C.muted} />
+        ) : null}
       </TouchableOpacity>
     );
   };
 
   const subtitle =
-    load.kind !== 'ready' ? 'What has happened while you were away'
+    load.kind !== 'ready' ? null
       : unread > 0 ? `${unread} unread`
-      : 'You are up to date';
+      : items.length > 0 ? 'You are up to date'
+      : null;
+
+  const footer =
+    more === 'loading' ? (
+      <View style={styles.footer}>
+        <ActivityIndicator color={C.blue} />
+      </View>
+    ) : more === 'failed' ? (
+      <TouchableOpacity style={styles.footerRetry} onPress={() => { setMore('idle'); void loadMore(); }} accessibilityRole="button">
+        <Text style={styles.footerRetryText}>Could not load older ones. Try again</Text>
+      </TouchableOpacity>
+    ) : items.length > 0 ? (
+      // At the end of the list rather than at the top: it is rare and cannot be undone, so it
+      // should not cost space above every notification or sit where a thumb lands by accident.
+      <TouchableOpacity style={styles.footerClear} onPress={() => { void clearAll(); }} accessibilityRole="button">
+        <Text style={styles.footerClearText}>Clear all notifications</Text>
+      </TouchableOpacity>
+    ) : null;
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      <AuthBackdrop scriptLines={[]} />
 
       <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
         <View style={styles.header}>
@@ -236,33 +347,25 @@ export const NotificationsScreen: React.FC = () => {
             style={styles.back}
             accessibilityRole="button"
             accessibilityLabel="Back"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <MaterialCommunityIcons name="arrow-left" size={26} color={C.ink} />
+            <MaterialCommunityIcons name="arrow-left" size={24} color={C.ink} />
           </TouchableOpacity>
           <View style={styles.headerText} pointerEvents="none">
             <Text style={styles.headerTitle}>Notifications</Text>
-            <Text style={styles.headerSubtitle}>{subtitle}</Text>
+            {subtitle ? <Text style={styles.headerSubtitle}>{subtitle}</Text> : null}
           </View>
-        </View>
-
-        {load.kind === 'ready' && items.length > 0 ? (
-          <View style={styles.actions}>
+          {/* Only while something is unread: a greyed-out "Mark all read" was a control that did nothing. */}
+          {load.kind === 'ready' && unread > 0 ? (
             <TouchableOpacity
-              style={styles.action}
               onPress={() => { void markAll(); }}
-              disabled={unread === 0}
+              style={styles.headerAction}
               accessibilityRole="button"
+              accessibilityLabel="Mark all as read"
             >
-              <MaterialCommunityIcons name="check-all" size={18} color={unread === 0 ? C.muted : C.blue} />
-              <Text style={[styles.actionText, unread === 0 && styles.actionTextOff]}>Mark all read</Text>
+              <MaterialCommunityIcons name="check-all" size={24} color={C.ink} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.action} onPress={() => { void clearAll(); }} accessibilityRole="button">
-              <MaterialCommunityIcons name="broom" size={18} color={C.danger} />
-              <Text style={[styles.actionText, styles.actionTextDanger]}>Clear all</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
+          ) : null}
+        </View>
 
         {load.kind === 'loading' ? (
           <Busy />
@@ -272,7 +375,9 @@ export const NotificationsScreen: React.FC = () => {
             title="Could not load your notifications"
             body={load.message}
             tone="danger"
-            onRetry={() => { void onRefresh(); }}
+            // The spinner replaces the button while it asks, so nobody taps it into a pile of
+            // parallel requests (this API answers bursts with 429).
+            onRetry={() => { setLoad({ kind: 'loading' }); void fetch(); }}
           />
         ) : (
           <FlatList
@@ -281,6 +386,9 @@ export const NotificationsScreen: React.FC = () => {
             renderItem={renderItem}
             contentContainerStyle={[styles.list, items.length === 0 && styles.listEmpty]}
             showsVerticalScrollIndicator={false}
+            onEndReached={() => { if (more === 'idle') void loadMore(); }}
+            onEndReachedThreshold={0.4}
+            ListFooterComponent={footer}
             refreshControl={
               <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.blue} colors={[C.blue]} />
             }
@@ -288,7 +396,7 @@ export const NotificationsScreen: React.FC = () => {
               <DocumentState
                 icon="bell-check-outline"
                 title="Nothing new"
-                body="Approvals, payslips and reminders will show up here as they happen."
+                body="Approvals, replies and reminders will show up here."
               />
             }
           />
@@ -302,54 +410,49 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F6F8FF' },
   flex: { flex: 1 },
 
-  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 14, justifyContent: 'center' },
-  back: { width: 40, height: 40, alignItems: 'flex-start', justifyContent: 'center' },
-  headerText: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: C.ink },
-  headerSubtitle: { fontSize: 13, color: C.body, marginTop: 2 },
+  header: { minHeight: 52, paddingHorizontal: 8, justifyContent: 'center' },
+  back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  headerText: { position: 'absolute', left: 60, right: 60, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: C.ink },
+  headerSubtitle: { fontSize: 12, color: C.body, marginTop: 1 },
+  // 44pt: the minimum a thumb can hit reliably. Mirrors the back arrow on the other side.
+  headerAction: { position: 'absolute', right: 8, top: 4, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
 
-  actions: { flexDirection: 'row', gap: 10, paddingHorizontal: 20, paddingBottom: 12 },
-  action: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 999,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: C.line,
-  },
-  actionText: { fontSize: 13, fontWeight: '700', color: C.blue },
-  actionTextOff: { color: C.muted },
-  actionTextDanger: { color: C.danger },
-
-  list: { paddingHorizontal: 20, paddingBottom: 40, gap: 10 },
+  list: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 24, gap: 10 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
 
+  // The same white card as the approval lists: radius 16, hairline border, a shadow you barely see.
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 14,
-    shadowColor: C.blue,
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    borderWidth: 1,
+    borderColor: C.line,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    shadowColor: C.ink,
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
-  // Unread is carried by a tinted edge and a dot as well as by weight, so it
-  // survives being read at arm's length in sunlight.
-  rowUnread: { borderLeftWidth: 3, borderLeftColor: C.blue },
-  rowIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
-  rowBody: { flex: 1, gap: 4 },
-  rowText: { fontSize: 14, lineHeight: 20, color: C.body },
-  rowTitle: { fontSize: 14, fontWeight: '700', color: C.ink, marginBottom: 2 },
+  // Unread is carried by the blue dot and the bold title. The 3pt blue edge it also had bent
+  // round the card's corner and pushed the text 3pt out of line with the read rows.
+  rowIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  rowBody: { flex: 1, gap: 2 },
+  rowText: { fontSize: 13, lineHeight: 19, color: C.body },
+  rowTitle: { fontSize: 14, fontWeight: '700', color: C.ink },
   rowTextUnread: { color: C.ink, fontWeight: '700' },
-  rowTime: { fontSize: 12, color: C.muted },
+  rowTime: { fontSize: 12, color: C.muted, marginTop: 2 },
   unreadDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: C.blue },
+
+  footer: { paddingVertical: 16, alignItems: 'center' },
+  footerRetry: { minHeight: 44, justifyContent: 'center', alignItems: 'center' },
+  footerRetryText: { fontSize: 13, fontWeight: '700', color: C.blue },
+  footerClear: { minHeight: 44, marginTop: 4, justifyContent: 'center', alignItems: 'center' },
+  footerClearText: { fontSize: 13, fontWeight: '600', color: C.danger },
 });
 
 export default NotificationsScreen;

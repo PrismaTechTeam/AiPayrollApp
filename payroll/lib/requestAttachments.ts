@@ -136,7 +136,8 @@ export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return '';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  // One decimal, but never a trailing ".0": the limit reads "10 MB", not "10.0 MB".
+  return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`;
 }
 
 /** The icon that best describes a file, from its name. */

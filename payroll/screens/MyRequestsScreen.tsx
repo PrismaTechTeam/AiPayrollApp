@@ -1,8 +1,10 @@
 /**
  * My Requests
  * The employee's own requests, newest first, filtered by status. Each card says
- * what was asked, where it stands, and whether HR has answered or sent a file
- * back — so the list alone tells you whether there is anything to look at.
+ * what was asked, where it stands, and whether HR has answered or a file is on
+ * it — so the list alone tells you whether there is anything to look at.
+ * Everything you can do to a request (cancel it, reply, add a file) is on its
+ * own page; the cards stay one or two lines so a screenful shows most of them.
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
@@ -20,18 +22,27 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
-import { BottomNavBar, BOTTOM_NAV_HEIGHT } from '../components/BottomNavBar';
-import { useDialog } from '../components/ui/AppDialog';
+import { BottomNavBar, useBottomNavSpace } from '../components/BottomNavBar';
+import { useApproverAccess } from '../hooks/useApproverAccess';
 import requestService, { EmployeeRequest } from '../api/services/requestService';
 import { serverMessage } from '../lib/serverMessage';
-import { StatusPill, shortDate, statusOf } from '../components/requests/RequestUi';
+import {
+  ErrorBanner,
+  ListState,
+  RequestHeader,
+  STATUS_LOOK,
+  StatusPill,
+  shortDate,
+  statusOf,
+} from '../components/requests/RequestUi';
 
+// No Draft tab: nothing creates drafts any more, and the few that exist from
+// before still show under All with their own pill.
 const FILTERS = [
   { key: 'ALL', label: 'All' },
   { key: 'PENDING', label: 'Pending' },
   { key: 'APPROVED', label: 'Approved' },
   { key: 'REJECTED', label: 'Rejected' },
-  { key: 'DRAFT', label: 'Draft' },
   { key: 'CANCELLED', label: 'Cancelled' },
 ] as const;
 
@@ -39,7 +50,11 @@ type FilterKey = (typeof FILTERS)[number]['key'];
 
 export const MyRequestsScreen: React.FC = () => {
   const navigation = useNavigation();
-  const dialog = useDialog();
+  // The button sits at the right, clear of the Punch circle; the list's last
+  // row spans the width, so it also clears the circle and the button.
+  const barSpace = useBottomNavSpace();
+  const access = useApproverAccess();
+  const approver = access.ready && access.requests;
 
   const [filter, setFilter] = useState<FilterKey>('ALL');
   const [requests, setRequests] = useState<EmployeeRequest[] | null>(null);
@@ -55,7 +70,7 @@ export const MyRequestsScreen: React.FC = () => {
       setRequests(result.items ?? []);
     } catch (err) {
       setRequests((prev) => prev ?? []);
-      setError(serverMessage(err, 'Could not load your requests. Pull down to try again.'));
+      setError(serverMessage(err, 'Could not load your requests.'));
     }
   }, []);
 
@@ -69,6 +84,11 @@ export const MyRequestsScreen: React.FC = () => {
     setRefreshing(true);
     await load();
     setRefreshing(false);
+  };
+
+  const retry = () => {
+    setRequests(null);
+    void load();
   };
 
   const visible = useMemo(() => {
@@ -89,86 +109,40 @@ export const MyRequestsScreen: React.FC = () => {
     navigation.navigate('RequestDetails', { requestId: request.id });
   };
 
-  const cancel = async (request: EmployeeRequest) => {
-    const ok = await dialog.confirm({
-      title: 'Cancel this request?',
-      message: `Your ${request.requestType} request will be withdrawn. You can submit a new one any time.`,
-      confirmText: 'Yes, cancel',
-      cancelText: 'Keep it',
-      destructive: true,
-      tone: 'warning',
-    });
-    if (!ok) return;
-
-    try {
-      await requestService.cancelApplication(request.id);
-      await load();
-    } catch (err) {
-      await dialog.notify({
-        title: 'Could not cancel',
-        message: serverMessage(err, 'Please try again.'),
-        tone: 'danger',
-      });
-    }
-  };
-
   const renderCard = ({ item }: { item: EmployeeRequest }) => {
     const status = statusOf(item.status);
     const files = item.attachmentCount ?? 0;
     const replied = Boolean(item.hrReply);
 
     return (
-      <TouchableOpacity style={styles.card} onPress={() => openDetail(item)} activeOpacity={0.8} accessibilityRole="button">
+      <TouchableOpacity
+        style={styles.card}
+        onPress={() => openDetail(item)}
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel={`${item.requestType}, ${STATUS_LOOK[status].label}`}
+      >
         <View style={styles.cardTop}>
           <Text style={styles.cardTitle} numberOfLines={1}>{item.requestType}</Text>
           <StatusPill status={item.status} />
         </View>
 
-        <Text style={styles.cardMeta}>
-          Submitted {shortDate(item.createdAt)}
+        <Text style={styles.cardMeta} numberOfLines={1}>
+          {shortDate(item.createdAt)}
+          {files > 0 ? ` · ${files} ${files === 1 ? 'file' : 'files'}` : ''}
+          {replied ? <Text style={styles.cardMetaReply}> · HR replied</Text> : null}
         </Text>
 
-        {item.notes ? (
-          <Text style={styles.cardNotes} numberOfLines={2}>{item.notes}</Text>
-        ) : null}
-
         {status === 'REJECTED' && item.rejectionReason ? (
-          <View style={styles.reasonBox}>
-            <Text style={styles.reasonLabel}>Reason</Text>
-            <Text style={styles.reasonText} numberOfLines={2}>{item.rejectionReason}</Text>
-          </View>
-        ) : null}
-
-        {(files > 0 || replied) ? (
-          <View style={styles.badgeRow}>
-            {files > 0 ? (
-              <View style={styles.badge}>
-                <MaterialCommunityIcons name="paperclip" size={14} color={C.body} />
-                <Text style={styles.badgeText}>{files} {files === 1 ? 'file' : 'files'}</Text>
-              </View>
-            ) : null}
-            {replied ? (
-              <View style={[styles.badge, styles.badgeReply]}>
-                <MaterialCommunityIcons name="message-text-outline" size={14} color={C.blue} />
-                <Text style={[styles.badgeText, styles.badgeTextReply]}>HR replied</Text>
-              </View>
-            ) : null}
-          </View>
-        ) : null}
-
-        {status === 'PENDING' ? (
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => { void cancel(item); }}
-            accessibilityRole="button"
-          >
-            <MaterialCommunityIcons name="close-circle-outline" size={16} color={C.danger} />
-            <Text style={styles.cancelText}>Cancel request</Text>
-          </TouchableOpacity>
+          <Text style={styles.cardReason} numberOfLines={1}>{item.rejectionReason}</Text>
+        ) : item.notes ? (
+          <Text style={styles.cardNotes} numberOfLines={1}>{item.notes}</Text>
         ) : null}
       </TouchableOpacity>
     );
   };
+
+  const filterLabel = FILTERS.find((f) => f.key === filter)?.label.toLowerCase() ?? '';
 
   return (
     <View style={styles.container}>
@@ -176,20 +150,26 @@ export const MyRequestsScreen: React.FC = () => {
       <AuthBackdrop scriptLines={[]} />
 
       <SafeAreaView style={styles.flex} edges={['top']}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <MaterialCommunityIcons name="arrow-left" size={26} color={C.ink} />
-          </TouchableOpacity>
-          <View style={styles.headerText} pointerEvents="none">
-            <Text style={styles.headerTitle}>My Requests</Text>
-          </View>
-        </View>
+        <RequestHeader
+          title="My Requests"
+          onBack={() => navigation.goBack()}
+          right={
+            // For an approver this tab is their own requests; the ones waiting
+            // on them are one tap away rather than back on Home.
+            approver ? (
+              <TouchableOpacity
+                onPress={() => navigation.navigate('Requests', undefined, { pop: true })}
+                style={styles.headerLink}
+                accessibilityRole="button"
+                accessibilityLabel="Requests to approve"
+                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+              >
+                <MaterialCommunityIcons name="text-box-check-outline" size={16} color={C.blue} />
+                <Text style={styles.headerLinkText}>Approvals</Text>
+              </TouchableOpacity>
+            ) : null
+          }
+        />
 
         <FlatList
           horizontal
@@ -219,6 +199,8 @@ export const MyRequestsScreen: React.FC = () => {
           }}
         />
 
+        {error && (requests ?? []).length > 0 ? <ErrorBanner message={error} onRetry={() => { void load(); }} /> : null}
+
         {requests === null ? (
           <View style={styles.center}>
             <ActivityIndicator size="large" color={C.blue} />
@@ -228,33 +210,41 @@ export const MyRequestsScreen: React.FC = () => {
             data={visible}
             keyExtractor={(r) => r.id}
             renderItem={renderCard}
-            contentContainerStyle={styles.list}
+            contentContainerStyle={[styles.list, { paddingBottom: barSpace + 80 }]}
             showsVerticalScrollIndicator={false}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.blue} colors={[C.blue]} />}
             ListEmptyComponent={
-              <View style={styles.emptyCard}>
-                <View style={styles.emptyIcon}>
-                  <MaterialCommunityIcons name={error ? 'wifi-off' : 'text-box-outline'} size={32} color={error ? C.danger : C.blue} />
-                </View>
-                <Text style={styles.emptyTitle}>
-                  {error ? 'Could not load' : filter === 'ALL' ? 'No requests yet' : `Nothing ${FILTERS.find((f) => f.key === filter)?.label.toLowerCase()}`}
-                </Text>
-                <Text style={styles.emptyBody}>
-                  {error ?? 'Tap the button below to send your first request to HR.'}
-                </Text>
-              </View>
+              error ? (
+                <ListState
+                  icon="wifi-off"
+                  tone="danger"
+                  title="Could not load your requests"
+                  body={error}
+                  actionLabel="Try again"
+                  onAction={retry}
+                />
+              ) : filter === 'ALL' ? (
+                <ListState icon="text-box-outline" title="No requests yet" body="Tap New request to send your first one to HR." />
+              ) : (
+                <ListState
+                  icon="text-box-search-outline"
+                  title={`No ${filterLabel} requests`}
+                  body={`Requests you send will show here once they are ${filterLabel}.`}
+                />
+              )
             }
           />
         )}
 
         <TouchableOpacity
-          style={styles.fab}
+          style={[styles.fab, { bottom: barSpace + 14 }]}
           onPress={() => navigation.navigate('CreateRequest')}
           activeOpacity={0.85}
           accessibilityRole="button"
           accessibilityLabel="New request"
         >
-          <MaterialCommunityIcons name="plus" size={26} color="#FFFFFF" />
+          <MaterialCommunityIcons name="plus" size={22} color="#FFFFFF" />
+          <Text style={styles.fabText}>New request</Text>
         </TouchableOpacity>
       </SafeAreaView>
 
@@ -267,19 +257,25 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F6F8FF' },
   flex: { flex: 1 },
 
-  header: { flexDirection: 'row', alignItems: 'center', minHeight: 56, paddingHorizontal: 12, paddingTop: 4 },
-  backButton: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  headerText: { position: 'absolute', left: 88, right: 88, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: C.ink },
+  headerLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    height: 36,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: '#E6EEFF',
+  },
+  headerLinkText: { fontSize: 13, fontWeight: '700', color: C.blue },
 
-  filterStrip: { flexGrow: 0, maxHeight: 60 },
-  filterRow: { paddingHorizontal: 16, paddingVertical: 10, gap: 8 },
+  filterStrip: { flexGrow: 0, maxHeight: 52 },
+  filterRow: { paddingHorizontal: 16, paddingTop: 2, paddingBottom: 8, gap: 8 },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    height: 36,
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.8)',
     borderWidth: 1,
@@ -294,75 +290,43 @@ const styles = StyleSheet.create({
   chipCountTextActive: { color: '#FFFFFF' },
 
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  list: { paddingHorizontal: 16, paddingBottom: BOTTOM_NAV_HEIGHT + 90, gap: 12 },
+  list: { paddingHorizontal: 16, paddingTop: 2, gap: 10 },
 
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 16,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     shadowColor: C.blue,
     shadowOpacity: 0.07,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 5 },
     elevation: 2,
   },
-  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
-  cardTitle: { flex: 1, fontSize: 16, fontWeight: '800', color: C.ink },
-  cardMeta: { fontSize: 12, color: C.body },
-  cardNotes: { fontSize: 14, lineHeight: 20, color: C.body, marginTop: 8 },
-
-  reasonBox: { backgroundColor: C.dangerBg, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, marginTop: 10 },
-  reasonLabel: { fontSize: 11, fontWeight: '700', color: C.danger, marginBottom: 2 },
-  reasonText: { fontSize: 13, lineHeight: 18, color: C.body },
-
-  badgeRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  badge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#EEF2F7', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
-  badgeReply: { backgroundColor: '#E6EEFF' },
-  badgeText: { fontSize: 12, fontWeight: '600', color: C.body },
-  badgeTextReply: { color: C.blue, fontWeight: '700' },
-
-  cancelButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 12,
-    height: 42,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: C.dangerLine,
-    backgroundColor: C.dangerBg,
-  },
-  cancelText: { fontSize: 14, fontWeight: '700', color: C.danger },
-
-  emptyCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 28,
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 20,
-  },
-  emptyIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#E6EEFF', justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
-  emptyTitle: { fontSize: 17, fontWeight: '800', color: C.ink },
-  emptyBody: { fontSize: 14, lineHeight: 20, color: C.body, textAlign: 'center' },
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  cardTitle: { flex: 1, fontSize: 15, fontWeight: '800', color: C.ink },
+  cardMeta: { fontSize: 12, color: C.body, marginTop: 4 },
+  cardMetaReply: { color: C.blue, fontWeight: '700' },
+  cardNotes: { fontSize: 13, lineHeight: 18, color: C.body, marginTop: 4 },
+  cardReason: { fontSize: 13, lineHeight: 18, color: C.danger, marginTop: 4 },
 
   fab: {
     position: 'absolute',
-    right: 20,
-    bottom: BOTTOM_NAV_HEIGHT + 14,
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: C.blue,
-    justifyContent: 'center',
+    right: 16,
+    height: 52,
+    paddingHorizontal: 18,
+    borderRadius: 26,
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    backgroundColor: C.blue,
     shadowColor: C.blue,
     shadowOpacity: 0.4,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
     elevation: 8,
   },
+  fabText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
 });
 
 export default MyRequestsScreen;

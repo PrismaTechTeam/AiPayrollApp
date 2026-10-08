@@ -8,23 +8,227 @@
  * screen that prints "0 days remaining" for it is telling the employee they
  * cannot take it, which is false.
  */
-import React from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { AUTH_COLORS as C } from '../auth/AuthBackdrop';
 import type { IconName } from '../auth/PrimaryButton';
-import { StatusPill, plainDate } from '../requests/RequestUi';
+import type { DialogTone, PromptOptions } from '../ui/AppDialog';
+import {
+  APPROVAL_CARD,
+  DecisionButtons as SharedDecisionButtons,
+  type DecisionButtonsProps,
+} from '../ui/ApprovalCard';
+import { StatusPill, parseDate, plainDate, statusOf, type RequestStatus } from '../requests/RequestUi';
 import type { LeaveApplication, MyLeaveEntitlement } from '../../api/services/leaveService';
+import { serverMessage } from '../../lib/serverMessage';
+import { SHORT_MONTHS, malaysianDayNumber, todayInMalaysia } from '../../lib/dates';
 
 // ── Getting about ─────────────────────────────────────────────────────
 
 /**
- * The stack has no param list, so `navigate('X', params as never)`
- * does not type-check once a second argument is involved. One narrow cast,
- * written once here, rather than an `as any` at every call site.
+ * For the kits that are handed `navigation` loosely (claims and payslips
+ * re-export this). The leave screens themselves navigate through the typed
+ * stack in navigation/types.ts, so a wrong route or param there is a compile
+ * error rather than a silent no-op.
  */
 export function goTo(navigation: unknown, screen: string, params?: Record<string, unknown>): void {
   (navigation as { navigate: (screen: string, params?: Record<string, unknown>) => void }).navigate(screen, params);
+}
+
+// ── Status ────────────────────────────────────────────────────────────
+
+/**
+ * Which bucket a leave status is counted and filtered under.
+ *
+ * Withdrawn is a way of being cancelled — it is off the approver's list and
+ * the days are back — so it is counted with Cancelled. The pill still says
+ * "Withdrawn": the employee should read back what they did.
+ */
+export function leaveStatusKey(status: string | null | undefined): RequestStatus {
+  return (status ?? '').toUpperCase() === 'WITHDRAWN' ? 'CANCELLED' : statusOf(status);
+}
+
+/** The shared status pill, which knows Withdrawn (Cancelled's colours, its own word). */
+export const LeaveStatusPill: React.FC<{ status: string }> = ({ status }) => <StatusPill status={status} />;
+
+// ── Deciding ──────────────────────────────────────────────────────────
+
+/**
+ * Set once the server has refused a decision because this account has no
+ * employee record. Module state on purpose: it lasts for this app session, so
+ * after the first refusal the screens stop offering buttons that can only fail,
+ * and it resets on the next start, so the buttons come back by themselves once
+ * the server accepts decisions from HR without an employee record.
+ */
+let phoneDecisionsRefused = false;
+export const decisionsRefused = (): boolean => phoneDecisionsRefused;
+
+/**
+ * Why an approve or reject was refused, in words that fit the person reading.
+ *
+ * HR added straight to the company has no employee record, and the live
+ * server's decision route still insists on one, answering "Please join a
+ * company first" — advice that makes no sense to HR. This says where the
+ * decision can be made instead, and remembers the refusal (above).
+ */
+export function decisionFailure(err: unknown, hasEmployeeRecord: boolean): string {
+  const message = serverMessage(err, 'Please try again.');
+  if (!hasEmployeeRecord && /employee record|join a company/i.test(message)) {
+    phoneDecisionsRefused = true;
+    return 'This account can’t approve leave on the phone yet. Please decide it on the web: Leave > Applications.';
+  }
+  return message;
+}
+
+/**
+ * The one reject prompt, so the list and the details page ask the same thing
+ * with the same limit. The reason is required: a rejection the employee cannot
+ * explain to their manager is worthless.
+ */
+export function rejectPrompt(dialog: { prompt: (options: PromptOptions) => Promise<string | null> }): Promise<string | null> {
+  return dialog.prompt({
+    title: 'Reject this leave',
+    message: 'The employee will see your reason.',
+    placeholder: 'Reason for rejecting',
+    confirmText: 'Reject',
+    required: true,
+    multiline: true,
+    maxLength: 1000,
+    destructive: true,
+  });
+}
+
+/**
+ * The approve confirmation: the facts, nothing promised. Whether approving
+ * finishes the leave or passes it on depends on the server version, so the
+ * outcome is told afterwards from the server's answer (decisionOutcome).
+ */
+export function approveConfirmText(leave: LeaveApplication, waitingOnSomeoneElse?: string | null): string {
+  const facts = `${leave.employeeName || 'Employee'}: ${leave.leaveTypeDescription || 'Leave'}, ${dateRangeText(leave.startDate, leave.endDate)} (${leaveLength(leave)}).`;
+  return waitingOnSomeoneElse ? `${facts} Waiting on ${waitingOnSomeoneElse}.` : facts;
+}
+
+/** What a decision did, worded from the leave the server sent back. */
+export function decisionOutcome(kind: 'approve' | 'reject', name: string, result: LeaveApplication | undefined): string {
+  if (kind === 'reject') return `Rejected – ${name}`;
+  const status = (result?.status ?? '').toUpperCase();
+  if (status === 'APPROVED') return `Approved – ${name}`;
+  if (status === 'PENDING') {
+    const step = result?.currentApprovalStep;
+    const next = result?.approvals?.find((a) => a.stepOrder === step && (a.status ?? '').toUpperCase() === 'PENDING');
+    const who = (next?.approverName || result?.currentApproverName || '').trim();
+    return `Step approved – now with ${who || 'the next approver'}`;
+  }
+  return `Done – ${name}`;
+}
+
+/**
+ * The shared dialog's toast. Still looked up rather than assumed, so a caller
+ * handed some other object falls back to its own feedback instead of throwing.
+ */
+export function trySharedToast(dialog: unknown, message: string): boolean {
+  const shared = dialog as { toast?: (message: string, tone?: DialogTone) => void } | null;
+  if (!shared || typeof shared.toast !== 'function') return false;
+  shared.toast(message, 'success');
+  return true;
+}
+
+/**
+ * Feedback after a decision that does not need a tap to clear.
+ *
+ * Uses the shared dialog's toast when it has one; until then a pill drawn by
+ * the screen itself. Returned as a node so the screen places it above its own
+ * bottom bar.
+ */
+export function useLeaveToast(dialog: unknown, bottom: number): { node: React.ReactNode; show: (message: string) => void } {
+  const [message, setMessage] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+
+  const show = useCallback((text: string) => {
+    if (trySharedToast(dialog, text)) return;
+    if (timer.current) clearTimeout(timer.current);
+    setMessage(text);
+    timer.current = setTimeout(() => setMessage(null), 2500);
+  }, [dialog]);
+
+  const node = message ? (
+    <View pointerEvents="none" style={[styles.toastWrap, { bottom }]}>
+      <View style={styles.toast} accessibilityLiveRegion="polite" accessibilityRole="alert">
+        <MaterialCommunityIcons name="check-circle-outline" size={18} color="#16A34A" />
+        <Text style={styles.toastText} numberOfLines={2}>{message}</Text>
+      </View>
+    </View>
+  ) : null;
+
+  return { node, show };
+}
+
+/**
+ * A confirmation carried from the details page back to the approval list.
+ *
+ * The details page goes back the moment a decision lands, so its own toast
+ * would vanish with it; the list picks this up on focus and shows it there.
+ * Short-lived, so a confirmation never surfaces on a later, unrelated visit.
+ */
+let handedOff: { message: string; at: number } | null = null;
+export function handOffNotice(message: string): void {
+  handedOff = { message, at: Date.now() };
+}
+export function takeHandedOffNotice(): string | null {
+  const notice = handedOff;
+  handedOff = null;
+  return notice && Date.now() - notice.at < 5000 ? notice.message : null;
+}
+
+/**
+ * Reject and Approve, the undo button and the initials now live in ui/ApprovalCard, shared with
+ * Request and Claim Approval so the three lists cannot drift apart again. Re-exported here so
+ * the leave screens keep their imports; the leave's own buttons say "leave" to a screen reader.
+ */
+export { DangerOutlineButton, personInitials } from '../ui/ApprovalCard';
+
+export const DecisionButtons: React.FC<Omit<DecisionButtonsProps, 'subject'>> = (props) => (
+  <SharedDecisionButtons {...props} subject="leave" />
+);
+
+// ── Malaysian calendar ────────────────────────────────────────────────
+
+/** Today in Malaysia as YYYY-MM-DD, whatever zone the phone is set to. Malaysia has no DST. */
+export { todayInMalaysia };
+
+/** Whole Malaysian days since a server timestamp; null when it cannot be read. */
+export function daysSince(iso: string | null | undefined): number | null {
+  const d = parseDate(iso);
+  if (!d) return null;
+  return Math.max(0, malaysianDayNumber(Date.now()) - malaysianDayNumber(d.getTime()));
+}
+
+/**
+ * Whether a leave still waiting for an answer has already reached its dates —
+ * the urgency an approver triages on, which the applied date does not show.
+ */
+export function startNote(leave: { startDate: string | null; endDate: string | null }): string | null {
+  const start = ymd(leave.startDate);
+  if (!start) return null;
+  const today = todayInMalaysia();
+  const startKey = (leave.startDate ?? '').slice(0, 10);
+  const endKey = (leave.endDate ?? '').slice(0, 10) || startKey;
+  if (startKey > today) return null;
+  if (endKey < today) return 'Dates passed';
+  if (startKey === today) return 'Starts today';
+  return `Started ${start.d} ${SHORT_MONTHS[start.m - 1]}`;
+}
+
+/** "3 days", or "2 hours" for leave taken by the hour — a 2-hour leave is not "0.3 days". */
+export function leaveLength(leave: { totalDays: number; totalHours?: number | null }): string {
+  if (typeof leave.totalHours === 'number' && leave.totalHours > 0) {
+    return `${dayNumber(leave.totalHours)} ${leave.totalHours === 1 ? 'hour' : 'hours'}`;
+  }
+  return dayText(leave.totalDays);
 }
 
 // ── Numbers and dates ─────────────────────────────────────────────────
@@ -39,8 +243,6 @@ export function dayText(value: number | null | undefined): string {
   const n = typeof value === 'number' && !Number.isNaN(value) ? value : 0;
   return `${dayNumber(n)} ${n === 1 ? 'day' : 'days'}`;
 }
-
-const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** A leave date arrives as a plain YYYY-MM-DD; splitting it beats parsing it into a Date and being shifted by a zone. */
 function ymd(value: string | null | undefined): { y: number; m: number; d: number } | null {
@@ -168,51 +370,107 @@ export function noBalanceText(item: MyLeaveEntitlement): string {
 
 // ── Bits ──────────────────────────────────────────────────────────────
 
+/**
+ * The top bar every leave screen shares: back, a title, and one short line
+ * under it when there is something worth saying.
+ *
+ * One component because six screens each carried their own copy at 22pt with
+ * 8 + 12 of padding, and the owner's phones lost a card's worth of height to
+ * it on every page. The empty box on the right is the back button's width, so
+ * the title sits in the true centre and a long one ellipsises instead of
+ * running under the arrow.
+ */
+export const LeaveHeader: React.FC<{
+  title: string;
+  subtitle?: string | null;
+  onBack: () => void;
+}> = ({ title, subtitle, onBack }) => (
+  <View style={styles.header}>
+    <TouchableOpacity
+      onPress={onBack}
+      style={styles.headerBack}
+      accessibilityRole="button"
+      accessibilityLabel="Back"
+      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+    >
+      <MaterialCommunityIcons name="arrow-left" size={24} color={C.ink} />
+    </TouchableOpacity>
+    <View style={styles.headerText}>
+      <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
+      {subtitle ? <Text style={styles.headerSubtitle} numberOfLines={1}>{subtitle}</Text> : null}
+    </View>
+    <View style={styles.headerSide} />
+  </View>
+);
+
 export const SectionHeading: React.FC<{
   title: string;
   actionLabel?: string;
   onAction?: () => void;
-}> = ({ title, actionLabel, onAction }) => (
+  /** A control that belongs to this section, e.g. the year it is showing. */
+  right?: React.ReactNode;
+}> = ({ title, actionLabel, onAction, right }) => (
   <View style={styles.headingRow}>
     <Text style={styles.heading}>{title}</Text>
-    {actionLabel && onAction ? (
-      <TouchableOpacity onPress={onAction} accessibilityRole="button" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+    {right ?? (actionLabel && onAction ? (
+      <TouchableOpacity
+        onPress={onAction}
+        style={styles.headingActionHit}
+        accessibilityRole="button"
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
         <Text style={styles.headingAction}>{actionLabel}</Text>
       </TouchableOpacity>
-    ) : null}
+    ) : null)}
   </View>
 );
 
-/** Back one year, forward as far as this year. Nothing is issued past it. */
+/**
+ * Back a year, forward as far as the caller allows.
+ *
+ * Leave passes next year as the limit, because leave is booked ahead: in
+ * October a January booking is already real, and a bar that stopped at this
+ * year hid it from every list. `compact` drops the white bar so it can sit
+ * inside a heading or a card instead of costing a row of its own. `busy` holds
+ * the arrows while a year is loading, so a second tap cannot race the first.
+ */
 export const YearBar: React.FC<{
   year: number;
   maxYear: number;
   minYear?: number;
   onChange: (year: number) => void;
-}> = ({ year, maxYear, minYear = 2000, onChange }) => {
-  const canBack = year > minYear;
-  const canForward = year < maxYear;
+  compact?: boolean;
+  busy?: boolean;
+}> = ({ year, maxYear, minYear = 2000, onChange, compact = false, busy = false }) => {
+  const canBack = year > minYear && !busy;
+  const canForward = year < maxYear && !busy;
 
   return (
-    <View style={styles.yearBar}>
+    <View style={compact ? styles.yearInline : styles.yearBar}>
       <TouchableOpacity
         onPress={() => canBack && onChange(year - 1)}
         disabled={!canBack}
         style={[styles.yearArrow, !canBack && styles.yearArrowOff]}
         accessibilityRole="button"
-        accessibilityLabel="Previous year"
+        accessibilityLabel={`Show ${year - 1}`}
       >
-        <MaterialCommunityIcons name="chevron-left" size={24} color={canBack ? C.ink : C.line} />
+        <MaterialCommunityIcons name="chevron-left" size={compact ? 22 : 24} color={canBack ? C.ink : C.muted} />
       </TouchableOpacity>
-      <Text style={styles.yearText}>{year}</Text>
+      <View style={styles.yearMiddle}>
+        {busy ? (
+          <ActivityIndicator size="small" color={C.blue} />
+        ) : (
+          <Text style={[styles.yearText, compact && styles.yearTextCompact]}>{year}</Text>
+        )}
+      </View>
       <TouchableOpacity
         onPress={() => canForward && onChange(year + 1)}
         disabled={!canForward}
         style={[styles.yearArrow, !canForward && styles.yearArrowOff]}
         accessibilityRole="button"
-        accessibilityLabel="Next year"
+        accessibilityLabel={`Show ${year + 1}`}
       >
-        <MaterialCommunityIcons name="chevron-right" size={24} color={canForward ? C.ink : C.line} />
+        <MaterialCommunityIcons name="chevron-right" size={compact ? 22 : 24} color={canForward ? C.ink : C.muted} />
       </TouchableOpacity>
     </View>
   );
@@ -225,6 +483,7 @@ export const LeaveCard: React.FC<{
   showType?: boolean;
 }> = ({ leave, onPress, showType = true }) => {
   const tint = leaveTint({ color: leave.leaveTypeColor, code: leave.leaveTypeCode });
+  const dates = dateRangeText(leave.startDate, leave.endDate);
 
   return (
     <TouchableOpacity
@@ -235,18 +494,18 @@ export const LeaveCard: React.FC<{
       accessibilityRole={onPress ? 'button' : undefined}
     >
       <View style={[styles.cardIcon, { backgroundColor: leaveWash(tint) }]}>
-        <MaterialCommunityIcons name={leaveIcon(leave.leaveTypeCode)} size={22} color={tint} />
+        <MaterialCommunityIcons name={leaveIcon(leave.leaveTypeCode)} size={20} color={tint} />
       </View>
 
       <View style={styles.cardBody}>
         <View style={styles.cardTop}>
           <Text style={styles.cardTitle} numberOfLines={1}>
-            {showType ? leave.leaveTypeDescription || 'Leave' : dateRangeText(leave.startDate, leave.endDate)}
+            {showType ? leave.leaveTypeDescription || 'Leave' : dates}
           </Text>
-          <StatusPill status={leave.status} />
+          <LeaveStatusPill status={leave.status} />
         </View>
         <Text style={styles.cardMeta} numberOfLines={1}>
-          {showType ? `${dateRangeText(leave.startDate, leave.endDate)} · ${dayText(leave.totalDays)}` : dayText(leave.totalDays)}
+          {showType ? `${dates} · ${leaveLength(leave)}` : leaveLength(leave)}
         </Text>
       </View>
     </TouchableOpacity>
@@ -301,7 +560,7 @@ export const EntitlementRow: React.FC<{
       }
     >
       <View style={[styles.rowIcon, { backgroundColor: leaveWash(tint) }]}>
-        <MaterialCommunityIcons name={leaveIcon(item.code)} size={22} color={tint} />
+        <MaterialCommunityIcons name={leaveIcon(item.code)} size={20} color={tint} />
       </View>
 
       <View style={styles.rowBody}>
@@ -331,23 +590,30 @@ export const EntitlementRow: React.FC<{
   );
 };
 
-/** Loading, failed, empty. Every one of them says something and offers a way on. */
+/**
+ * Loading, failed, empty. Every one of them says something and offers a way on.
+ * `actionLabel` renames the button for a state whose way on is not a retry,
+ * such as sending HR without an employee record to the approval queue.
+ */
 export const LeaveState: React.FC<{
   icon: IconName;
   title: string;
   body: string;
   tone?: 'plain' | 'danger';
   onRetry?: () => void;
-}> = ({ icon, title, body, tone = 'plain', onRetry }) => (
-  <View style={styles.state}>
+  actionLabel?: string;
+  /** Centre it in the space it is given, e.g. an empty list, instead of sitting at the top. */
+  fill?: boolean;
+}> = ({ icon, title, body, tone = 'plain', onRetry, actionLabel = 'Try again', fill = false }) => (
+  <View style={[styles.state, fill && styles.stateFill]}>
     <View style={[styles.stateIcon, tone === 'danger' && styles.stateIconDanger]}>
-      <MaterialCommunityIcons name={icon} size={30} color={tone === 'danger' ? C.danger : C.blue} />
+      <MaterialCommunityIcons name={icon} size={28} color={tone === 'danger' ? C.danger : C.blue} />
     </View>
     <Text style={styles.stateTitle}>{title}</Text>
     <Text style={styles.stateBody}>{body}</Text>
     {onRetry ? (
       <TouchableOpacity style={styles.retry} onPress={onRetry} accessibilityRole="button">
-        <Text style={styles.retryText}>Try again</Text>
+        <Text style={styles.retryText}>{actionLabel}</Text>
       </TouchableOpacity>
     ) : null}
   </View>
@@ -360,20 +626,27 @@ export const LeaveState: React.FC<{
 // the words used for "no entitlement limit" have to be identical whether you
 // meet them on the overview or in the picker you choose from.
 
-/** A white panel with a heading. The heading is dropped when the card speaks for itself. */
+/**
+ * The white card of the HR design language: radius 16, a 1px line border and a
+ * neutral shadow. Exported so the approval list's cards are the same surface
+ * as every panel on the leave pages.
+ */
+export const LEAVE_CARD = APPROVAL_CARD;
+
+/**
+ * A white panel with a plain heading. The heading is dropped when the card
+ * speaks for itself. `icon` is accepted for the existing call sites but no
+ * longer drawn: a blue tile on every section put brand blue on things that
+ * are not actions, which the brief keeps for buttons and the active tab.
+ */
 export const FormCard: React.FC<{
   title?: string;
   icon?: IconName;
   children: React.ReactNode;
-}> = ({ title, icon, children }) => (
+}> = ({ title, children }) => (
   <View style={styles.formCard}>
     {title ? (
       <View style={styles.formHead}>
-        {icon ? (
-          <View style={styles.formHeadIcon}>
-            <MaterialCommunityIcons name={icon} size={18} color={C.blue} />
-          </View>
-        ) : null}
         <Text style={styles.formTitle}>{title}</Text>
       </View>
     ) : null}
@@ -385,7 +658,13 @@ export const FieldLabel: React.FC<{ children: string }> = ({ children }) => (
   <Text style={styles.fieldLabel}>{children}</Text>
 );
 
-/** A tappable field: reads like an input, opens a picker. */
+/**
+ * A tappable field: reads like an input, opens a picker.
+ *
+ * `compact` is for two fields side by side (first and last day, from and to):
+ * it drops the chevron and tightens the gaps, because at half the width of a
+ * 360dp Android phone "28 Sep 2026" otherwise ellipsises to "28 Se…".
+ */
 export const SelectField: React.FC<{
   icon: IconName;
   value?: string | null;
@@ -394,22 +673,25 @@ export const SelectField: React.FC<{
   loading?: boolean;
   disabled?: boolean;
   invalid?: boolean;
-}> = ({ icon, value, placeholder, onPress, loading = false, disabled = false, invalid = false }) => (
+  compact?: boolean;
+  /** What the field is, for a screen reader, when the visible label sits outside it. */
+  label?: string;
+}> = ({ icon, value, placeholder, onPress, loading = false, disabled = false, invalid = false, compact = false, label }) => (
   <TouchableOpacity
-    style={[styles.field, invalid && styles.fieldInvalid, disabled && styles.fieldOff]}
+    style={[styles.field, compact && styles.fieldCompact, invalid && styles.fieldInvalid, disabled && styles.fieldOff]}
     onPress={onPress}
     disabled={disabled || loading}
     activeOpacity={0.75}
     accessibilityRole="button"
-    accessibilityLabel={value || placeholder}
+    accessibilityLabel={label ? `${label}, ${value || placeholder}` : value || placeholder}
   >
-    <MaterialCommunityIcons name={icon} size={20} color={invalid ? C.danger : C.muted} />
+    <MaterialCommunityIcons name={icon} size={compact ? 18 : 20} color={invalid ? C.danger : C.muted} />
     <Text style={[styles.fieldText, !value && styles.fieldPlaceholder]} numberOfLines={1}>
       {value || placeholder}
     </Text>
     {loading ? (
       <ActivityIndicator size="small" color={C.blue} />
-    ) : (
+    ) : compact ? null : (
       <MaterialCommunityIcons name="chevron-down" size={22} color={C.muted} />
     )}
   </TouchableOpacity>
@@ -480,6 +762,10 @@ export const FieldError: React.FC<{ message?: string | null }> = ({ message }) =
  * Weekends, public holidays and rest days come out of it according to the leave
  * type and the employee's shift, none of which the phone knows, so this waits
  * for the server rather than showing a figure that will change on submit.
+ *
+ * One line at the foot of the dates card rather than a card of its own: it is
+ * the answer to the dates above it, and a separate card cost the form the
+ * height that pushed Apply off the screen.
  */
 export const DayTally: React.FC<{
   state: 'blank' | 'busy' | 'ready';
@@ -488,24 +774,20 @@ export const DayTally: React.FC<{
   excluded?: string[];
 }> = ({ state, days = 0, hours = null, excluded = [] }) => (
   <View style={styles.tally}>
-    <View style={styles.tallyIcon}>
-      <MaterialCommunityIcons name="calendar-check-outline" size={20} color={C.blue} />
-    </View>
-    <View style={styles.tallyBody}>
-      <Text style={styles.tallyLabel}>This leave comes to</Text>
-      {state === 'busy' ? (
-        <ActivityIndicator size="small" color={C.blue} style={styles.tallySpinner} />
-      ) : (
-        <Text style={styles.tallyValue}>
-          {state === 'blank' ? '—' : hours != null ? `${dayNumber(hours)} hours` : dayText(days)}
-        </Text>
-      )}
-      {state === 'ready' && excluded.length > 0 ? (
-        <Text style={styles.tallyNote} numberOfLines={2}>
-          Not counted: {excluded.map((e) => e.split(': ')[1] ?? e).join(', ')}
-        </Text>
-      ) : null}
-    </View>
+    <MaterialCommunityIcons name="calendar-check-outline" size={18} color={C.blue} />
+    <Text style={styles.tallyLabel}>Comes to</Text>
+    {state === 'busy' ? (
+      <ActivityIndicator size="small" color={C.blue} />
+    ) : (
+      <Text style={styles.tallyValue}>
+        {state === 'blank' ? '—' : hours != null ? `${dayNumber(hours)} ${hours === 1 ? 'hour' : 'hours'}` : dayText(days)}
+      </Text>
+    )}
+    {state === 'ready' && excluded.length > 0 ? (
+      <Text style={styles.tallyNote} numberOfLines={1}>
+        · not counted: {excluded.map((e) => e.split(': ')[1] ?? e).join(', ')}
+      </Text>
+    ) : null}
   </View>
 );
 
@@ -582,22 +864,33 @@ export const LeaveTypeOption: React.FC<{
 };
 
 const styles = StyleSheet.create({
-  headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  header: { flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingHorizontal: 8 },
+  headerBack: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  headerText: { flex: 1, alignItems: 'center', paddingHorizontal: 4 },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: C.ink },
+  headerSubtitle: { fontSize: 13, color: C.muted, marginTop: 1 },
+  headerSide: { width: 44 },
+
+  headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 28, marginBottom: 6 },
   heading: { fontSize: 12, fontWeight: '800', color: C.muted, letterSpacing: 0.8 },
+  headingActionHit: { paddingVertical: 6, paddingLeft: 8 },
   headingAction: { fontSize: 13, fontWeight: '700', color: C.blue },
 
   yearBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 6,
-    paddingVertical: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
     borderRadius: 14,
     backgroundColor: '#FFFFFF',
   },
-  yearArrow: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
-  yearArrowOff: { opacity: 0.5 },
+  yearInline: { flexDirection: 'row', alignItems: 'center' },
+  yearArrow: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
+  yearArrowOff: { opacity: 0.4 },
+  yearMiddle: { minWidth: 44, alignItems: 'center', justifyContent: 'center' },
   yearText: { fontSize: 16, fontWeight: '700', color: C.ink, fontVariant: ['tabular-nums'] },
+  yearTextCompact: { fontSize: 15 },
 
   card: {
     flexDirection: 'row',
@@ -605,17 +898,18 @@ const styles = StyleSheet.create({
     gap: 12,
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
-  cardIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  cardBody: { flex: 1, gap: 4 },
+  cardIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  cardBody: { flex: 1, gap: 3 },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   cardTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: C.ink },
   cardMeta: { fontSize: 13, color: C.body },
 
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
   rowDivider: { borderBottomWidth: 1, borderBottomColor: C.line },
-  rowIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  rowIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   rowBody: { flex: 1, gap: 3 },
   rowTop: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
   rowTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: C.ink },
@@ -627,40 +921,53 @@ const styles = StyleSheet.create({
   track: { height: 6, borderRadius: 3, backgroundColor: C.line, overflow: 'hidden', marginTop: 5 },
   fill: { height: 6, borderRadius: 3 },
 
-  state: { alignItems: 'center', paddingVertical: 36, paddingHorizontal: 24 },
-  stateIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#E8F0FE', alignItems: 'center', justifyContent: 'center' },
+  state: { alignItems: 'center', paddingVertical: 24, paddingHorizontal: 24 },
+  stateFill: { flex: 1, justifyContent: 'center' },
+  stateIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#E8F0FE', alignItems: 'center', justifyContent: 'center' },
   stateIconDanger: { backgroundColor: C.dangerBg },
-  stateTitle: { fontSize: 16, fontWeight: '700', color: C.ink, marginTop: 12 },
+  stateTitle: { fontSize: 16, fontWeight: '700', color: C.ink, marginTop: 10, textAlign: 'center' },
   stateBody: { fontSize: 13, color: C.body, textAlign: 'center', marginTop: 4, lineHeight: 19 },
-  retry: { marginTop: 14, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, backgroundColor: C.blue },
+  retry: { marginTop: 14, minHeight: 44, justifyContent: 'center', paddingHorizontal: 20, borderRadius: 12, backgroundColor: C.blue },
   retryText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
 
-  formCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 18,
-    shadowColor: C.blue,
-    shadowOpacity: 0.07,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 2,
-  },
-  formHead: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
-  formHeadIcon: { width: 34, height: 34, borderRadius: 11, backgroundColor: '#E6EEFF', alignItems: 'center', justifyContent: 'center' },
-  formTitle: { flex: 1, fontSize: 15, fontWeight: '800', color: C.ink },
+  formCard: { ...LEAVE_CARD, padding: 14 },
+  formHead: { marginBottom: 8 },
+  formTitle: { fontSize: 13, fontWeight: '600', color: C.body },
 
-  fieldLabel: { fontSize: 12, fontWeight: '700', color: C.body, letterSpacing: 0.3, marginBottom: 7, marginTop: 4 },
+  toastWrap: { position: 'absolute', left: 16, right: 16, alignItems: 'center' },
+  toast: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 44,
+    maxWidth: '100%',
+    paddingHorizontal: 16,
+    borderRadius: 22,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: C.line,
+    shadowColor: C.ink,
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  toastText: { flexShrink: 1, fontSize: 14, fontWeight: '600', color: C.ink },
+
+
+  fieldLabel: { fontSize: 12, fontWeight: '700', color: C.body, letterSpacing: 0.3, marginBottom: 6, marginTop: 4 },
   field: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    height: 52,
+    height: 46,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: C.line,
     backgroundColor: C.field,
     paddingHorizontal: 14,
   },
+  fieldCompact: { gap: 8, paddingHorizontal: 12 },
   fieldInvalid: { borderColor: C.dangerLine, backgroundColor: C.dangerBg },
   fieldOff: { opacity: 0.55 },
   fieldText: { flex: 1, fontSize: 15, color: C.ink },
@@ -678,13 +985,18 @@ const styles = StyleSheet.create({
   fieldError: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 7 },
   fieldErrorText: { flex: 1, fontSize: 12, lineHeight: 17, color: C.danger },
 
-  tally: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFFFFF', borderRadius: 18, padding: 16 },
-  tallyIcon: { width: 40, height: 40, borderRadius: 13, backgroundColor: '#E6EEFF', alignItems: 'center', justifyContent: 'center' },
-  tallyBody: { flex: 1 },
-  tallyLabel: { fontSize: 12, color: C.body },
-  tallyValue: { fontSize: 19, fontWeight: '800', color: C.ink, marginTop: 2, fontVariant: ['tabular-nums'] },
-  tallySpinner: { alignSelf: 'flex-start', marginTop: 6 },
-  tallyNote: { fontSize: 12, color: C.muted, marginTop: 4 },
+  tally: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: C.line,
+  },
+  tallyLabel: { fontSize: 13, color: C.body },
+  tallyValue: { fontSize: 15, fontWeight: '800', color: C.ink, fontVariant: ['tabular-nums'] },
+  tallyNote: { flex: 1, fontSize: 12, color: C.muted },
 
   balance: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
   balanceDot: { width: 8, height: 8, borderRadius: 4 },

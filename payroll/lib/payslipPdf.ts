@@ -36,7 +36,8 @@ export function payslipFileName(year: number, month: number, employeeCode?: stri
  * where "Save to Files" / "Save to Drive" live on both platforms.
  *
  * @returns where the file went, and whether the share sheet actually opened —
- *          a phone without one needs to be told the path instead.
+ *          a phone without one needs another route (Print → Save as PDF); a
+ *          cache path means nothing to the person and the OS may clear it.
  * @throws with a message written for the person.
  */
 export async function sharePayslipPdf(
@@ -74,7 +75,23 @@ export async function sharePayslipPdf(
   return { uri: target, shared: true };
 }
 
-/** Opens the OS print preview — the other route to a saved PDF, and to a printer. */
+/**
+ * Opens the OS print preview — the other route to a saved PDF, and to a printer.
+ *
+ * Closing the preview without printing is a choice, not a failure. iOS reports
+ * it by rejecting with ERR_PRINT_INCOMPLETE ("Printing did not complete"), and
+ * letting that through put a red error in front of someone who only tapped
+ * Cancel. Anything else is still thrown.
+ */
 export async function printPayslip(html: string): Promise<void> {
-  await Print.printAsync({ html, ...A4, margins: PAGE_MARGIN });
+  try {
+    await Print.printAsync({ html, ...A4, margins: PAGE_MARGIN });
+  } catch (err) {
+    const e = err as { code?: unknown; message?: unknown } | null;
+    const cancelled =
+      e?.code === 'ERR_PRINT_INCOMPLETE' ||
+      (typeof e?.message === 'string' && /did not complete/i.test(e.message));
+    if (cancelled) return;
+    throw err;
+  }
 }

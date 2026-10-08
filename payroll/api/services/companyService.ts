@@ -1,12 +1,6 @@
 import axiosInstance from '../axiosInstance';
 import { ENDPOINTS } from '../endpoints';
 
-export interface CompanySearchResult {
-  id: string;
-  name: string;
-  logoUrl: string | null;
-}
-
 export interface JoinRequest {
   id: string;
   tenantId: string;
@@ -18,12 +12,9 @@ export interface JoinRequest {
   rejectionReason: string | null;
 }
 
+// Company search is gone from the app: it listed every customer company to any
+// signed-in account, and joining now goes through HR's invitation code instead.
 const companyService = {
-  async search(query: string): Promise<CompanySearchResult[]> {
-    const response = await axiosInstance.get(ENDPOINTS.COMPANY.SEARCH, { params: { q: query } });
-    return response.data.content;
-  },
-
   /**
    * Ask to join a company.
    *
@@ -69,6 +60,28 @@ const companyService = {
     });
     return response.data.content;
   },
+
+  /**
+   * The company's invitation code, for HR to hand to new employees. Needs
+   * EMPLOYEE_PORTAL.VIEW. `code` is null when the company has never issued one;
+   * issuing and rotating stay on the web, where the poster and the expiry are set.
+   */
+  async getJoinCode(): Promise<CompanyJoinCode> {
+    const response = await axiosInstance.get(ENDPOINTS.COMPANY_JOIN_CODE);
+    const content = response.data?.content ?? {};
+    const code = typeof content.code === 'string' && content.code.trim() ? content.code.trim() : null;
+    return {
+      code,
+      expiresAt: typeof content.expiresAt === 'string' ? content.expiresAt : null,
+      isExpired: content.isExpired === true,
+    };
+  },
 };
+
+export interface CompanyJoinCode {
+  code: string | null;
+  expiresAt: string | null;
+  isExpired: boolean;
+}
 
 export default companyService;

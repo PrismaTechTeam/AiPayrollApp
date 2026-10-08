@@ -7,9 +7,14 @@
  * Registered under both route names — "UserHome" (no company yet) and
  * "TenantHub" (at least one company) — so older screens that navigate to the
  * hub still land here.
+ *
+ * Two frames for one list. As the first page (no company chosen yet) it has the
+ * brand and the account button. Pushed from Home's company pill it is a plain
+ * "Companies" page with a back arrow: it used to keep the brand header there,
+ * with no way back but the system gesture, and two headings for one list.
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -28,10 +33,13 @@ import companyService, { JoinRequest } from '../api/services/companyService';
 import type { TenantInfo } from '../api/services/authService';
 import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
 import PrimaryButton from '../components/auth/PrimaryButton';
-import { Card, MenuRow, SectionHeader } from '../components/account/AccountUi';
+import { AccountPage, Card, MenuRow } from '../components/account/AccountUi';
+import { DocumentState } from '../components/documents/DocumentUi';
+import { roleLabel } from '../components/CompanySwitcher';
 import { useDialog } from '../components/ui/AppDialog';
 import { useAvatarUrl } from '../hooks/useAvatar';
 import { parseServerDate, whenText } from '../lib/joinRequests';
+import { serverMessage } from '../lib/serverMessage';
 import type { RootStackParamList } from '../navigation/types';
 
 function tenantInitials(name: string): string {
@@ -44,78 +52,113 @@ function tenantInitials(name: string): string {
     .slice(0, 2);
 }
 
+/**
+ * The join requests, as three different states. A failed lookup used to become an empty list,
+ * and so did "still loading": somebody waiting on HR saw "Join a company", sent a second
+ * request, and was told "You already have a pending request".
+ */
+type Requests =
+  | { kind: 'loading' }
+  | { kind: 'failed'; message: string }
+  | { kind: 'ready'; list: JoinRequest[] };
+
 export const UserHomeScreen: React.FC = () => {
   const navigation = useNavigation();
   const dialog = useDialog();
   const { user, refreshAuthState, refreshTenants, switchCompany } = usePayrollAuth();
   const avatarUrl = useAvatarUrl(user?.uid);
 
-  const firstName = user?.firstName || user?.name?.split(' ')[0] || 'User';
-  const initials =
-    firstName.charAt(0).toUpperCase() +
-    (user?.lastName ? user.lastName.charAt(0).toUpperCase() : '');
+  const firstName = user?.firstName || user?.name?.split(' ')[0] || '';
 
   const tenants: TenantInfo[] = user?.availableTenants ?? [];
   const tenantCount = tenants.length;
   const [switchingId, setSwitchingId] = useState<string | null>(null);
+  const [requests, setRequests] = useState<Requests>({ kind: 'loading' });
 
-  // Requests, refreshed every time this screen is looked at: it is the screen
-  // people come back to after sending, cancelling, or being told a decision.
-  const [requests, setRequests] = useState<JoinRequest[] | null>(null);
+  // The two refreshers change identity whenever the stored user does, and refreshing the user is
+  // exactly what they do. Depending on them made this effect re-run after every refresh it caused:
+  // with an approved request and still no company, that was join-requests -> refresh -> new user
+  // -> join-requests again, several requests a second until the server answered 429. Held in
+  // refs, they are always current without being a reason to run again.
+  const refreshAuthRef = useRef(refreshAuthState);
+  const refreshTenantsRef = useRef(refreshTenants);
+  useEffect(() => {
+    refreshAuthRef.current = refreshAuthState;
+    refreshTenantsRef.current = refreshTenants;
+  });
+  // An approved request is acted on once. If the refresh still finds no company (the membership
+  // was removed again), asking again on every visit cannot change that.
+  const refreshedFor = useRef(new Set<string>());
+
+  const loadRequests = useCallback(async (isCancelled: () => boolean) => {
+    try {
+      const list = await companyService.getJoinRequests();
+      if (isCancelled()) return;
+      const sorted = [...list].sort(
+        (a, b) => (parseServerDate(b.createdAt)?.getTime() ?? 0) - (parseServerDate(a.createdAt)?.getTime() ?? 0),
+      );
+      setRequests({ kind: 'ready', list: sorted });
+      // Approved while the app was closed: the login state has not caught up
+      // yet, and this is the earliest moment to notice.
+      const fresh = sorted.filter((r) => r.status === 'APPROVED' && !refreshedFor.current.has(r.id));
+      if (fresh.length > 0 && tenantCount === 0) {
+        fresh.forEach((r) => refreshedFor.current.add(r.id));
+        void refreshAuthRef.current();
+      }
+    } catch (err) {
+      if (!isCancelled()) setRequests({ kind: 'failed', message: serverMessage(err, 'Could not load your requests.') });
+    }
+  }, [tenantCount]);
+
+  // Refreshed every time this screen is looked at: it is the screen people come back to after
+  // sending, cancelling, or being told a decision.
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       if (tenantCount > 0) {
         // Membership can change on the server (HR approved a second company);
         // the stored list is only as fresh as the last login.
-        void refreshTenants();
+        void refreshTenantsRef.current();
       }
-      companyService
-        .getJoinRequests()
-        .then((list) => {
-          if (cancelled) return;
-          const sorted = [...list].sort(
-            (a, b) => (parseServerDate(b.createdAt)?.getTime() ?? 0) - (parseServerDate(a.createdAt)?.getTime() ?? 0),
-          );
-          setRequests(sorted);
-          // Approved while the app was closed: the login state has not caught up
-          // yet, and this is the earliest moment to notice.
-          if (sorted.some((r) => r.status === 'APPROVED') && tenantCount === 0) {
-            void refreshAuthState();
-          }
-        })
-        .catch(() => {
-          if (!cancelled) setRequests((prev) => prev ?? []);
-        });
+      void loadRequests(() => cancelled);
       return () => { cancelled = true; };
-    }, [tenantCount, refreshAuthState, refreshTenants]),
+    }, [tenantCount, loadRequests]),
   );
 
-  const pending = (requests ?? []).find((r) => r.status === 'PENDING') ?? null;
-  const requestCount = requests?.length ?? 0;
+  const retry = () => {
+    setRequests({ kind: 'loading' });
+    void loadRequests(() => false);
+  };
+
+  const list = requests.kind === 'ready' ? requests.list : [];
+  const pending = list.find((r) => r.status === 'PENDING') ?? null;
+  const requestCount = list.length;
 
   // Typed against the stack, so a route that no longer exists fails to build
   // instead of silently doing nothing when somebody taps.
   const go = <T extends keyof RootStackParamList>(screen: T, params?: RootStackParamList[T]) =>
     (navigation.navigate as (s: T, p?: RootStackParamList[T]) => void)(screen, params);
 
+  // Home is usually already under this list (the switcher's "Manage companies" opened it):
+  // go back to it rather than stacking a second Home on top.
+  const openHome = () => navigation.navigate('PayrollHome', undefined, { pop: true });
+
   const openRequest = (r: JoinRequest) =>
     go('JoinRequestPending', { requestId: r.id, companyId: r.tenantId, companyName: r.tenantName });
 
   const openTenant = async (tenant: TenantInfo) => {
     if (tenant.id === user?.tenantId) {
-      go('PayrollHome');
+      openHome();
       return;
     }
     setSwitchingId(tenant.id);
     try {
       await switchCompany(tenant.id);
-      go('PayrollHome');
+      openHome();
     } catch (err) {
-      const e = err as { response?: { data?: { message?: string } }; message?: string };
       await dialog.notify({
         title: 'Could not open company',
-        message: e?.response?.data?.message ?? e?.message ?? 'Please try again.',
+        message: serverMessage(err, 'Please try again.'),
         tone: 'danger',
       });
     } finally {
@@ -123,13 +166,142 @@ export const UserHomeScreen: React.FC = () => {
     }
   };
 
+  // With no company, what to show depends entirely on the requests, so nothing is said until
+  // they are known. With companies, the list is the point and the requests are a footnote.
+  const noCompanyBody = (() => {
+    if (tenantCount > 0) return null;
+    if (requests.kind === 'loading') {
+      return (
+        <View style={styles.loading}>
+          <ActivityIndicator color={C.blue} />
+        </View>
+      );
+    }
+    if (requests.kind === 'failed') {
+      return (
+        <DocumentState icon="cloud-off-outline" tone="danger" title="Could not check your requests" body={requests.message} onRetry={retry} />
+      );
+    }
+    if (pending) return null;
+    return (
+      <View style={styles.emptyCard}>
+        <View style={styles.emptyIcon}>
+          <MaterialCommunityIcons name="office-building-outline" size={28} color={C.blue} />
+        </View>
+        <Text style={styles.cardTitle}>No company yet</Text>
+        <Text style={styles.cardSubtitle}>Ask HR for an invite code or QR, then join.</Text>
+        <PrimaryButton icon="plus" label="Join a company" onPress={() => go('JoinTenant')} />
+      </View>
+    );
+  })();
+
+  // Join is offered once the requests are known, so a slow lookup can never invite a duplicate of
+  // a request already waiting. With no company and nothing waiting, the empty card above carries
+  // the one "Join a company" button, so the list does not offer a second.
+  const showJoinRow = tenantCount > 0 || (requests.kind === 'ready' && !!pending);
+  const showList = tenantCount > 0 || !!pending || (requests.kind === 'ready' && requestCount > 0);
+
+  // Companies, the request waiting on HR and the ways to join, in one card with dividers. They
+  // were three cards, and the waiting request had a 56pt "View request" button for a status row.
+  const listCard = showList ? (
+    <Card padded={false}>
+      {tenants.map((t) => {
+        const current = t.id === user?.tenantId;
+        const busy = switchingId === t.id;
+        return (
+          <TouchableOpacity
+            key={t.id}
+            onPress={() => { void openTenant(t); }}
+            disabled={switchingId !== null}
+            activeOpacity={0.7}
+            style={[styles.row, styles.divider]}
+            accessibilityRole="button"
+            accessibilityLabel={current ? `${t.name}, current company` : `Open ${t.name}`}
+            accessibilityState={{ selected: current }}
+          >
+            {t.logoUrl ? (
+              <Image source={{ uri: t.logoUrl }} style={styles.tenantLogo} />
+            ) : (
+              <View style={styles.tenantTile}>
+                <Text style={styles.tenantTileText}>{tenantInitials(t.name)}</Text>
+              </View>
+            )}
+            <View style={styles.flex}>
+              <Text style={styles.rowTitle} numberOfLines={2}>{t.name}</Text>
+              <Text style={styles.rowMeta}>{roleLabel(t.role)}</Text>
+            </View>
+            {/* The company in use is the active state, so it alone gets the blue check. */}
+            {busy ? (
+              <ActivityIndicator size="small" color={C.blue} />
+            ) : current ? (
+              <MaterialCommunityIcons name="check-circle" size={22} color={C.blue} />
+            ) : (
+              <MaterialCommunityIcons name="chevron-right" size={22} color={C.muted} />
+            )}
+          </TouchableOpacity>
+        );
+      })}
+
+      {pending ? (
+        <TouchableOpacity
+          onPress={() => openRequest(pending)}
+          activeOpacity={0.7}
+          style={[styles.row, styles.divider]}
+          accessibilityRole="button"
+          accessibilityLabel={`${pending.tenantName}, waiting for HR`}
+        >
+          <View style={styles.pendingTile}>
+            <MaterialCommunityIcons name="clock-outline" size={20} color="#B45309" />
+          </View>
+          <View style={styles.flex}>
+            <Text style={styles.rowTitle} numberOfLines={2}>{pending.tenantName}</Text>
+            <Text style={styles.pendingMeta} numberOfLines={2}>
+              Waiting for HR · sent {whenText(pending.createdAt)}
+            </Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={22} color={C.muted} />
+        </TouchableOpacity>
+      ) : null}
+
+      {requestCount > 0 ? (
+        <MenuRow
+          icon="format-list-bulleted"
+          title="Your join requests"
+          onPress={() => go('MyJoinRequests')}
+          last={!showJoinRow}
+          right={
+            <View style={styles.rowRight}>
+              <View style={styles.countPill}>
+                <Text style={styles.countText}>{requestCount}</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={22} color={C.muted} />
+            </View>
+          }
+        />
+      ) : null}
+
+      {showJoinRow ? (
+        <MenuRow icon="plus" title={tenantCount > 0 ? 'Join another company' : 'Join a company'} onPress={() => go('JoinTenant')} last />
+      ) : null}
+    </Card>
+  ) : null;
+
+  // Pushed from Home's company pill: the standard page with a back arrow and a centred title.
+  if (navigation.canGoBack()) {
+    return (
+      <AccountPage title="Companies" subtitle={user?.email || undefined}>
+        {noCompanyBody}
+        {listCard}
+      </AccountPage>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      <AuthBackdrop scriptLines={[]} />
+      <AuthBackdrop />
 
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.brand}>
             <Text style={styles.brandAccent}>Ai</Text>Payroll
@@ -139,7 +311,6 @@ export const UserHomeScreen: React.FC = () => {
             onPress={() => go('AccountSettings')}
             accessibilityRole="button"
             accessibilityLabel="Account settings"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             {avatarUrl ? (
               <Image source={{ uri: avatarUrl }} style={styles.accountPhoto} />
@@ -150,133 +321,14 @@ export const UserHomeScreen: React.FC = () => {
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          {/* Greeting */}
-          <View style={styles.greetingRow}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{initials}</Text>
-            </View>
-            <View style={styles.greetingText}>
-              <Text style={styles.greetingSmall}>Good to see you,</Text>
-              <Text style={styles.greetingName} numberOfLines={1}>
-                Hi, {firstName}!
-              </Text>
-              <Text style={styles.greetingHint}>
-                {tenantCount > 0 ? 'Pick a company to open it.' : 'Manage your companies, payroll and more.'}
-              </Text>
-            </View>
-          </View>
+          <Text style={styles.greeting} numberOfLines={1}>
+            {firstName ? `Hi, ${firstName}` : 'Hi there'}
+          </Text>
+          {/* A quiet label, not a second heading under the greeting. */}
+          {tenantCount > 0 ? <Text style={styles.sectionLabel}>Choose a company</Text> : null}
 
-          {/* Companies this person belongs to */}
-          {tenantCount > 0 ? (
-            <>
-              <SectionHeader title="Your companies" />
-              <Card padded={false}>
-                {tenants.map((t, index) => {
-                  const current = t.id === user?.tenantId;
-                  const busy = switchingId === t.id;
-                  return (
-                    <TouchableOpacity
-                      key={t.id}
-                      onPress={() => { void openTenant(t); }}
-                      disabled={switchingId !== null}
-                      activeOpacity={0.7}
-                      style={[styles.tenantRow, index < tenantCount - 1 && styles.tenantDivider]}
-                      accessibilityRole="button"
-                    >
-                      {t.logoUrl ? (
-                        <Image source={{ uri: t.logoUrl }} style={styles.tenantLogo} />
-                      ) : (
-                        <View style={styles.tenantTile}>
-                          <Text style={styles.tenantTileText}>{tenantInitials(t.name)}</Text>
-                        </View>
-                      )}
-                      <View style={styles.flex}>
-                        <Text style={styles.tenantName} numberOfLines={2}>{t.name}</Text>
-                        <Text style={styles.tenantRole}>{t.role || 'Member'}{current ? ' · Current' : ''}</Text>
-                      </View>
-                      {busy ? (
-                        <ActivityIndicator size="small" color={C.blue} />
-                      ) : current ? (
-                        <MaterialCommunityIcons name="check-circle" size={22} color={C.blue} />
-                      ) : (
-                        <MaterialCommunityIcons name="chevron-right" size={24} color={C.muted} />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </Card>
-            </>
-          ) : null}
-
-          {/* A request is with HR */}
-          {pending ? (
-            <Card>
-              <View style={styles.pendingRow}>
-                <View style={styles.pendingIcon}>
-                  <MaterialCommunityIcons name="clock-outline" size={26} color="#D97706" />
-                </View>
-                <View style={styles.flex}>
-                  <Text style={styles.pendingTitle}>Waiting for HR approval</Text>
-                  <Text style={styles.pendingCompany} numberOfLines={2}>{pending.tenantName}</Text>
-                  <Text style={styles.pendingMeta}>Submitted {whenText(pending.createdAt)}</Text>
-                </View>
-              </View>
-              <PrimaryButton icon="eye-outline" label="View Request" onPress={() => openRequest(pending)} />
-            </Card>
-          ) : null}
-
-          {/* Nothing at all yet */}
-          {tenantCount === 0 && !pending ? (
-            <View style={styles.emptyCard}>
-              <View style={styles.illustration}>
-                <MaterialCommunityIcons name="cloud" size={156} color="#E4EDFB" style={styles.cloud} />
-                <MaterialCommunityIcons name="city-variant" size={96} color="#C3D3EC" />
-                <View style={styles.plusBadge}>
-                  <MaterialCommunityIcons name="plus" size={22} color="#FFFFFF" />
-                </View>
-              </View>
-              <Text style={styles.cardTitle}>No Tenant Joined Yet</Text>
-              <Text style={styles.cardSubtitle}>
-                You haven't joined any company/tenant yet.{'\n'}Get started by joining a tenant.
-              </Text>
-              <PrimaryButton icon="plus" label="Join a Tenant" onPress={() => go('JoinTenant')} />
-            </View>
-          ) : null}
-
-          {/* Everything else has its own page */}
-          {tenantCount > 0 || requestCount > 0 || pending ? (
-            <Card padded={false}>
-              {requestCount > 0 ? (
-                <MenuRow
-                  icon="format-list-bulleted"
-                  title="Your Requests"
-                  subtitle="Every company you asked to join"
-                  onPress={() => go('MyJoinRequests')}
-                  right={
-                    <View style={styles.rowRight}>
-                      <View style={styles.countPill}>
-                        <Text style={styles.countText}>{requestCount}</Text>
-                      </View>
-                      <MaterialCommunityIcons name="chevron-right" size={24} color={C.muted} />
-                    </View>
-                  }
-                />
-              ) : null}
-              <MenuRow icon="plus" title="Join Another Company" onPress={() => go('JoinTenant')} last />
-            </Card>
-          ) : null}
-
-          {tenantCount === 0 ? (
-            <View style={styles.helpCard}>
-              <View style={styles.helpIcon}>
-                <MaterialCommunityIcons name="information-outline" size={22} color={C.blue} />
-              </View>
-              <View style={styles.helpText}>
-                <Text style={styles.helpTitle}>Need an invitation?</Text>
-                <Text style={styles.helpBody}>Contact your HR if you need an invitation code or QR.</Text>
-              </View>
-            </View>
-          ) : null}
+          {noCompanyBody}
+          {listCard}
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -284,7 +336,7 @@ export const UserHomeScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F6F8FF' },
+  container: { flex: 1, backgroundColor: C.page },
   safeArea: { flex: 1 },
   flex: { flex: 1 },
   header: {
@@ -292,105 +344,63 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 14,
+    paddingTop: 6,
+    paddingBottom: 8,
   },
   scroll: { paddingHorizontal: 20, paddingBottom: 16 },
-  brand: { fontSize: 26, fontWeight: '800', color: C.ink, letterSpacing: -0.5 },
+  brand: { fontSize: 20, fontWeight: '700', color: C.ink, letterSpacing: -0.4 },
   brandAccent: { color: C.blue },
   accountButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     backgroundColor: '#E6ECF6',
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
   },
-  accountPhoto: { width: 48, height: 48, borderRadius: 16 },
+  accountPhoto: { width: 44, height: 44, borderRadius: 14 },
 
-  greetingRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 20 },
-  avatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: '#D8E6FB', justifyContent: 'center', alignItems: 'center' },
-  avatarText: { fontSize: 24, fontWeight: '800', color: C.blue },
-  greetingText: { flex: 1 },
-  greetingSmall: { fontSize: 14, color: C.body },
-  greetingName: { fontSize: 24, fontWeight: '800', color: C.ink, marginTop: 2 },
-  greetingHint: { fontSize: 13, color: C.muted, marginTop: 4 },
+  greeting: { fontSize: 20, fontWeight: '700', color: C.ink, marginTop: 4, marginBottom: 12 },
+  sectionLabel: { fontSize: 13, fontWeight: '600', color: C.body, marginBottom: 8, marginLeft: 2 },
 
-  // Companies
-  tenantRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 16, paddingVertical: 14 },
-  tenantDivider: { borderBottomWidth: 1, borderBottomColor: C.line },
-  tenantLogo: { width: 48, height: 48, borderRadius: 14, backgroundColor: C.field },
-  tenantTile: { width: 48, height: 48, borderRadius: 14, backgroundColor: C.blue, justifyContent: 'center', alignItems: 'center' },
-  tenantTileText: { fontSize: 16, fontWeight: '800', color: '#FFFFFF' },
-  tenantName: { fontSize: 16, fontWeight: '700', color: C.ink },
-  tenantRole: { fontSize: 13, color: C.body, marginTop: 2 },
+  // Rows of the one card
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12, minHeight: 64 },
+  divider: { borderBottomWidth: 1, borderBottomColor: C.line },
+  rowTitle: { fontSize: 15, fontWeight: '700', color: C.ink },
+  rowMeta: { fontSize: 12, color: C.body, marginTop: 2 },
+  // Initials on the soft tint: solid blue is kept for buttons and the active state.
+  tenantLogo: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.field },
+  tenantTile: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.blueSoft, justifyContent: 'center', alignItems: 'center' },
+  tenantTileText: { fontSize: 15, fontWeight: '700', color: C.blue },
+  pendingTile: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#FFF4E5', justifyContent: 'center', alignItems: 'center' },
+  pendingMeta: { fontSize: 12, color: '#B45309', marginTop: 2 },
 
-  // Pending
-  pendingRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 18 },
-  pendingIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#FFF4E5', justifyContent: 'center', alignItems: 'center' },
-  pendingTitle: { fontSize: 13, fontWeight: '700', color: '#B45309', letterSpacing: 0.3, textTransform: 'uppercase' },
-  pendingCompany: { fontSize: 18, fontWeight: '800', color: C.ink, marginTop: 2 },
-  pendingMeta: { fontSize: 13, color: C.body, marginTop: 2 },
+  loading: { paddingVertical: 40, alignItems: 'center' },
 
   // Empty state
   emptyCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    paddingVertical: 28,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-    marginBottom: 14,
-    shadowColor: C.blue,
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
-  },
-  illustration: { width: 190, height: 140, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
-  cloud: { position: 'absolute', top: -4 },
-  plusBadge: {
-    position: 'absolute',
-    right: 24,
-    bottom: 14,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: C.blue,
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: C.blue,
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
-  },
-  cardTitle: { fontSize: 20, fontWeight: '800', color: C.ink, marginBottom: 8 },
-  cardSubtitle: { fontSize: 14, color: C.body, lineHeight: 21, textAlign: 'center', marginBottom: 22 },
-
-  // Rows
-  rowRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  countPill: { minWidth: 26, height: 26, borderRadius: 13, paddingHorizontal: 8, backgroundColor: '#E6EEFF', justifyContent: 'center', alignItems: 'center' },
-  countText: { fontSize: 12, fontWeight: '800', color: C.blue },
-
-  // Help
-  helpCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    borderRadius: 20,
-    padding: 16,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: C.line,
-    marginTop: 6,
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    marginBottom: 12,
+    shadowColor: C.ink,
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
-  helpIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#E6EEFF', justifyContent: 'center', alignItems: 'center' },
-  helpText: { flex: 1 },
-  helpTitle: { fontSize: 15, fontWeight: '700', color: C.ink },
-  helpBody: { fontSize: 13, color: C.body, lineHeight: 18, marginTop: 2 },
+  emptyIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: C.blueSoft, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
+  cardTitle: { fontSize: 18, fontWeight: '700', color: C.ink, marginBottom: 4 },
+  cardSubtitle: { fontSize: 14, color: C.body, lineHeight: 20, textAlign: 'center', marginBottom: 16 },
+
+  rowRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  countPill: { minWidth: 26, height: 26, borderRadius: 13, paddingHorizontal: 8, backgroundColor: C.blueSoft, justifyContent: 'center', alignItems: 'center' },
+  countText: { fontSize: 12, fontWeight: '700', color: C.blue },
 });
 
 export default UserHomeScreen;

@@ -1,23 +1,29 @@
 /**
  * Employee Map Screen
- * Allows managers to track employee GPS locations during attendance check-in
+ * Where today's clock-ins came from. Opened from Team Today, either on the
+ * person HR tapped or, from the header's map button, on everyone at once.
+ *
+ * The map no longer waits for the viewer's own location. The pins do not
+ * depend on where HR is standing, and indoors a GPS fix could leave
+ * "Finding everyone..." spinning for a long time, or block the map outright if
+ * location was refused. HR's own dot is shown only when they had already allowed
+ * location for punching; this screen never asks, because the system prompt's
+ * text is about attendance check-in and an HR officer who never punches would
+ * be asked for nothing.
+ *
+ * Google Maps on Android, Apple Maps on iOS: forcing Google on iOS needs the
+ * Google Maps iOS SDK, which this app does not ship, and shows an error tile.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  StatusBar,
-  ActivityIndicator,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, StatusBar, Platform, ScrollView } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
+import { personInitials } from '../components/attendance/PunchRequestUi';
 
 interface EmployeeLocation {
   id: string;
@@ -25,299 +31,231 @@ interface EmployeeLocation {
   latitude: number;
   longitude: number;
   checkInTime: string;
+  /** Set only for someone who has clocked out since; their pin is the clock-in place. */
+  checkOutTime?: string;
   position?: string;
   department?: string;
 }
 
-interface EmployeeMapScreenProps {
-  navigation?: any;
-  route?: any;
+/** What Team Today passes. No selectedEmployee means "show everyone". */
+interface MapParams {
+  selectedEmployee?: EmployeeLocation;
+  employees?: EmployeeLocation[];
 }
 
-const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navProp, route: routeProp }) => {
-  const navigation = navProp || useNavigation();
-  const route = routeProp || useRoute();
+/**
+ * Pins are green for a clock-in; the one being looked at is blue; someone who has
+ * left is the same green, faded. Android colours pins by hue only, so a grey pin
+ * would come out blue and read as "selected".
+ */
+const PIN_IN = '#16A34A';
+const LEFT_OPACITY = 0.5;
+
+/** Two punches from the same office land on the same spot to within a metre or so. */
+const spotOf = (e: EmployeeLocation) => `${e.latitude.toFixed(5)},${e.longitude.toFixed(5)}`;
+
+const EmployeeMapScreen: React.FC = () => {
+  const navigation = useNavigation();
+  const route = useRoute();
+  const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
+  const params = (route.params ?? {}) as unknown as MapParams;
 
-  const [currentLocation, setCurrentLocation] = useState<{
-    latitude: number;
-    longitude: number;
-  } | null>(null);
-  const [loading, setLoading] = useState(true);
-  // Both refusals end the screen, so they are the screen rather than a dialog
-  // stacked over a map that will never draw.
-  const [blocked, setBlocked] = useState<{ title: string; body: string } | null>(null);
-  const [employees, setEmployees] = useState<EmployeeLocation[]>([]);
-  const [selectedEmployee, setSelectedEmployee] = useState<EmployeeLocation | null>(null);
+  // The tapped person is always on the map, even if the list did not repeat them.
+  const employees = useMemo<EmployeeLocation[]>(() => {
+    const list = params.employees ?? [];
+    const selected = params.selectedEmployee;
+    return selected && !list.some((e) => e.id === selected.id) ? [selected, ...list] : list;
+  }, [params.employees, params.selectedEmployee]);
 
+  const [selectedEmployee, setSelectedEmployee] = useState<EmployeeLocation | null>(params.selectedEmployee ?? null);
+  const [showMe, setShowMe] = useState(false);
+  const [cardHeight, setCardHeight] = useState(0);
+
+  // The viewer's own dot, only if location was already granted. Never prompts.
   useEffect(() => {
-    // Get selected employee and employee list from route params
-    const params = route.params as any;
-    if (params?.selectedEmployee) {
-      setSelectedEmployee(params.selectedEmployee);
-    }
-    if (params?.employees) {
-      setEmployees(params.employees);
-    } else {
-      setEmployees([]);
-    }
-
-    requestLocationPermission();
+    let cancelled = false;
+    Location.getForegroundPermissionsAsync()
+      .then((current) => {
+        if (!cancelled && current.granted) setShowMe(true);
+      })
+      .catch(() => {
+        // No dot for the viewer; the employees' pins are unaffected.
+      });
+    return () => { cancelled = true; };
   }, []);
 
-  const requestLocationPermission = async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
+  // Opened on everyone: start over the middle of them, then fit them all once the map
+  // can measure itself. Opened on one person: start close on them.
+  const overview = !params.selectedEmployee;
+  const start = useMemo(() => {
+    const focus = params.selectedEmployee ?? null;
+    if (focus) return { latitude: focus.latitude, longitude: focus.longitude };
+    if (employees.length === 0) return null;
+    const sum = employees.reduce((acc, e) => ({ lat: acc.lat + e.latitude, lng: acc.lng + e.longitude }), { lat: 0, lng: 0 });
+    return { latitude: sum.lat / employees.length, longitude: sum.lng / employees.length };
+  }, [params.selectedEmployee, employees]);
 
-      if (status !== 'granted') {
-        setBlocked({
-          title: 'Location access is off',
-          body: 'The map places people against where you are, so it needs your location. You can turn it on and try again.',
-        });
-        setLoading(false);
-        return;
-      }
-
-      // Get current location
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
-      setCurrentLocation({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      });
-      setLoading(false);
-    } catch (error) {
-      setBlocked({
-        title: 'Could not find where you are',
-        body: 'Step outside or near a window and try again.',
-      });
-      setLoading(false);
-    }
+  const fitEveryone = () => {
+    if (!overview || employees.length < 2) return;
+    mapRef.current?.fitToCoordinates(
+      employees.map((e) => ({ latitude: e.latitude, longitude: e.longitude })),
+      // The card's height is not known on the first frame; 140 is what it measures empty.
+      { edgePadding: { top: 48, right: 48, bottom: Math.max(cardHeight, 140) + 48, left: 48 }, animated: false },
+    );
   };
+
+  // Everyone else whose clock-in landed on the selected person's spot. Only the top pin
+  // of a stack can be tapped, so these are reached from the card instead.
+  const sameSpot = useMemo(() => {
+    if (!selectedEmployee) return [];
+    const spot = spotOf(selectedEmployee);
+    return employees.filter((e) => e.id !== selectedEmployee.id && spotOf(e) === spot);
+  }, [employees, selectedEmployee]);
 
   const handleMarkerPress = (employee: EmployeeLocation) => {
     setSelectedEmployee(employee);
-
-    // Animate map to employee location
-    if (mapRef.current) {
-      mapRef.current.animateToRegion({
-        latitude: employee.latitude,
-        longitude: employee.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      }, 1000);
-    }
+    mapRef.current?.animateToRegion({
+      latitude: employee.latitude,
+      longitude: employee.longitude,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    }, 600);
   };
 
-  // Center map on selected employee when component mounts
-  useEffect(() => {
-    if (selectedEmployee && mapRef.current && currentLocation) {
-      setTimeout(() => {
-        mapRef.current?.animateToRegion({
-          latitude: selectedEmployee.latitude || currentLocation.latitude,
-          longitude: selectedEmployee.longitude || currentLocation.longitude,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        }, 1000);
-      }, 500);
-    }
-  }, [currentLocation, selectedEmployee]);
+  const subtitle = employees.length > 0
+    ? `${employees.length} ${employees.length === 1 ? 'person' : 'people'} on the map`
+    : null;
 
-  if (loading) {
-    return (
-      <View style={styles.stateContainer}>
-        <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-        <AuthBackdrop scriptLines={[]} />
-        <ActivityIndicator size="large" color={C.blue} />
-        <Text style={styles.loadingText}>Finding everyone…</Text>
+  const header = (
+    <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.back}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+        >
+          <MaterialCommunityIcons name="arrow-left" size={24} color={C.ink} />
+        </TouchableOpacity>
+        <View style={styles.headerText} pointerEvents="none">
+          <Text style={styles.headerTitle} numberOfLines={1}>Clock-in Map</Text>
+          {subtitle ? <Text style={styles.headerSub} numberOfLines={1}>{subtitle}</Text> : null}
+        </View>
       </View>
-    );
-  }
+    </SafeAreaView>
+  );
 
-  if (blocked) {
+  // Reached without anyone to show (no list passed, or nobody with a location).
+  if (!start) {
     return (
-      <View style={styles.stateContainer}>
+      <View style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
         <AuthBackdrop scriptLines={[]} />
-        <View style={styles.blockedCard}>
-          <View style={styles.blockedIcon}>
-            <MaterialCommunityIcons name="map-marker-off-outline" size={26} color={C.blue} />
-          </View>
-          <Text style={styles.blockedTitle}>{blocked.title}</Text>
-          <Text style={styles.blockedBody}>{blocked.body}</Text>
-          <TouchableOpacity
-            style={styles.blockedButton}
-            onPress={() => {
-              setBlocked(null);
-              setLoading(true);
-              void requestLocationPermission();
-            }}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-          >
-            <Text style={styles.blockedButtonText}>Try again</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => navigation?.goBack()}
-            style={styles.blockedBackHit}
-            accessibilityRole="button"
-          >
-            <Text style={styles.blockedBack}>Go back</Text>
-          </TouchableOpacity>
+        {header}
+        <View style={styles.emptyCard}>
+          <MaterialCommunityIcons name="map-marker-off-outline" size={28} color={C.muted} />
+          <Text style={styles.emptyTitle}>No clock-in locations today</Text>
+          <Text style={styles.emptyBody}>Office terminal clock-ins have a time but no place.</Text>
         </View>
       </View>
     );
   }
+
+  const role = [selectedEmployee?.position, selectedEmployee?.department].filter(Boolean).join(' · ');
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      {header}
 
-      {/* Header */}
-      <SafeAreaView style={styles.safeAreaTop} edges={['top']}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation?.goBack()}
-            style={styles.back}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <MaterialCommunityIcons name="arrow-left" size={26} color={C.ink} />
-          </TouchableOpacity>
-          <View style={styles.headerText} pointerEvents="none">
-            <Text style={styles.headerTitle}>Employee Map</Text>
-            <Text style={styles.headerSubtitle}>Where today's punches came from</Text>
-          </View>
-        </View>
-      </SafeAreaView>
-
-      {/* Map View */}
-      {currentLocation && (
-        <MapView
-          ref={mapRef}
-          style={styles.map}
-          provider={PROVIDER_GOOGLE}
-          initialRegion={{
-            latitude: selectedEmployee?.latitude || currentLocation.latitude,
-            longitude: selectedEmployee?.longitude || currentLocation.longitude,
-            latitudeDelta: selectedEmployee ? 0.01 : 0.02,
-            longitudeDelta: selectedEmployee ? 0.01 : 0.02,
-          }}
-          showsUserLocation={true}
-          showsMyLocationButton={true}
-          showsCompass={true}
-        >
-          {/* Manager's location circle */}
-          <Circle
-            center={currentLocation}
-            radius={500}
-            fillColor="rgba(47, 107, 255, 0.10)"
-            strokeColor="rgba(47, 107, 255, 0.30)"
-            strokeWidth={2}
-          />
-
-          {/* Employee markers */}
-          {employees.map((employee) => (
+      <MapView
+        ref={mapRef}
+        style={styles.map}
+        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+        initialRegion={{
+          latitude: start.latitude,
+          longitude: start.longitude,
+          // Wide while fitEveryone has not run yet; one person (or one pin) starts close.
+          latitudeDelta: overview && employees.length > 1 ? 0.05 : 0.01,
+          longitudeDelta: overview && employees.length > 1 ? 0.05 : 0.01,
+        }}
+        onMapReady={fitEveryone}
+        // Keeps Google's buttons and the selected pin clear of the card below.
+        mapPadding={{ top: 0, right: 0, bottom: cardHeight, left: 0 }}
+        showsUserLocation={showMe}
+        showsMyLocationButton={showMe}
+        showsCompass
+      >
+        {employees.map((employee) => {
+          const selected = selectedEmployee?.id === employee.id;
+          const left = Boolean(employee.checkOutTime);
+          return (
             <Marker
               key={employee.id}
-              coordinate={{
-                latitude: employee.latitude,
-                longitude: employee.longitude,
-              }}
+              coordinate={{ latitude: employee.latitude, longitude: employee.longitude }}
               title={employee.name}
-              description={`Check-in: ${employee.checkInTime}`}
+              description={left ? `In ${employee.checkInTime} · out ${employee.checkOutTime}` : `Clocked in ${employee.checkInTime}`}
+              pinColor={selected ? C.blue : PIN_IN}
+              opacity={left && !selected ? LEFT_OPACITY : 1}
+              // The selected pin sits on top of any others at the same spot.
+              zIndex={selected ? 2 : 1}
               onPress={() => handleMarkerPress(employee)}
-            >
-              <View style={[
-                styles.employeeMarker,
-                selectedEmployee?.id === employee.id && styles.employeeMarkerSelected,
-              ]}>
-                <MaterialCommunityIcons
-                  name="account-circle"
-                  size={selectedEmployee?.id === employee.id ? 40 : 36}
-                  color={selectedEmployee?.id === employee.id ? C.blue : C.muted}
-                />
-              </View>
-            </Marker>
-          ))}
-        </MapView>
-      )}
+            />
+          );
+        })}
+      </MapView>
 
-      {/* Bottom Info Card */}
-      <View style={styles.bottomCard}>
-        <View style={styles.grabber} />
+      {/* The card pads itself above the home indicator / Android nav bar, which
+          it used to sit under. */}
+      <View
+        style={[styles.bottomCard, { paddingBottom: 16 + insets.bottom }]}
+        onLayout={(e) => setCardHeight(Math.round(e.nativeEvent.layout.height))}
+      >
         {selectedEmployee ? (
-          // Show selected employee info
           <>
-            <View style={styles.employeeInfoHeader}>
+            <View style={styles.employeeRow}>
               <View style={styles.employeeAvatar}>
-                <Text style={styles.employeeAvatarText}>
-                  {selectedEmployee.name.charAt(0).toUpperCase()}
-                </Text>
+                <Text style={styles.employeeAvatarText}>{personInitials(selectedEmployee.name)}</Text>
               </View>
               <View style={styles.employeeInfo}>
-                <Text style={styles.employeeName} numberOfLines={1}>{selectedEmployee.name}</Text>
-                {selectedEmployee.position && (
-                  <Text style={styles.employeePosition} numberOfLines={1}>{selectedEmployee.position}</Text>
-                )}
-                {selectedEmployee.department && (
-                  <View style={styles.departmentRow}>
-                    <MaterialCommunityIcons name="office-building-outline" size={13} color={C.muted} />
-                    <Text style={styles.employeeDepartment} numberOfLines={1}>{selectedEmployee.department}</Text>
+                <Text style={styles.employeeName} numberOfLines={1}>{selectedEmployee.name || 'Unnamed employee'}</Text>
+                {role ? <Text style={styles.employeeRole} numberOfLines={1}>{role}</Text> : null}
+              </View>
+              <View style={styles.times}>
+                <View style={[styles.timePill, styles.timePillIn]}>
+                  <Text style={[styles.timeText, styles.timeTextIn]} numberOfLines={1}>In {selectedEmployee.checkInTime}</Text>
+                </View>
+                {selectedEmployee.checkOutTime ? (
+                  <View style={[styles.timePill, styles.timePillOut]}>
+                    <Text style={[styles.timeText, styles.timeTextOut]} numberOfLines={1}>Out {selectedEmployee.checkOutTime}</Text>
                   </View>
-                )}
+                ) : null}
               </View>
             </View>
 
-            <View style={styles.locationDetails}>
-              <View style={styles.detailRow}>
-                <MaterialCommunityIcons name="clock-outline" size={18} color={C.blue} />
-                <Text style={styles.detailLabel}>Check-in</Text>
-                <Text style={styles.detailValue} numberOfLines={1}>{selectedEmployee.checkInTime}</Text>
+            {sameSpot.length > 0 ? (
+              <View style={styles.alsoHere}>
+                <Text style={styles.alsoLabel}>Same place</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.alsoRow}>
+                  {sameSpot.map((e) => (
+                    <TouchableOpacity
+                      key={e.id}
+                      style={styles.alsoChip}
+                      onPress={() => setSelectedEmployee(e)}
+                      hitSlop={{ top: 5, bottom: 5 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Show ${e.name}`}
+                    >
+                      <Text style={styles.alsoText} numberOfLines={1}>{e.name || 'Unnamed employee'}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
               </View>
-              <View style={styles.detailDivider} />
-              <View style={styles.detailRow}>
-                <MaterialCommunityIcons name="map-marker-outline" size={18} color={C.blue} />
-                <Text style={styles.detailLabel}>Location</Text>
-                <Text style={styles.detailValue} numberOfLines={1}>
-                  {selectedEmployee.latitude.toFixed(4)}, {selectedEmployee.longitude.toFixed(4)}
-                </Text>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={styles.secondaryButton}
-              onPress={() => navigation?.goBack()}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-            >
-              <Text style={styles.secondaryButtonText}>Back to list</Text>
-            </TouchableOpacity>
+            ) : null}
           </>
         ) : (
-          // Show default map info
-          <>
-            <View style={styles.mapIcon}>
-              <MaterialCommunityIcons name="map-search-outline" size={28} color={C.blue} />
-            </View>
-
-            <Text style={styles.cardTitle}>Employee Map</Text>
-            <Text style={styles.cardDescription}>
-              Tap a marker to see who clocked in there and when.
-            </Text>
-
-            <TouchableOpacity
-              style={styles.secondaryButton}
-              onPress={() => navigation?.goBack()}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-            >
-              <Text style={styles.secondaryButtonText}>Back to list</Text>
-            </TouchableOpacity>
-          </>
+          <Text style={styles.hint}>Tap a pin to see who clocked in there.</Text>
         )}
       </View>
     </View>
@@ -327,91 +265,45 @@ const EmployeeMapScreen: React.FC<EmployeeMapScreenProps> = ({ navigation: navPr
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F6F8FF',
+    backgroundColor: C.page,
   },
-
-  // Loading and permission refusals share one frame: backdrop, centred content.
-  stateContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-    backgroundColor: '#F6F8FF',
-  },
-  loadingText: {
-    marginTop: 14,
-    fontSize: 14,
-    color: C.body,
-  },
-  blockedCard: {
-    width: '100%',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    paddingHorizontal: 24,
-    paddingVertical: 28,
-    shadowColor: C.blue,
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
-  },
-  blockedIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#E6EEFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  blockedTitle: { fontSize: 18, fontWeight: '800', color: C.ink, textAlign: 'center', marginBottom: 8 },
-  blockedBody: { fontSize: 14, color: C.body, textAlign: 'center', lineHeight: 20 },
-  blockedButton: {
-    marginTop: 20,
-    alignSelf: 'stretch',
-    paddingVertical: 14,
-    borderRadius: 14,
-    backgroundColor: C.blue,
-  },
-  blockedButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15, textAlign: 'center' },
-  blockedBackHit: { marginTop: 6, paddingVertical: 10, paddingHorizontal: 16 },
-  blockedBack: { fontSize: 14, fontWeight: '600', color: C.body },
 
   safeAreaTop: {
-    backgroundColor: '#F6F8FF',
+    backgroundColor: C.page,
     zIndex: 10,
   },
-  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, justifyContent: 'center' },
-  back: { width: 40, height: 40, alignItems: 'flex-start', justifyContent: 'center' },
+  header: { minHeight: 52, paddingHorizontal: 10, justifyContent: 'center' },
+  back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   headerText: {
     ...StyleSheet.absoluteFillObject,
-    left: 68,
-    right: 68,
+    left: 60,
+    right: 60,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: C.ink },
-  headerSubtitle: { fontSize: 13, color: C.body, marginTop: 2 },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: C.ink },
+  headerSub: { fontSize: 13, color: C.muted, marginTop: 1 },
+
+  emptyCard: {
+    margin: 16,
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: C.line,
+    padding: 16,
+    shadowColor: C.blue,
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  emptyTitle: { fontSize: 15, fontWeight: '700', color: C.ink, textAlign: 'center', marginTop: 4 },
+  emptyBody: { fontSize: 13, lineHeight: 18, color: C.body, textAlign: 'center' },
 
   map: {
     flex: 1,
-  },
-  employeeMarker: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 4,
-    borderWidth: 2,
-    borderColor: C.line,
-  },
-  employeeMarkerSelected: {
-    borderWidth: 3,
-    borderColor: C.blue,
-    shadowColor: C.blue,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 6,
   },
 
   bottomCard: {
@@ -420,133 +312,53 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 24,
-    paddingTop: 12,
-    paddingBottom: 32,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingHorizontal: 16,
+    paddingTop: 14,
     shadowColor: C.blue,
-    shadowOffset: { width: 0, height: -6 },
+    shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.08,
-    shadowRadius: 16,
+    shadowRadius: 12,
     elevation: 8,
-    alignItems: 'center',
   },
-  // A short bar so the card reads as a sheet resting over the map.
-  grabber: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.line, marginBottom: 16 },
+  hint: { fontSize: 14, color: C.body, textAlign: 'center', paddingVertical: 6 },
 
-  mapIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#E6EEFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: C.ink,
-    marginBottom: 6,
-  },
-  cardDescription: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: C.body,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-
-  secondaryButton: {
-    width: '100%',
-    paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: C.line,
-    backgroundColor: C.field,
-  },
-  secondaryButtonText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: C.ink,
-    textAlign: 'center',
-  },
-
-  employeeInfoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    marginBottom: 16,
-    width: '100%',
-  },
+  employeeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  // Initials in ink on grey: blue is kept for buttons and the selected pin.
   employeeAvatar: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: '#E6EEFF',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#EEF2F7',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  employeeAvatarText: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: C.blue,
-  },
-  employeeInfo: {
-    flex: 1,
-  },
-  employeeName: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: C.ink,
-  },
-  employeePosition: {
-    fontSize: 13,
-    color: C.body,
-    marginTop: 2,
-  },
-  departmentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 3,
-  },
-  employeeDepartment: {
-    flex: 1,
-    fontSize: 12,
-    color: C.muted,
-  },
+  employeeAvatarText: { fontSize: 14, fontWeight: '700', color: C.ink, letterSpacing: 0.5 },
+  employeeInfo: { flex: 1, minWidth: 0 },
+  employeeName: { fontSize: 15, fontWeight: '700', color: C.ink },
+  employeeRole: { fontSize: 12, color: C.body, marginTop: 1 },
+  times: { flexShrink: 0, alignItems: 'flex-end', gap: 4 },
+  timePill: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999 },
+  timePillIn: { backgroundColor: `${PIN_IN}1A` },
+  timePillOut: { backgroundColor: '#EEF2F7' },
+  timeText: { fontSize: 12, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  timeTextIn: { color: PIN_IN },
+  timeTextOut: { color: C.body },
 
-  locationDetails: {
-    width: '100%',
-    backgroundColor: C.field,
+  alsoHere: { marginTop: 12, gap: 6 },
+  alsoLabel: { fontSize: 12, color: C.muted },
+  alsoRow: { gap: 8 },
+  alsoChip: {
+    height: 34,
+    borderRadius: 17,
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: C.line,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 4,
-    marginBottom: 18,
   },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 12,
-  },
-  detailDivider: { height: 1, backgroundColor: C.line },
-  detailLabel: {
-    fontSize: 13,
-    color: C.body,
-  },
-  detailValue: {
-    flex: 1,
-    fontSize: 14,
-    color: C.ink,
-    fontWeight: '700',
-    textAlign: 'right',
-    fontVariant: ['tabular-nums'],
-  },
+  alsoText: { fontSize: 13, fontWeight: '600', color: C.ink },
 });
 
 export default EmployeeMapScreen;

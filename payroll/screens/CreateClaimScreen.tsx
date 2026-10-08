@@ -14,11 +14,14 @@
  * A receipt can only be attached as the claim is created: the API has one
  * multipart action, on create. Editing therefore shows the receipt and says
  * plainly that it cannot be swapped, instead of offering a control that fails.
+ *
+ * Two cards and a fixed Send button, sized to sit on one phone screen: the form
+ * used to run to about 880pt against 760pt of room, so the button that sends it
+ * was the one thing on the page you had to scroll to find.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -31,10 +34,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { StackActions, usePreventRemove, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
 import PrimaryButton from '../components/auth/PrimaryButton';
 import { useDialog } from '../components/ui/AppDialog';
@@ -46,13 +49,14 @@ import {
   ClaimState,
   ReceiptButton,
   ReceiptRow,
+  allowance,
+  allowancePeriod,
   claimDate,
   claimIcon,
-  claimTint,
-  claimWash,
   money,
   parseAmount,
   receiptRejectionReason,
+  tighterAllowance,
 } from '../components/claims/ClaimUi';
 
 type Params = { CreateClaim: { claimId?: string } | undefined };
@@ -62,10 +66,26 @@ const MIN_DESCRIPTION = 10;
 
 type Field = 'type' | 'amount' | 'description' | 'receipt';
 
+/**
+ * The claim as it was when an edit opened. Two jobs: telling a real change from
+ * a look-and-leave before asking "discard?", and knowing how much of the
+ * balance's "used" is this very claim.
+ */
+interface Original {
+  typeId: string | null;
+  amount: number;
+  amountText: string;
+  /** YYYY-MM-DD */
+  day: string;
+  description: string;
+  receiptNo: string;
+}
+
 export const CreateClaimScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<Params, 'CreateClaim'>>();
   const dialog = useDialog();
+  const insets = useSafeAreaInsets();
 
   const claimId = route.params?.claimId;
   const editing = typeof claimId === 'string' && claimId.length > 0;
@@ -84,14 +104,26 @@ export const CreateClaimScreen: React.FC = () => {
   const [receiptDate, setReceiptDate] = useState<string | null>(null);
   const [existingReceipt, setExistingReceipt] = useState<string | null>(null);
   const [file, setFile] = useState<PickedFile | null>(null);
+  const [original, setOriginal] = useState<Original | null>(null);
 
   const [showTypes, setShowTypes] = useState(false);
   const [showDate, setShowDate] = useState(false);
+  /** The iOS wheel's own value, kept apart until Done so Cancel really cancels. */
+  const [draftDate, setDraftDate] = useState(new Date());
   const [showSource, setShowSource] = useState(false);
   const [touched, setTouched] = useState<Record<Field, boolean>>({
     type: false, amount: false, description: false, receipt: false,
   });
   const [saving, setSaving] = useState(false);
+
+  const pendingSource = useRef<PickSource | null>(null);
+  const pickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Set once the claim is saved, so leaving does not ask "discard?". */
+  const leaving = useRef(false);
+
+  useEffect(() => () => {
+    if (pickTimer.current) clearTimeout(pickTimer.current);
+  }, []);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -105,14 +137,26 @@ export const CreateClaimScreen: React.FC = () => {
       setBalances(balanceList);
 
       if (claim) {
-        setTypeId(claim.claimTypeId);
-        setAmount(claim.amount > 0 ? claim.amount.toFixed(2) : '');
+        const amountText = claim.amount > 0 ? claim.amount.toFixed(2) : '';
         const parsed = /^(\d{4})-(\d{2})-(\d{2})/.exec(claim.transDate);
-        if (parsed) setTransDate(new Date(Number(parsed[1]), Number(parsed[2]) - 1, Number(parsed[3])));
+        const day = parsed
+          ? new Date(Number(parsed[1]), Number(parsed[2]) - 1, Number(parsed[3]))
+          : new Date();
+        setTypeId(claim.claimTypeId);
+        setAmount(amountText);
+        setTransDate(day);
         setDescription(claim.description ?? '');
         setReceiptNo(claim.receiptNo ?? '');
         setReceiptDate(claim.receiptDate);
         setExistingReceipt(claim.attachmentFileName);
+        setOriginal({
+          typeId: claim.claimTypeId,
+          amount: claim.amount,
+          amountText,
+          day: toIsoDay(day),
+          description: claim.description ?? '',
+          receiptNo: claim.receiptNo ?? '',
+        });
       }
     } catch (err) {
       setLoadError(serverMessage(err, editing ? 'Could not open this claim.' : 'Could not load the claim types.'));
@@ -130,6 +174,42 @@ export const CreateClaimScreen: React.FC = () => {
     [balances, typeId],
   );
   const value = parseAmount(amount);
+
+  // ── What is left to claim ──────────────────────────────────────────────
+
+  /**
+   * The budget this claim draws on, or null when there is none to check.
+   *
+   * The balance describes the current month and year. A claim counts against
+   * the month it was spent in, so the monthly figure only applies to a date in
+   * this month, and the yearly one only to a date in this year; checking a
+   * September receipt against October's allowance warned about the wrong month.
+   *
+   * When editing, the server's "used" already includes this claim, so its
+   * original amount is handed back where it was counted -- its own type, its own
+   * month and year -- or a description-only edit was told it was over the limit.
+   */
+  const budget = useMemo(() => {
+    if (!balance) return null;
+    const now = new Date();
+    const thisYear = transDate.getFullYear() === now.getFullYear();
+    const thisMonth = thisYear && transDate.getMonth() === now.getMonth();
+
+    let monthCredit = 0;
+    let yearCredit = 0;
+    if (original && original.typeId === typeId) {
+      const [y, m] = original.day.split('-').map(Number);
+      if (y === now.getFullYear()) {
+        yearCredit = original.amount;
+        if (m - 1 === now.getMonth()) monthCredit = original.amount;
+      }
+    }
+
+    return tighterAllowance(
+      thisMonth ? allowance(balance, 'month', monthCredit) : null,
+      thisYear ? allowance(balance, 'year', yearCredit) : null,
+    );
+  }, [balance, transDate, original, typeId]);
 
   // ── What is wrong, one sentence per field ──────────────────────────────
 
@@ -155,7 +235,52 @@ export const CreateClaimScreen: React.FC = () => {
   const show = (field: Field) => (touched[field] ? errors[field] : undefined);
   const touch = (field: Field) => setTouched((t) => ({ ...t, [field]: true }));
 
-  // ── Receipt ────────────────────────────────────────────────────────────
+  // ── Leaving with something typed ───────────────────────────────────────
+
+  /**
+   * A back-swipe, the Android back button or the arrow used to throw away the
+   * amount, the description and a just-taken receipt photo without a word.
+   * An edit only counts as changed when something differs from what it opened with.
+   */
+  const dirty = useMemo(() => {
+    if (types === null) return false;
+    if (editing) {
+      if (!original) return false;
+      return (
+        typeId !== original.typeId
+        || amount !== original.amountText
+        || toIsoDay(transDate) !== original.day
+        || description !== original.description
+        || receiptNo !== original.receiptNo
+      );
+    }
+    return (
+      typeId !== null
+      || amount.trim() !== ''
+      || description.trim() !== ''
+      || receiptNo.trim() !== ''
+      || file !== null
+    );
+  }, [types, editing, original, typeId, amount, transDate, description, receiptNo, file]);
+
+  usePreventRemove(dirty && !saving, ({ data }) => {
+    if (leaving.current) {
+      navigation.dispatch(data.action);
+      return;
+    }
+    void (async () => {
+      const discard = await dialog.confirm({
+        title: editing ? 'Discard your changes?' : 'Discard this claim?',
+        message: editing ? 'The claim stays as it was.' : 'What you have filled in will be lost.',
+        confirmText: 'Discard',
+        cancelText: 'Keep editing',
+        destructive: true,
+      });
+      if (discard) navigation.dispatch(data.action);
+    })();
+  });
+
+  // ── Type, date and receipt pickers ─────────────────────────────────────
 
   /**
    * Closing the sheet with nothing chosen is the moment the field counts as
@@ -167,8 +292,22 @@ export const CreateClaimScreen: React.FC = () => {
     touch('type');
   };
 
+  const openDate = () => {
+    setDraftDate(transDate);
+    setShowDate(true);
+  };
+
+  const onAndroidDate = (event: DateTimePickerEvent, picked?: Date) => {
+    setShowDate(false);
+    if (event.type === 'set' && picked) setTransDate(picked);
+  };
+
+  const confirmIosDate = () => {
+    setTransDate(draftDate);
+    setShowDate(false);
+  };
+
   const addReceipt = async (source: PickSource) => {
-    setShowSource(false);
     let picked: PickedFile | null;
     try {
       picked = await pickFile(source);
@@ -185,6 +324,28 @@ export const CreateClaimScreen: React.FC = () => {
     }
     setFile(picked);
     touch('receipt');
+  };
+
+  const startPendingPick = () => {
+    const source = pendingSource.current;
+    pendingSource.current = null;
+    if (source) void addReceipt(source);
+  };
+
+  /**
+   * The picker opens once the sheet has gone, not while it is fading out. iOS
+   * will not present the camera, the photo library or the document picker over
+   * a modal that is still being dismissed: "Take a photo" did nothing on the
+   * first tap, or its promise never settled. iOS says when the sheet is gone
+   * (onDismiss); Android has no such event, so it waits out the same fade.
+   */
+  const chooseSource = (source: PickSource) => {
+    pendingSource.current = source;
+    setShowSource(false);
+    if (Platform.OS !== 'ios') {
+      if (pickTimer.current) clearTimeout(pickTimer.current);
+      pickTimer.current = setTimeout(startPendingPick, 350);
+    }
   };
 
   /** Opening the receipt already on the claim being edited. */
@@ -206,14 +367,9 @@ export const CreateClaimScreen: React.FC = () => {
 
   /** The over-limit question, asked once, or null when there is nothing to ask. */
   const overLimitMessage = (): string | null => {
-    if (!balance || value === null) return null;
-    if (balance.monthlyLimit > 0 && value > balance.monthlyRemaining) {
-      return `You have ${money(balance.monthlyRemaining)} left of this month's ${money(balance.monthlyLimit)}. This claim is ${money(value)}.`;
-    }
-    if (balance.yearlyLimit > 0 && value > balance.yearlyRemaining) {
-      return `You have ${money(balance.yearlyRemaining)} left of this year's ${money(balance.yearlyLimit)}. This claim is ${money(value)}.`;
-    }
-    return null;
+    if (!budget || value === null || value <= budget.remaining) return null;
+    const whose = budget.period === 'month' ? "this month's" : "this year's";
+    return `You have ${money(budget.remaining)} left of ${whose} ${money(budget.limit)}. This claim is ${money(value)}.`;
   };
 
   const save = async () => {
@@ -266,21 +422,35 @@ export const CreateClaimScreen: React.FC = () => {
       } else {
         await claimService.createApplication(payload);
       }
-      navigation.goBack();
     } catch (err) {
+      setSaving(false);
       await dialog.notify({
         title: editing ? 'Could not save your changes' : 'Could not send the claim',
         message: serverMessage(err, 'Please try again.'),
         tone: 'danger',
       });
-    } finally {
-      setSaving(false);
+      return;
+    }
+
+    // `saving` stays true from here: the screen is on its way out, and turning
+    // it off would re-arm the "discard?" guard during the closing animation.
+    leaving.current = true;
+    if (editing) {
+      navigation.goBack();
+    } else {
+      // Back to My Claims, where the new claim sits at the top as Pending.
+      // Started from Claim Types, plain goBack left the person on the types
+      // list with no sign the claim had gone; popTo returns to My Claims when
+      // it is underneath, and puts it in this screen's place when it is not.
+      navigation.dispatch(StackActions.popTo('Claims'));
     }
   };
 
   // ── Render ─────────────────────────────────────────────────────────────
 
-  const tint = claimTint(selected?.id ?? null);
+  /** A comma can be a decimal point or a thousands mark; say which way it was read. */
+  const amountEcho = amount.includes(',') && value !== null && value > 0 ? `Reads as ${money(value)}` : null;
+  const sheetBottom = { paddingBottom: Math.max(insets.bottom, 16) };
 
   return (
     <View style={styles.container}>
@@ -314,16 +484,32 @@ export const CreateClaimScreen: React.FC = () => {
             body={loadError}
             tone="danger"
             actionLabel="Try again"
-            onAction={() => void load()}
+            onAction={() => {
+              setTypes(null);
+              void load();
+            }}
+          />
+        ) : types.length === 0 ? (
+          // Without a single type there is nothing the form could send, and the
+          // person used to learn that only after typing the whole claim out.
+          <ClaimState
+            icon="tag-outline"
+            title="Nothing to claim yet"
+            body="HR has not set up any claim types."
+            actionLabel="Go back"
+            onAction={() => navigation.goBack()}
           />
         ) : (
           <KeyboardAvoidingView
             style={styles.flex}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            keyboardVerticalOffset={12}
+            // Padding on Android too: the app draws edge-to-edge, and in that mode
+            // adjustResize no longer shrinks the window, so without it the keyboard
+            // sat over "What was it for?" and the Send button.
+            behavior="padding"
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
           >
             <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              {/* What, and how much */}
+              {/* What, how much, and when */}
               <View style={styles.card}>
                 <Text style={styles.label}>What are you claiming for?</Text>
                 <TouchableOpacity
@@ -333,8 +519,8 @@ export const CreateClaimScreen: React.FC = () => {
                   accessibilityRole="button"
                 >
                   {selected ? (
-                    <View style={[styles.typeDot, { backgroundColor: claimWash(tint) }]}>
-                      <MaterialCommunityIcons name={claimIcon(selected)} size={18} color={tint} />
+                    <View style={styles.typeDot}>
+                      <MaterialCommunityIcons name={claimIcon(selected)} size={16} color={C.body} />
                     </View>
                   ) : null}
                   <Text style={[styles.fieldText, !selected && styles.placeholder]} numberOfLines={1}>
@@ -344,51 +530,58 @@ export const CreateClaimScreen: React.FC = () => {
                 </TouchableOpacity>
                 {show('type') ? <Text style={styles.error}>{errors.type}</Text> : null}
 
-                {balance && (balance.yearlyLimit > 0 || balance.monthlyLimit > 0) ? (
+                {budget ? (
                   <View style={styles.allowance}>
                     <MaterialCommunityIcons name="wallet-outline" size={16} color={C.blue} />
-                    <Text style={styles.allowanceText}>
-                      {balance.monthlyLimit > 0
-                        ? `${money(balance.monthlyRemaining)} left this month`
-                        : `${money(balance.yearlyRemaining)} left this year`}
+                    <Text style={styles.allowanceText} numberOfLines={1}>
+                      {money(budget.remaining)} left {allowancePeriod(budget)}
                     </Text>
                   </View>
                 ) : null}
 
                 <View style={styles.spacer} />
 
-                <Text style={styles.label}>Amount</Text>
-                <View style={[styles.field, styles.fieldRow, show('amount') ? styles.fieldBad : null]}>
-                  <Text style={styles.currency}>RM</Text>
-                  <TextInput
-                    style={styles.amount}
-                    value={amount}
-                    onChangeText={setAmount}
-                    onBlur={() => touch('amount')}
-                    placeholder="0.00"
-                    placeholderTextColor={C.muted}
-                    keyboardType="decimal-pad"
-                    accessibilityLabel="Amount in ringgit"
-                  />
+                <View style={styles.pair}>
+                  <View style={styles.pairHalf}>
+                    <Text style={styles.label}>Amount</Text>
+                    <View style={[styles.field, styles.fieldRow, show('amount') ? styles.fieldBad : null]}>
+                      <Text style={styles.currency}>RM</Text>
+                      <TextInput
+                        style={styles.amount}
+                        value={amount}
+                        onChangeText={setAmount}
+                        onBlur={() => touch('amount')}
+                        placeholder="0.00"
+                        placeholderTextColor={C.muted}
+                        keyboardType="decimal-pad"
+                        maxLength={13}
+                        accessibilityLabel="Amount in ringgit"
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.pairHalf}>
+                    <Text style={styles.label}>When you paid</Text>
+                    <TouchableOpacity
+                      style={[styles.field, styles.fieldRow]}
+                      onPress={openDate}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={`When you paid, ${claimDate(toIsoDay(transDate))}`}
+                    >
+                      <MaterialCommunityIcons name="calendar-blank-outline" size={18} color={C.blue} />
+                      <Text style={styles.fieldText} numberOfLines={1}>{claimDate(toIsoDay(transDate))}</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                {show('amount') ? <Text style={styles.error}>{errors.amount}</Text> : null}
-
-                <View style={styles.spacer} />
-
-                <Text style={styles.label}>When you paid</Text>
-                <TouchableOpacity
-                  style={[styles.field, styles.fieldRow]}
-                  onPress={() => setShowDate(true)}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                >
-                  <MaterialCommunityIcons name="calendar-blank-outline" size={20} color={C.blue} />
-                  <Text style={styles.fieldText}>{claimDate(toIsoDay(transDate))}</Text>
-                  <MaterialCommunityIcons name="chevron-down" size={22} color={C.muted} />
-                </TouchableOpacity>
+                {show('amount') ? (
+                  <Text style={styles.error}>{errors.amount}</Text>
+                ) : amountEcho ? (
+                  <Text style={styles.echo}>{amountEcho}</Text>
+                ) : null}
               </View>
 
-              {/* The story behind it */}
+              {/* The story behind it, and the proof */}
               <View style={styles.card}>
                 <Text style={styles.label}>What was it for?</Text>
                 <TextInput
@@ -415,34 +608,31 @@ export const CreateClaimScreen: React.FC = () => {
                   placeholderTextColor={C.muted}
                   maxLength={60}
                 />
-              </View>
 
-              {/* Proof */}
-              <View style={styles.card}>
+                <View style={styles.spacer} />
+
                 <Text style={styles.label}>
-                  Receipt {!editing && selected?.requireReceipt ? <Text style={styles.needed}>required</Text> : <Text style={styles.optional}>optional</Text>}
+                  Receipt{' '}
+                  {editing ? null : selected?.requireReceipt ? (
+                    <Text style={styles.needed}>required</Text>
+                  ) : (
+                    <Text style={styles.optional}>optional</Text>
+                  )}
                 </Text>
 
                 {editing ? (
                   existingReceipt ? (
-                    <>
-                      <ReceiptRow fileName={existingReceipt} onOpen={openExisting} hint="Attached when you sent this" />
-                      <Text style={styles.note}>A receipt cannot be swapped after the claim is sent. Withdraw it and make a new one if the wrong file went up.</Text>
-                    </>
+                    <ReceiptRow fileName={existingReceipt} onOpen={openExisting} hint="Can't be changed after sending" />
                   ) : (
-                    <Text style={styles.note}>No receipt was attached, and one cannot be added after the claim is sent.</Text>
+                    <Text style={styles.note} numberOfLines={1}>None attached — can't be added after sending.</Text>
                   )
                 ) : file ? (
-                  <>
-                    {isImage(file.name) ? (
-                      <Image source={{ uri: file.uri }} style={styles.preview} resizeMode="cover" />
-                    ) : null}
-                    <ReceiptRow
-                      fileName={file.name}
-                      onRemove={() => setFile(null)}
-                      hint="Goes up with the claim"
-                    />
-                  </>
+                  <ReceiptRow
+                    fileName={file.name}
+                    thumbUri={isImage(file.name) ? file.uri : undefined}
+                    onRemove={() => setFile(null)}
+                    hint="Goes up with the claim"
+                  />
                 ) : (
                   <>
                     <ReceiptButton onPress={() => setShowSource(true)} />
@@ -458,62 +648,94 @@ export const CreateClaimScreen: React.FC = () => {
                 label={editing ? 'Save changes' : 'Send claim'}
                 onPress={() => { void save(); }}
                 loading={saving}
+                compact
               />
             </View>
           </KeyboardAvoidingView>
         )}
       </SafeAreaView>
 
-      {showDate ? (
+      {/* Android draws its own date dialog; the element only has to exist. */}
+      {Platform.OS === 'android' && showDate ? (
         <DateTimePicker
           value={transDate}
           mode="date"
           maximumDate={new Date()}
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={(_event, picked) => {
-            setShowDate(Platform.OS === 'ios');
-            if (picked) setTransDate(picked);
-          }}
+          display="default"
+          onChange={onAndroidDate}
         />
+      ) : null}
+
+      {/* iOS has no dialog of its own. The wheel used to be dropped under the
+          form with no way to close it, and in dark mode its white text sat on
+          this light page; it now lives in a sheet with a Done button and is held
+          to the light look the rest of the app uses. */}
+      {Platform.OS === 'ios' ? (
+        <Modal visible={showDate} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setShowDate(false)}>
+          <View style={[styles.sheetBackdrop, sheetBottom]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowDate(false)} accessibilityLabel="Dismiss" />
+            <View style={styles.sheet}>
+              <Text style={styles.sheetTitle}>When you paid</Text>
+              <DateTimePicker
+                value={draftDate}
+                mode="date"
+                display="spinner"
+                maximumDate={new Date()}
+                themeVariant="light"
+                textColor={C.ink}
+                onChange={(_event, picked) => { if (picked) setDraftDate(picked); }}
+                style={styles.wheel}
+              />
+              <PrimaryButton label="Done" onPress={confirmIosDate} compact />
+              <TouchableOpacity style={styles.sheetCancel} onPress={() => setShowDate(false)} accessibilityRole="button">
+                <Text style={styles.sheetCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       ) : null}
 
       {/* Claim type */}
       <Modal visible={showTypes} transparent animationType="fade" statusBarTranslucent onRequestClose={closeTypes}>
-        <View style={styles.sheetBackdrop}>
+        <View style={[styles.sheetBackdrop, sheetBottom]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={closeTypes} accessibilityLabel="Dismiss" />
           <View style={styles.sheet}>
             <Text style={styles.sheetTitle}>Claim type</Text>
             <ScrollView style={styles.sheetScroll} showsVerticalScrollIndicator={false}>
-              {(types ?? []).length === 0 ? (
-                <Text style={styles.note}>No claim types are set up yet. HR adds these.</Text>
-              ) : (
-                (types ?? []).map((t, index, all) => {
-                  const rowTint = claimTint(t.id);
-                  const on = t.id === typeId;
-                  return (
-                    <TouchableOpacity
-                      key={t.id}
-                      style={[styles.sheetRow, index < all.length - 1 && styles.sheetDivider]}
-                      onPress={() => { setTypeId(t.id); setShowTypes(false); }}
-                      activeOpacity={0.7}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: on }}
-                    >
-                      <View style={[styles.typeDot, { backgroundColor: claimWash(rowTint) }]}>
-                        <MaterialCommunityIcons name={claimIcon(t)} size={18} color={rowTint} />
-                      </View>
-                      <View style={styles.sheetText}>
-                        <Text style={styles.sheetRowTitle} numberOfLines={1}>{t.name}</Text>
-                        <Text style={styles.sheetRowMeta} numberOfLines={1}>
-                          {t.requireReceipt ? 'Receipt required' : 'Receipt optional'}
-                          {t.yearlyLimit ? ` · ${money(t.yearlyLimit)} a year` : ''}
-                        </Text>
-                      </View>
-                      {on ? <MaterialCommunityIcons name="check" size={20} color={C.blue} /> : null}
-                    </TouchableOpacity>
-                  );
-                })
-              )}
+              {(types ?? []).map((t, index, all) => {
+                const on = t.id === typeId;
+                // This person's own limits where HR set them, the type's default otherwise.
+                const own = balances.find((b) => b.claimTypeId === t.id);
+                const yearly = own ? own.yearlyLimit : t.yearlyLimit;
+                const monthly = own ? own.monthlyLimit : t.monthlyLimit;
+                const limit = yearly && yearly > 0
+                  ? ` · ${money(yearly)} a year`
+                  : monthly && monthly > 0
+                    ? ` · ${money(monthly)} a month`
+                    : '';
+                return (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={[styles.sheetRow, index < all.length - 1 && styles.sheetDivider]}
+                    onPress={() => { setTypeId(t.id); setShowTypes(false); }}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
+                  >
+                    <View style={styles.typeDot}>
+                      <MaterialCommunityIcons name={claimIcon(t)} size={16} color={C.body} />
+                    </View>
+                    <View style={styles.sheetText}>
+                      <Text style={styles.sheetRowTitle} numberOfLines={1}>{t.name}</Text>
+                      <Text style={styles.sheetRowMeta} numberOfLines={1}>
+                        {t.requireReceipt ? 'Receipt required' : 'Receipt optional'}
+                        {limit}
+                      </Text>
+                    </View>
+                    {on ? <MaterialCommunityIcons name="check" size={20} color={C.blue} /> : null}
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
             <TouchableOpacity style={styles.sheetCancel} onPress={closeTypes} accessibilityRole="button">
               <Text style={styles.sheetCancelText}>Cancel</Text>
@@ -523,8 +745,15 @@ export const CreateClaimScreen: React.FC = () => {
       </Modal>
 
       {/* Where the receipt comes from */}
-      <Modal visible={showSource} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setShowSource(false)}>
-        <View style={styles.sheetBackdrop}>
+      <Modal
+        visible={showSource}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setShowSource(false)}
+        onDismiss={Platform.OS === 'ios' ? startPendingPick : undefined}
+      >
+        <View style={[styles.sheetBackdrop, sheetBottom]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowSource(false)} accessibilityLabel="Dismiss" />
           <View style={styles.sheet}>
             <Text style={styles.sheetTitle}>Attach a receipt</Text>
@@ -532,7 +761,7 @@ export const CreateClaimScreen: React.FC = () => {
               <TouchableOpacity
                 key={o.key}
                 style={[styles.sheetRow, index < RECEIPT_SOURCES.length - 1 && styles.sheetDivider]}
-                onPress={() => { void addReceipt(o.key); }}
+                onPress={() => chooseSource(o.key)}
                 activeOpacity={0.7}
                 accessibilityRole="button"
               >
@@ -577,50 +806,54 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
-  header: { flexDirection: 'row', alignItems: 'center', minHeight: 56, paddingHorizontal: 12, paddingTop: 4 },
+  header: { flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingHorizontal: 12, paddingTop: 2 },
   back: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
   headerText: { position: 'absolute', left: 88, right: 88, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 22, fontWeight: '800', color: C.ink },
 
-  scroll: { paddingHorizontal: 16, paddingBottom: 20, gap: 12 },
+  scroll: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12, gap: 10 },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
-    padding: 18,
+    padding: 14,
     shadowColor: C.blue,
     shadowOpacity: 0.07,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 5 },
     elevation: 2,
   },
-  spacer: { height: 16 },
+  spacer: { height: 10 },
+  pair: { flexDirection: 'row', gap: 10 },
+  pairHalf: { flex: 1, minWidth: 0 },
 
-  label: { fontSize: 14, fontWeight: '700', color: C.ink, marginBottom: 8 },
+  label: { fontSize: 13, fontWeight: '700', color: C.ink, marginBottom: 6 },
   optional: { fontSize: 12, fontWeight: '600', color: C.muted },
   needed: { fontSize: 12, fontWeight: '700', color: C.blue },
 
   field: {
-    minHeight: 52,
+    minHeight: 46,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: C.line,
     backgroundColor: C.field,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     fontSize: 15,
     color: C.ink,
   },
-  fieldRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  fieldRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   fieldBad: { borderColor: C.dangerLine, backgroundColor: C.dangerBg },
   fieldText: { flex: 1, fontSize: 15, color: C.ink },
   placeholder: { color: C.muted },
-  multiline: { minHeight: 104 },
+  multiline: { minHeight: 72 },
   currency: { fontSize: 15, fontWeight: '700', color: C.body },
-  amount: { flex: 1, fontSize: 17, fontWeight: '700', color: C.ink, padding: 0, fontVariant: ['tabular-nums'] },
+  amount: { flex: 1, minWidth: 0, fontSize: 17, fontWeight: '700', color: C.ink, padding: 0, fontVariant: ['tabular-nums'] },
   error: { fontSize: 12, color: C.danger, marginTop: 6, lineHeight: 17 },
-  note: { fontSize: 12, color: C.body, lineHeight: 18, marginTop: 8 },
+  echo: { fontSize: 12, fontWeight: '600', color: C.blue, marginTop: 6 },
+  note: { fontSize: 12, color: C.body, lineHeight: 18 },
 
-  typeDot: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  // The neutral disc the claim lists use: the icon tells the types apart, so no pastel per type.
+  typeDot: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#F1F5FB', alignItems: 'center', justifyContent: 'center' },
 
   allowance: {
     flexDirection: 'row',
@@ -629,16 +862,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#EEF4FF',
     borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 9,
-    marginTop: 10,
+    paddingVertical: 7,
+    marginTop: 8,
   },
-  allowanceText: { fontSize: 13, fontWeight: '600', color: C.ink },
+  allowanceText: { flex: 1, fontSize: 13, fontWeight: '600', color: C.ink },
 
-  preview: { width: '100%', height: 170, borderRadius: 14, backgroundColor: C.field, marginBottom: 4 },
+  footer: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 },
 
-  footer: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6 },
-
-  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,27,45,0.45)', justifyContent: 'flex-end', padding: 16 },
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,27,45,0.45)', justifyContent: 'flex-end', paddingHorizontal: 16, paddingTop: 16 },
   sheet: {
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
@@ -653,7 +884,7 @@ const styles = StyleSheet.create({
   },
   sheetScroll: { maxHeight: 320 },
   sheetTitle: { fontSize: 18, fontWeight: '800', color: C.ink, marginBottom: 6 },
-  sheetRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13 },
+  sheetRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, minHeight: 52 },
   sheetDivider: { borderBottomWidth: 1, borderBottomColor: C.line },
   sheetText: { flex: 1 },
   sheetRowTitle: { fontSize: 15, fontWeight: '700', color: C.ink },
@@ -661,6 +892,7 @@ const styles = StyleSheet.create({
   sourceIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#E8F0FE', justifyContent: 'center', alignItems: 'center' },
   sheetCancel: { height: 48, justifyContent: 'center', alignItems: 'center', marginTop: 6 },
   sheetCancelText: { fontSize: 15, fontWeight: '700', color: C.body },
+  wheel: { alignSelf: 'stretch', height: 216, marginBottom: 8, backgroundColor: '#FFFFFF' },
 });
 
 export default CreateClaimScreen;

@@ -15,6 +15,11 @@ export interface LoginResponse {
   };
   employee: MobileEmployee | null;
   tenants: TenantInfo[];
+  /**
+   * The company the token was issued for. Only the reworked server sends it;
+   * the live one leaves it out, so the token's own claim stays the fallback.
+   */
+  activeTenantId?: string | null;
 }
 
 export interface MobileEmployee {
@@ -44,13 +49,10 @@ export interface TenantInfo {
   logoUrl: string | null;
 }
 
-export interface RegisterRequest {
-  firstName: string;
-  lastName: string;
-  email: string;
-  password: string;
-}
-
+// The legacy Identity register, the no-op resend-verification and a second
+// refresh path used to live here. Nothing called them: sign-up goes through
+// Firebase (firebaseSignUp), Firebase sends the verification mail itself, and
+// axiosInstance owns token refresh. A copy that is never run only drifts.
 const authService = {
   /** Login with Firebase ID token */
   async firebaseLogin(firebaseIdToken: string, deviceId: string, deviceInfo?: object): Promise<LoginResponse> {
@@ -65,25 +67,22 @@ const authService = {
     return data;
   },
 
-  /** Refresh the access token */
-  async refresh(deviceId: string): Promise<{ token: string; expiresIn: number }> {
-    const refreshToken = await tokenManager.getRefreshToken();
-    if (!refreshToken) throw new Error('No refresh token available');
-
-    const response = await axiosInstance.post(ENDPOINTS.AUTH.REFRESH, {
-      refreshToken,
-      deviceId,
-    });
-
-    const data = response.data.content;
-    await tokenManager.updateAccessToken(data.token, data.expiresIn);
-    return data;
-  },
-
-  /** Logout and deactivate tokens */
-  async logout(deviceId: string): Promise<void> {
+  /**
+   * Logout and deactivate tokens.
+   *
+   * The refresh and push tokens go along because the reworked server ends only
+   * the session they name: sent with the device id alone, "Sign out" left this
+   * phone's 30-day refresh token working on the server. The live server reads
+   * only the device id and ignores the rest, so the same body works on both.
+   */
+  async logout(deviceId: string, pushToken?: string | null): Promise<void> {
     try {
-      await axiosInstance.post(ENDPOINTS.AUTH.LOGOUT, { deviceId });
+      const refreshToken = await tokenManager.getRefreshToken().catch(() => null);
+      await axiosInstance.post(ENDPOINTS.AUTH.LOGOUT, {
+        deviceId,
+        refreshToken: refreshToken ?? undefined,
+        pushToken: pushToken ?? undefined,
+      });
     } finally {
       await tokenManager.clearTokens();
     }
@@ -110,11 +109,6 @@ const authService = {
     }));
   },
 
-  /** Register via Identity (legacy). Prefer firebaseSignUp so user can log in with Firebase. */
-  async register(request: RegisterRequest): Promise<void> {
-    await axiosInstance.post(ENDPOINTS.AUTH.REGISTER, request);
-  },
-
   /**
    * Sign up with Firebase: create user in Firebase, then sync to backend.
    * Use this so the account exists in Firebase and login works.
@@ -125,11 +119,6 @@ const authService = {
       { clientType: 'mobile', deviceId, invitationCode },
       { headers: { 'Firebase-Token': firebaseIdToken } }
     );
-  },
-
-  /** Resend verification email */
-  async resendVerificationEmail(): Promise<void> {
-    await axiosInstance.post(ENDPOINTS.AUTH.RESEND_VERIFICATION);
   },
 
   /** Request password reset email (Firebase). Backend sends reset link to email. */

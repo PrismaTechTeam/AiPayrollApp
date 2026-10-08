@@ -1,6 +1,7 @@
 /**
  * Shared bits for showing join requests: how each status looks, and how to
- * read the server's timestamps. Used by the home screen and the requests list.
+ * read the server's timestamps. Used by the home screen, the requests list and
+ * the single-request page.
  */
 import type { IconName } from '../components/auth/PrimaryButton';
 
@@ -25,8 +26,27 @@ export function parseServerDate(iso: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/**
+ * "8 Oct 2026, 2:38 pm" in Malaysia time. It used the phone's zone and no year,
+ * so a phone set to another zone showed a different hour, and a request decided
+ * last year read as this year.
+ */
 export function whenText(iso: string | null | undefined): string {
   const d = parseServerDate(iso);
   if (!d) return '';
-  return d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+  return d.toLocaleString('en-MY', {
+    timeZone: 'Asia/Kuala_Lumpur',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+/** A copy of the list, newest request first. The server's order is not promised. */
+export function newestFirst<T extends { createdAt: string }>(list: T[]): T[] {
+  return [...list].sort(
+    (a, b) => (parseServerDate(b.createdAt)?.getTime() ?? 0) - (parseServerDate(a.createdAt)?.getTime() ?? 0),
+  );
 }

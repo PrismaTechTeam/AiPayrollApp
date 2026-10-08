@@ -2,17 +2,22 @@
  * My Documents — what the employee owes the company, and where each one stands.
  *
  * The screen answers one question first: is there anything for me to do? The
- * summary card says how far along the checklist is and how many rows are the
- * employee's problem rather than HR's; the groups under it put those rows at the
- * top and push "provided" and "not required" out of the way. A flat list ordered
- * by document type would make someone read all eleven rows to find the two that
+ * header says how many rows are the employee's problem, the summary card how
+ * far along the checklist is, and the groups under it put those rows at the top
+ * and push "provided" and "not required" out of the way. A flat list ordered by
+ * document type would make someone read all eleven rows to find the two that
  * matter.
+ *
+ * Every count on the screen is taken from the same grouped rows the list shows.
+ * The server's actionNeededCount also counts HR-issued documents the employee
+ * cannot upload, so using it here made the card say "2 need you" over a list
+ * with one row under NEEDS YOUR ATTENTION — and the Home tile say 1.
  *
  * Uploading is refused server-side in two cases that are not the person's fault
  * — employment has ended, or the type is HR-issued. Both are answered here
- * before a file is chosen: the banner for the first, a hidden button and a plain
- * sentence for the second. Discovering either by watching an upload fail is the
- * failure this screen is built to avoid.
+ * before a file is chosen: the banner and the WITH HR group for the first, the
+ * "Issued by HR" line and no upload button for the second. Discovering either by
+ * watching an upload fail is the failure this screen is built to avoid.
  */
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
@@ -44,9 +49,12 @@ import {
   GROUP_TITLE,
   GroupHeading,
   NoticeBanner,
-  SourceSheet,
+  SheetNote,
   groupOf,
+  type DocumentBusy,
   type DocumentGroup,
+  type SheetNoteValue,
+  type SheetStep,
 } from '../components/documents/DocumentUi';
 
 type Load =
@@ -64,9 +72,17 @@ export const MyDocumentsScreen: React.FC = () => {
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [refreshing, setRefreshing] = useState(false);
   const [openRowId, setOpenRowId] = useState<string | null>(null);
-  const [pickingFor, setPickingFor] = useState<DocumentRow | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const [step, setStep] = useState<SheetStep>('detail');
+  const [note, setNote] = useState<SheetNoteValue | null>(null);
+  const [busy, setBusy] = useState<DocumentBusy>(null);
+  const [uploadingFor, setUploadingFor] = useState<{ id: string; name: string } | null>(null);
   const alive = useRef(true);
+  // Read synchronously so a double tap cannot start two downloads into the same
+  // cache path, or two uploads, before the state update lands.
+  const busyRef = useRef(false);
+  // Which sheet is up right now, for work that finishes after the person moved on.
+  const openRowRef = useRef<string | null>(null);
+  openRowRef.current = openRowId;
 
   const fetch = useCallback(async () => {
     try {
@@ -97,13 +113,29 @@ export const MyDocumentsScreen: React.FC = () => {
 
   const data = load.kind === 'ready' ? load.data : null;
 
-  /** Rows split into their sections once, rather than filtered four times per render. */
-  const sections = useMemo(() => {
+  /**
+   * Rows split into their sections once, and every number on the screen counted
+   * from the same split, so the header, the bar and the list cannot disagree.
+   */
+  const { sections, needYou, withHr, requiredWaiting, requiredAction } = useMemo(() => {
     const buckets: Record<DocumentGroup, DocumentRow[]> = {
       action: [], waiting: [], provided: [], notRequired: [],
     };
-    (data?.rows ?? []).forEach((row) => buckets[groupOf(row)].push(row));
-    return GROUP_ORDER.map((group) => ({ group, rows: buckets[group] })).filter((s) => s.rows.length > 0);
+    let reqWaiting = 0;
+    let reqAction = 0;
+    (data?.rows ?? []).forEach((row) => {
+      const group = groupOf(row, data?.canUpload ?? false);
+      buckets[group].push(row);
+      if (row.isRequired && group === 'waiting') reqWaiting += 1;
+      if (row.isRequired && group === 'action') reqAction += 1;
+    });
+    return {
+      sections: GROUP_ORDER.map((group) => ({ group, rows: buckets[group] })).filter((s) => s.rows.length > 0),
+      needYou: buckets.action.length,
+      withHr: buckets.waiting.length,
+      requiredWaiting: reqWaiting,
+      requiredAction: reqAction,
+    };
   }, [data]);
 
   // The open row is looked up by id rather than held as an object, so it follows
@@ -113,27 +145,65 @@ export const MyDocumentsScreen: React.FC = () => {
     [data, openRowId],
   );
 
+  // ── Sheet ───────────────────────────────────────────────────────────
+
+  const openSheet = (row: DocumentRow) => {
+    setOpenRowId(row.documentTypeId);
+    setStep('detail');
+    setNote(null);
+  };
+
+  const closeSheet = () => {
+    setOpenRowId(null);
+    setStep('detail');
+    setNote(null);
+  };
+
+  /**
+   * Feedback for work that may outlive the sheet. In the sheet when it is still
+   * open on that row; in whichever sheet is open now, naming the document, when
+   * the person has moved to another one (a dialog over an open sheet is refused
+   * on iOS); and as a dialog only when no sheet is up for it to collide with.
+   */
+  const report = (row: DocumentRow, value: SheetNoteValue, dialogTitle: string) => {
+    if (openRowRef.current === row.documentTypeId) {
+      setNote(value);
+      return;
+    }
+    if (openRowRef.current !== null) {
+      setNote({ ...value, text: `${row.name}: ${value.text}` });
+      return;
+    }
+    void dialog.notify({
+      title: dialogTitle,
+      message: value.text,
+      tone: value.tone === 'success' ? 'success' : 'danger',
+    });
+  };
+
   // ── Actions ─────────────────────────────────────────────────────────
 
-  const startUpload = (row: DocumentRow) => {
-    setOpenRowId(null);
-    setPickingFor(row);
+  const chooseSource = () => {
+    if (busyRef.current) return;
+    setNote(null);
+    setStep('source');
+  };
+
+  const backToDetail = () => {
+    setNote(null);
+    setStep('detail');
   };
 
   const send = async (source: PickSource) => {
-    const row = pickingFor;
-    setPickingFor(null);
-    if (!row) return;
+    const row = openRow;
+    if (!row || busyRef.current) return;
+    setNote(null);
 
     let picked: PickedFile | null;
     try {
       picked = await pickDocumentFile(source);
     } catch (err) {
-      await dialog.notify({
-        title: 'Cannot open the picker',
-        message: serverMessage(err, 'Please try again.'),
-        tone: 'warning',
-      });
+      setNote({ tone: 'warning', text: serverMessage(err, 'Could not open that. Please try again.') });
       return;
     }
     if (!picked) return;
@@ -141,66 +211,83 @@ export const MyDocumentsScreen: React.FC = () => {
     // Checked here as a courtesy; the server checks the bytes and is the control.
     const why = rejectionReason(picked);
     if (why) {
-      await dialog.notify({ title: 'That file cannot be used', message: why, tone: 'warning' });
+      setNote({ tone: 'warning', text: why });
       return;
     }
 
-    setUploading(true);
+    busyRef.current = true;
+    setBusy('upload');
+    setUploadingFor({ id: row.documentTypeId, name: row.name });
+    setStep('detail');
     try {
       await documentService.submit(row.documentTypeId, picked);
       await fetch();
-      await dialog.notify({
-        title: 'Sent to HR',
-        message: `${row.name} is with HR now. You will see it here once they have checked it.`,
-        tone: 'success',
-      });
+      report(row, { tone: 'success', text: 'Sent to HR. It shows as Checking until they look at it.' }, 'Sent to HR');
     } catch (err) {
-      await dialog.notify({
-        title: 'Could not send it',
-        message: serverMessage(err, 'Please try again.'),
-        tone: 'danger',
-      });
+      report(row, { tone: 'danger', text: serverMessage(err, 'Could not send it. Please try again.') }, 'Could not send it');
     } finally {
-      if (alive.current) setUploading(false);
+      busyRef.current = false;
+      setBusy(null);
+      setUploadingFor(null);
     }
   };
 
-  const download = async (row: DocumentRow) => {
-    const doc = row.document;
-    if (!doc) return;
+  const download = async () => {
+    const row = openRow;
+    const doc = row?.document;
+    if (!row || !doc || busyRef.current) return;
+
+    busyRef.current = true;
+    setBusy('download');
+    setNote(null);
     try {
       await openAttachment(documentService.contentUrl(doc.id), doc.fileName);
     } catch (err) {
-      await dialog.notify({
-        title: 'Could not open the file',
-        message: serverMessage(err, 'Please try again.'),
-        tone: 'danger',
-      });
+      report(row, { tone: 'danger', text: serverMessage(err, 'Could not open the file. Please try again.') }, 'Could not open the file');
+    } finally {
+      busyRef.current = false;
+      setBusy(null);
     }
   };
 
-  const getTemplate = async (row: DocumentRow) => {
+  const getTemplate = async () => {
+    const row = openRow;
+    if (!row || busyRef.current) return;
+
+    busyRef.current = true;
+    setBusy('template');
+    setNote(null);
     try {
       const url = await documentService.getTemplateUrl(row.documentTypeId);
       const opened = await Linking.canOpenURL(url);
       if (!opened) throw new Error('This phone has nothing that can open the form.');
       await Linking.openURL(url);
     } catch (err) {
-      await dialog.notify({
-        title: 'Could not get the blank form',
-        message: serverMessage(err, 'Please try again.'),
-        tone: 'danger',
-      });
+      report(row, { tone: 'danger', text: serverMessage(err, 'Could not get the blank form. Please try again.') }, 'Could not get the blank form');
+    } finally {
+      busyRef.current = false;
+      setBusy(null);
     }
   };
 
   // ── Render ──────────────────────────────────────────────────────────
 
-  const subtitle = data
-    ? data.requiredCount === 0
-      ? 'Nothing is required of you'
-      : `${data.satisfiedCount} of ${data.requiredCount} provided`
-    : 'What HR needs from you';
+  const subtitle = !data
+    ? 'Your documents'
+    : needYou > 0
+      ? `${needYou} ${needYou === 1 ? 'needs' : 'need'} you`
+      : data.requiredCount === 0 && data.rows.length === 0
+        ? 'Nothing is required of you'
+        : withHr > 0
+          ? `Nothing needs you · ${withHr} with HR`
+          : 'Nothing needs you';
+
+  // While an upload runs, the open sheet for that row says so in place of any
+  // earlier message.
+  const sheetNote: SheetNoteValue | null =
+    busy === 'upload' && uploadingFor?.id === openRowId
+      ? { tone: 'progress', text: 'Sending to HR…' }
+      : note;
 
   return (
     <View style={styles.container}>
@@ -218,10 +305,11 @@ export const MyDocumentsScreen: React.FC = () => {
           >
             <MaterialCommunityIcons name="arrow-left" size={26} color={C.ink} />
           </TouchableOpacity>
-          <View style={styles.headerText} pointerEvents="none">
-            <Text style={styles.headerTitle}>My Documents</Text>
-            <Text style={styles.headerSubtitle}>{subtitle}</Text>
+          <View style={styles.headerText}>
+            <Text style={styles.headerTitle} numberOfLines={1}>My Documents</Text>
+            <Text style={styles.headerSubtitle} numberOfLines={1}>{subtitle}</Text>
           </View>
+          <View style={styles.headerSpacer} />
         </View>
 
         <ScrollView
@@ -243,18 +331,27 @@ export const MyDocumentsScreen: React.FC = () => {
             />
           ) : (
             <>
-              <ComplianceSummary
-                percent={load.data.compliancePercent}
-                required={load.data.requiredCount}
-                satisfied={load.data.satisfiedCount}
-                pending={load.data.pendingReviewCount}
-                actionNeeded={load.data.actionNeededCount}
-              />
+              {/* "100% · 0 of 0" over an empty list contradicts itself; with
+                  nothing required there is nothing to measure. */}
+              {load.data.requiredCount > 0 ? (
+                <ComplianceSummary
+                  percent={load.data.compliancePercent}
+                  required={load.data.requiredCount}
+                  satisfied={load.data.satisfiedCount}
+                  waiting={requiredWaiting}
+                  actionNeeded={requiredAction}
+                />
+              ) : null}
 
               {load.data.notice ? (
                 <View style={styles.gap}>
                   <NoticeBanner message={load.data.notice} />
                 </View>
+              ) : null}
+
+              {/* The sheet was closed mid-upload: the list still says it is going. */}
+              {uploadingFor && uploadingFor.id !== openRowId ? (
+                <SheetNote tone="progress" text={`Sending ${uploadingFor.name} to HR…`} />
               ) : null}
 
               {sections.length === 0 ? (
@@ -268,12 +365,13 @@ export const MyDocumentsScreen: React.FC = () => {
                   <View key={group} style={styles.section}>
                     <GroupHeading title={GROUP_TITLE[group]} count={rows.length} />
                     <DocumentPanel>
-                      {rows.map((row, index) => (
+                      {rows.map((row, i) => (
                         <DocumentRowItem
                           key={row.documentTypeId}
                           row={row}
-                          onPress={() => setOpenRowId(row.documentTypeId)}
-                          last={index === rows.length - 1}
+                          group={group}
+                          onPress={() => openSheet(row)}
+                          last={i === rows.length - 1}
                         />
                       ))}
                     </DocumentPanel>
@@ -288,17 +386,15 @@ export const MyDocumentsScreen: React.FC = () => {
       <DocumentSheet
         row={openRow}
         canUpload={data?.canUpload ?? false}
-        uploading={uploading}
-        onClose={() => setOpenRowId(null)}
-        onUpload={() => openRow && startUpload(openRow)}
-        onDownload={() => { if (openRow) void download(openRow); }}
-        onTemplate={() => { if (openRow) void getTemplate(openRow); }}
-      />
-
-      <SourceSheet
-        visible={pickingFor !== null}
-        onClose={() => setPickingFor(null)}
+        step={step}
+        busy={busy}
+        note={sheetNote}
+        onClose={closeSheet}
+        onUpload={chooseSource}
+        onBack={backToDetail}
         onPick={(source) => { void send(source); }}
+        onDownload={() => { void download(); }}
+        onTemplate={() => { void getTemplate(); }}
       />
     </View>
   );
@@ -308,15 +404,19 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F6F8FF' },
   flex: { flex: 1 },
 
-  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 14, justifyContent: 'center' },
-  back: { width: 40, height: 40, alignItems: 'flex-start', justifyContent: 'center' },
-  headerText: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  // Back arrow, centred title, and a spacer the same width as the arrow: the
+  // title is centred on the screen and a long subtitle truncates instead of
+  // running under the arrow.
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 6, paddingBottom: 10 },
+  back: { width: 40, height: 44, alignItems: 'flex-start', justifyContent: 'center' },
+  headerText: { flex: 1, alignItems: 'center' },
+  headerSpacer: { width: 40 },
   headerTitle: { fontSize: 22, fontWeight: '800', color: C.ink },
-  headerSubtitle: { fontSize: 13, color: C.body, marginTop: 2 },
+  headerSubtitle: { fontSize: 13, color: C.body, marginTop: 1 },
 
-  scroll: { paddingHorizontal: 20, paddingBottom: 40 },
-  gap: { marginTop: 14 },
-  section: { marginTop: 24 },
+  scroll: { paddingHorizontal: 20, paddingBottom: 24 },
+  gap: { marginTop: 12 },
+  section: { marginTop: 16 },
 });
 
 export default MyDocumentsScreen;

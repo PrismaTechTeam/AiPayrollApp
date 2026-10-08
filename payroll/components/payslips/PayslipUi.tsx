@@ -25,16 +25,16 @@ import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { AUTH_COLORS as C } from '../auth/AuthBackdrop';
 import type { IconName } from '../auth/PrimaryButton';
-import { SectionHeading, YearBar, goTo } from '../leave/LeaveUi';
+import { SectionHeading, goTo } from '../leave/LeaveUi';
 import type {
   PayslipLeaveRow,
   PayslipListItem,
   PayslipOvertimeLine,
 } from '../../api/services/payslipService';
 
-// The year picker and the section heading are the same controls the leave screens
-// use. Re-exported so a payslip screen imports its whole kit from one place.
-export { SectionHeading, YearBar, goTo };
+// The section heading is the same one the leave screens use. Re-exported so a
+// payslip screen imports its whole kit from one place.
+export { SectionHeading, goTo };
 
 // ── Numbers ───────────────────────────────────────────────────────────
 
@@ -51,6 +51,45 @@ export function monthLabel(year: number, month: number): string {
 export function shortMonthLabel(year: number, month: number): string {
   const name = MONTHS[month - 1];
   return name ? `${name.slice(0, 3)} ${year}` : String(year);
+}
+
+/** Day and month of a server date, read from its YYYY-MM-DD prefix so no zone can shift it. */
+function dayAndMonth(value: string | null | undefined): { day: number; month: number } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value ?? '');
+  if (!match) return null;
+  return { day: Number(match[3]), month: Number(match[2]) };
+}
+
+/**
+ * What tells this payslip apart from another one in the same month, or null for
+ * the ordinary monthly run.
+ *
+ * A bonus run (AD_HOC) and a weekly or fortnightly run (FREQUENCY) share the
+ * month with the main payroll, and labelled by month alone they showed up as
+ * identical "August 2026" rows. The period is read from the run's own dates,
+ * not the calendar month, because a FREQUENCY run covers part of one.
+ */
+export function runLabel(p: {
+  runType?: string | null;
+  description1?: string | null;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+}): string | null {
+  const type = String(p.runType ?? '').toUpperCase();
+  const described = (typeof p.description1 === 'string' && p.description1.trim()) || null;
+  if (type === 'AD_HOC') return described ?? 'Additional pay';
+  if (type === 'FREQUENCY') {
+    const from = dayAndMonth(p.periodStart);
+    const to = dayAndMonth(p.periodEnd);
+    const short = (m: number) => MONTHS[m - 1]?.slice(0, 3) ?? '';
+    if (from && to) {
+      return from.month === to.month
+        ? `${from.day}–${to.day} ${short(to.month)}`
+        : `${from.day} ${short(from.month)} – ${to.day} ${short(to.month)}`;
+    }
+    return described;
+  }
+  return null;
 }
 
 /**
@@ -199,7 +238,12 @@ export const TotalRow: React.FC<{ label: string; amount: number }> = ({ label, a
   </View>
 );
 
-/** One "label : value" identity line. */
+/**
+ * One "label : value" identity line. The label keeps a fixed column and the
+ * value wraps to a second line: a full Malaysian name ("MUHAMMAD AMIRUL HAFIZ
+ * BIN ABDUL RAHMAN") used to squeeze "Employee Name" to nothing and still be
+ * cut off itself.
+ */
 export const FieldRow: React.FC<{ label: string; value: string; last?: boolean }> = ({
   label,
   value,
@@ -207,7 +251,7 @@ export const FieldRow: React.FC<{ label: string; value: string; last?: boolean }
 }) => (
   <View style={[styles.row, !last && styles.rowDivider]}>
     <Text style={styles.fieldLabel}>{label}</Text>
-    <Text style={styles.fieldValue} numberOfLines={1}>{value}</Text>
+    <Text style={styles.fieldValue} numberOfLines={2}>{value}</Text>
   </View>
 );
 
@@ -364,32 +408,81 @@ export const QuietLine: React.FC<{ children: string }> = ({ children }) => (
 
 // ── List ──────────────────────────────────────────────────────────────
 
-/** One month's pay in the list: which month, and what landed in the bank. */
+/**
+ * Back one year, forward as far as this year, small enough to sit under the
+ * screen title. The visible arrows are 36pt tall; the hit area is 44pt.
+ */
+export const YearSwitch: React.FC<{
+  year: number;
+  minYear: number;
+  maxYear: number;
+  onChange: (year: number) => void;
+}> = ({ year, minYear, maxYear, onChange }) => {
+  const canBack = year > minYear;
+  const canForward = year < maxYear;
+  return (
+    <View style={styles.yearSwitch}>
+      <TouchableOpacity
+        onPress={() => canBack && onChange(year - 1)}
+        disabled={!canBack}
+        style={styles.yearArrow}
+        hitSlop={{ top: 4, bottom: 4 }}
+        accessibilityRole="button"
+        accessibilityLabel="Previous year"
+        accessibilityState={{ disabled: !canBack }}
+      >
+        <MaterialCommunityIcons name="chevron-left" size={22} color={canBack ? C.ink : C.line} />
+      </TouchableOpacity>
+      <Text style={styles.yearText} accessibilityLabel={`Showing ${year}`}>{year}</Text>
+      <TouchableOpacity
+        onPress={() => canForward && onChange(year + 1)}
+        disabled={!canForward}
+        style={styles.yearArrow}
+        hitSlop={{ top: 4, bottom: 4 }}
+        accessibilityRole="button"
+        accessibilityLabel="Next year"
+        accessibilityState={{ disabled: !canForward }}
+      >
+        <MaterialCommunityIcons name="chevron-right" size={22} color={canForward ? C.ink : C.line} />
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+/** The white card the list rows sit on — one card, divider lines between months. */
+export const PayslipPanel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <View style={styles.listPanel}>{children}</View>
+);
+
+/**
+ * One payslip in the list: which month (and which run, when the month has more
+ * than one), and what landed in the bank. A divider row rather than a card of
+ * its own, so a full year fits on one screen.
+ */
 export const PayslipRow: React.FC<{
   payslip: PayslipListItem;
   onPress: () => void;
-}> = ({ payslip, onPress }) => (
-  <TouchableOpacity
-    style={styles.card}
-    onPress={onPress}
-    activeOpacity={0.8}
-    accessibilityRole="button"
-    accessibilityLabel={`${monthLabel(payslip.payrollYear, payslip.payrollMonth)}, net pay ${ringgit(payslip.netPay)}`}
-  >
-    <View style={styles.cardIcon}>
-      <MaterialCommunityIcons name="file-document-outline" size={22} color={C.blue} />
-    </View>
-    <View style={styles.cardBody}>
-      <Text style={styles.cardTitle} numberOfLines={1}>
-        {monthLabel(payslip.payrollYear, payslip.payrollMonth)}
-      </Text>
-      <Text style={styles.cardMeta} numberOfLines={1}>
-        Net {ringgit(payslip.netPay)}
-      </Text>
-    </View>
-    <MaterialCommunityIcons name="chevron-right" size={22} color={C.muted} />
-  </TouchableOpacity>
-);
+  last?: boolean;
+}> = ({ payslip, onPress, last = false }) => {
+  const month = monthLabel(payslip.payrollYear, payslip.payrollMonth);
+  const run = runLabel(payslip);
+  return (
+    <TouchableOpacity
+      style={[styles.listRow, !last && styles.rowDivider]}
+      onPress={onPress}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={`${month}${run ? `, ${run}` : ''}, net pay ${ringgit(payslip.netPay)}`}
+    >
+      <View style={styles.listRowBody}>
+        <Text style={styles.listRowTitle} numberOfLines={1}>{month}</Text>
+        {run ? <Text style={styles.listRowSub} numberOfLines={1}>{run}</Text> : null}
+      </View>
+      <Text style={styles.listRowAmount} numberOfLines={1}>{ringgit(payslip.netPay)}</Text>
+      <MaterialCommunityIcons name="chevron-right" size={20} color={C.muted} />
+    </TouchableOpacity>
+  );
+};
 
 // ── States ────────────────────────────────────────────────────────────
 
@@ -422,9 +515,9 @@ export const PayslipState: React.FC<{
 const styles = StyleSheet.create({
   sheet: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 18,
-    marginBottom: 16,
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 12,
     shadowColor: C.ink,
     shadowOpacity: 0.06,
     shadowRadius: 14,
@@ -432,32 +525,36 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
 
-  company: { marginBottom: 14 },
-  companyLogo: { height: 44, width: 150, marginBottom: 8, alignSelf: 'flex-start' },
-  companyName: { fontSize: 17, fontWeight: '800', color: C.ink },
+  company: { marginBottom: 10 },
+  companyLogo: { height: 40, width: 140, marginBottom: 6, alignSelf: 'flex-start' },
+  companyName: { fontSize: 16, fontWeight: '800', color: C.ink },
   companyMeta: { fontSize: 12, color: C.body, marginTop: 2, lineHeight: 16 },
 
+  // A quiet band, not a blue one: brand blue is kept for the buttons, and a
+  // solid blue title bar competed with "Save PDF" for the eye.
   titleBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    backgroundColor: C.blue,
+    backgroundColor: C.field,
+    borderWidth: 1,
+    borderColor: C.line,
     borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginBottom: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 10,
   },
-  titleWord: { fontSize: 14, fontWeight: '800', color: '#FFFFFF', letterSpacing: 1 },
-  titleMeta: { flex: 1, alignItems: 'flex-end', gap: 2 },
-  titleMetaLine: { fontSize: 11, color: '#EAF0FF', textAlign: 'right' },
+  titleWord: { fontSize: 14, fontWeight: '800', color: C.ink, letterSpacing: 1 },
+  titleMeta: { flex: 1, alignItems: 'flex-end', gap: 1 },
+  titleMetaLine: { fontSize: 11, color: C.body, textAlign: 'right' },
 
   identity: {
     borderWidth: 1,
     borderColor: C.line,
     borderRadius: 12,
-    paddingHorizontal: 14,
-    marginBottom: 14,
+    paddingHorizontal: 12,
+    marginBottom: 10,
   },
 
   panel: {
@@ -465,7 +562,7 @@ const styles = StyleSheet.create({
     borderColor: C.line,
     borderRadius: 12,
     overflow: 'hidden',
-    marginBottom: 14,
+    marginBottom: 10,
   },
   panelHead: {
     flexDirection: 'row',
@@ -474,26 +571,26 @@ const styles = StyleSheet.create({
     backgroundColor: C.field,
     borderBottomWidth: 1,
     borderBottomColor: C.line,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
   },
   panelTitle: { fontSize: 13, fontWeight: '700', color: C.ink },
   panelUnit: { fontSize: 12, fontWeight: '700', color: C.body },
-  panelBody: { paddingHorizontal: 14 },
+  panelBody: { paddingHorizontal: 12 },
   panelBodyFlush: {},
 
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9 },
   rowDivider: { borderBottomWidth: 1, borderBottomColor: C.line },
   rowText: { flex: 1, gap: 2 },
   rowLabel: { fontSize: 14, color: C.ink, fontWeight: '600' },
   rowSub: { fontSize: 12, color: C.body },
   rowAmount: { fontSize: 15, fontWeight: '700', color: C.ink, fontVariant: ['tabular-nums'] },
 
-  fieldLabel: { flex: 1, fontSize: 13, color: C.body },
-  fieldValue: { flexShrink: 1, fontSize: 13, fontWeight: '700', color: C.ink, textAlign: 'right' },
+  fieldLabel: { width: 104, flexShrink: 0, fontSize: 13, color: C.body },
+  fieldValue: { flex: 1, fontSize: 13, fontWeight: '700', color: C.ink, textAlign: 'right' },
 
   // Sits inside a padded panel body, so it carries vertical spacing only.
-  dash: { fontSize: 14, color: C.muted, paddingVertical: 12 },
+  dash: { fontSize: 14, color: C.muted, paddingVertical: 9 },
 
   hscrollContent: { flexGrow: 1 },
   table: { flexGrow: 1 },
@@ -502,12 +599,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: C.line,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     gap: 10,
   },
   tRowLast: { borderBottomWidth: 0 },
-  tHeadRow: { paddingVertical: 8 },
+  tHeadRow: { paddingVertical: 6 },
   tHead: { fontSize: 11, fontWeight: '700', color: C.muted, letterSpacing: 0.3 },
   tCell: { fontSize: 13, color: C.ink },
   tNum: { fontSize: 13, color: C.ink, fontVariant: ['tabular-nums'] },
@@ -528,12 +625,12 @@ const styles = StyleSheet.create({
   colLeaveLabel: { width: 96 },
   colLeave: { width: 62 },
 
-  tableFootWrap: { paddingHorizontal: 14 },
+  tableFootWrap: { paddingHorizontal: 12 },
   totalRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 11,
+    paddingVertical: 9,
   },
   totalLabel: { fontSize: 13, fontWeight: '800', color: C.ink },
   totalAmount: { fontSize: 14, fontWeight: '800', color: C.ink, fontVariant: ['tabular-nums'] },
@@ -547,50 +644,55 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#D5E1FF',
     borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 4,
   },
   netLabel: { fontSize: 14, fontWeight: '800', color: C.ink, letterSpacing: 0.6 },
   netAmount: {
     fontSize: 21,
     fontWeight: '800',
-    color: C.blue,
+    color: C.ink,
     fontVariant: ['tabular-nums'],
     flexShrink: 1,
     textAlign: 'right',
   },
 
-  sign: { flexDirection: 'row', gap: 20, marginTop: 32 },
+  sign: { flexDirection: 'row', gap: 20, marginTop: 20 },
   signCol: { flex: 1 },
   signRule: { height: 1, backgroundColor: C.muted, marginBottom: 6 },
   signCaption: { fontSize: 11, color: C.body },
-  signRow: { fontSize: 11, color: C.muted, marginTop: 6 },
+  signRow: { fontSize: 11, color: C.muted, marginTop: 4 },
   signValue: { color: C.ink },
 
-  foot: { fontSize: 11, color: C.muted, textAlign: 'center', marginTop: 20 },
+  foot: { fontSize: 11, color: C.muted, textAlign: 'center', marginTop: 12 },
 
-  quiet: { fontSize: 13, color: C.muted, paddingHorizontal: 14, paddingVertical: 12 },
+  quiet: { fontSize: 13, color: C.muted, paddingHorizontal: 12, paddingVertical: 9 },
 
-  card: {
+  yearSwitch: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    marginTop: 4,
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 12,
   },
-  cardIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#E8F0FE', alignItems: 'center', justifyContent: 'center' },
-  cardBody: { flex: 1, gap: 3 },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: C.ink },
-  cardMeta: { fontSize: 13, color: C.body, fontVariant: ['tabular-nums'] },
+  yearArrow: { width: 44, height: 36, alignItems: 'center', justifyContent: 'center' },
+  yearText: { minWidth: 44, textAlign: 'center', fontSize: 15, fontWeight: '700', color: C.ink, fontVariant: ['tabular-nums'] },
 
-  state: { alignItems: 'center', paddingVertical: 36, paddingHorizontal: 24 },
-  stateIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#E8F0FE', alignItems: 'center', justifyContent: 'center' },
+  listPanel: { backgroundColor: '#FFFFFF', borderRadius: 16, paddingHorizontal: 14 },
+  listRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44, paddingVertical: 10 },
+  listRowBody: { flex: 1 },
+  listRowTitle: { fontSize: 15, fontWeight: '700', color: C.ink },
+  listRowSub: { fontSize: 12, color: C.body, marginTop: 1 },
+  listRowAmount: { fontSize: 15, fontWeight: '600', color: C.ink, fontVariant: ['tabular-nums'], textAlign: 'right' },
+
+  state: { alignItems: 'center', paddingVertical: 24, paddingHorizontal: 24 },
+  stateIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#E8F0FE', alignItems: 'center', justifyContent: 'center' },
   stateIconDanger: { backgroundColor: C.dangerBg },
-  stateTitle: { fontSize: 16, fontWeight: '700', color: C.ink, marginTop: 12 },
+  stateTitle: { fontSize: 16, fontWeight: '700', color: C.ink, marginTop: 10, textAlign: 'center' },
   stateBody: { fontSize: 13, color: C.body, textAlign: 'center', marginTop: 4, lineHeight: 19 },
-  retry: { marginTop: 14, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, backgroundColor: C.blue },
+  retry: { marginTop: 12, minHeight: 44, justifyContent: 'center', paddingHorizontal: 20, borderRadius: 12, backgroundColor: C.blue },
   retryText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
 });

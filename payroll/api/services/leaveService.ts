@@ -58,6 +58,14 @@ export interface LeaveApprovalStep {
   comments: string | null;
 }
 
+/**
+ * One leave application.
+ *
+ * The lists (my applications, pending approvals, approver leaves and HR's web
+ * list) return the server's summary row, which carries no approvals,
+ * attachment or hours — those arrive only on the single-application read, so
+ * a list screen must treat them as possibly empty.
+ */
 export interface LeaveApplication {
   id: string;
   employeeId: string;
@@ -85,6 +93,8 @@ export interface LeaveApplication {
   submittedFrom: string;
   currentApprovalStep: number;
   totalApprovalSteps: number;
+  /** On the summary rows: who the first undecided step waits on. Stale once the leave is closed. */
+  currentApproverName?: string | null;
   approvedAt: string | null;
   approvedByEmployeeName: string | null;
   approvals: LeaveApprovalStep[];
@@ -216,6 +226,40 @@ export interface DepartmentApproverStatus {
   departmentIds: string[];
 }
 
+export interface LeavePage {
+  items: LeaveApplication[];
+  total: number;
+}
+
+/** One leave type's balance for an employee, as HR's entitlement list gives it. */
+export interface EmployeeLeaveBalance {
+  leaveTypeId: string;
+  balanceDays: number;
+  entitledDays: number | null;
+}
+
+/** Someone with leave in a date range, from HR's leave report. */
+export interface LeaveOverlapRow {
+  employeeId: string;
+  employeeName: string;
+  department: string | null;
+}
+
+/**
+ * One page of a leave list, whichever endpoint answered.
+ *
+ * The approval lists used to hand back `response.data.content` as it came, so
+ * an empty body reached the screen as undefined and `.items` threw inside the
+ * queue. Every list now arrives as the same two fields, never undefined.
+ */
+function toPage(data: unknown): LeavePage {
+  const content = (data as { content?: { items?: unknown; total?: unknown } } | null | undefined)?.content;
+  const rawItems = content?.items;
+  const rawTotal = content?.total;
+  const items = Array.isArray(rawItems) ? (rawItems as LeaveApplication[]) : [];
+  return { items, total: typeof rawTotal === 'number' ? rawTotal : items.length };
+}
+
 const leaveService = {
   async getLeaveTypes(): Promise<LeaveType[]> {
     const response = await axiosInstance.get(ENDPOINTS.LEAVE.TYPES);
@@ -327,13 +371,9 @@ const leaveService = {
     status?: string;
     year?: number;
     leaveTypeId?: string;
-  }): Promise<{ items: LeaveApplication[]; total: number }> {
+  }): Promise<LeavePage> {
     const response = await axiosInstance.get(ENDPOINTS.LEAVE.APPLICATIONS, { params });
-    const content = response.data?.content;
-    return {
-      items: Array.isArray(content?.items) ? content.items : [],
-      total: content?.total ?? 0,
-    };
+    return toPage(response.data);
   },
 
   async getApplicationById(id: string): Promise<LeaveApplication> {
@@ -446,9 +486,9 @@ const leaveService = {
     await axiosInstance.post(ENDPOINTS.LEAVE.APPLICATION_CANCEL(id), reason ? { reason } : {});
   },
 
-  async getPendingApprovals(params?: { page?: number; pageSize?: number }): Promise<{ items: LeaveApplication[]; total: number }> {
+  async getPendingApprovals(params?: { page?: number; pageSize?: number }): Promise<LeavePage> {
     const response = await axiosInstance.get(ENDPOINTS.LEAVE.PENDING_APPROVALS, { params });
-    return response.data.content;
+    return toPage(response.data);
   },
 
   async getApproverStatus(): Promise<DepartmentApproverStatus> {
@@ -460,18 +500,18 @@ const leaveService = {
     };
   },
 
-  async getApproverLeaves(params?: { page?: number; pageSize?: number; status?: string }): Promise<{ items: LeaveApplication[]; total: number }> {
+  async getApproverLeaves(params?: { page?: number; pageSize?: number; status?: string }): Promise<LeavePage> {
     const response = await axiosInstance.get(ENDPOINTS.LEAVE.APPROVER_LEAVES, { params });
-    return response.data.content;
+    return toPage(response.data);
   },
 
   /**
    * Get ALL leave applications in the tenant (HR/Owner view).
    * Uses the same web API as the web dashboard: GET /api/Leave/applications
    */
-  async getAllLeaveApplications(params?: { page?: number; pageSize?: number; status?: string }): Promise<{ items: LeaveApplication[]; total: number }> {
+  async getAllLeaveApplications(params?: { page?: number; pageSize?: number; status?: string }): Promise<LeavePage> {
     const response = await axiosInstance.get(ENDPOINTS.WEB_LEAVE.APPLICATIONS, { params });
-    return response.data.content;
+    return toPage(response.data);
   },
 
   /**
@@ -483,12 +523,90 @@ const leaveService = {
     return response.data.content;
   },
 
-  async approveLeave(id: string, comments?: string): Promise<void> {
-    await axiosInstance.post(`${ENDPOINTS.LEAVE.APPLICATIONS}/${id}/approve`, { comments });
+  /**
+   * Approve, and hand back the leave as the server left it.
+   *
+   * The result is what tells the approver what actually happened: on a
+   * multi-step leave the live server approves ONE step for a linked approver
+   * while the reworked one finishes every step, so the app cannot know in
+   * advance whether "approve" ended it or passed it on. Undefined when the
+   * server sent no body; the caller then says only that it was done.
+   */
+  async approveLeave(id: string, comments?: string): Promise<LeaveApplication | undefined> {
+    const response = await axiosInstance.post(`${ENDPOINTS.LEAVE.APPLICATIONS}/${id}/approve`, { comments });
+    return (response.data?.content ?? undefined) as LeaveApplication | undefined;
   },
 
-  async rejectLeave(id: string, reason: string): Promise<void> {
-    await axiosInstance.post(`${ENDPOINTS.LEAVE.APPLICATIONS}/${id}/reject`, { reason });
+  async rejectLeave(id: string, reason: string): Promise<LeaveApplication | undefined> {
+    const response = await axiosInstance.post(`${ENDPOINTS.LEAVE.APPLICATIONS}/${id}/reject`, { reason });
+    return (response.data?.content ?? undefined) as LeaveApplication | undefined;
+  },
+
+  /**
+   * HR cancels an employee's approved leave, e.g. they came back early.
+   *
+   * The web route, guarded by LEAVE_APPLICATION.APPROVE. It records the user,
+   * not an employee, so HR without an employee record can use it on the live
+   * server. The server refuses a leave whose period has already ended and says
+   * so in its own words.
+   */
+  async cancelAsHR(id: string, reason: string): Promise<void> {
+    await axiosInstance.post(ENDPOINTS.WEB_LEAVE.CANCEL(id), { reason });
+  },
+
+  /**
+   * One employee's balances for a year, for the person deciding their leave.
+   *
+   * Web route, guarded by LEAVE_ENTITLEMENT.VIEW: a 403 is normal for an
+   * approver without it, and the caller hides the line rather than show a 0.
+   * Both casings are read, as for the other web reads.
+   */
+  async getEmployeeBalances(employeeId: string, year: number): Promise<EmployeeLeaveBalance[]> {
+    const response = await axiosInstance.get(ENDPOINTS.WEB_LEAVE.ENTITLEMENTS, { params: { year, employeeId } });
+    const content = response.data?.content ?? response.data?.Content;
+    const rows: unknown[] = Array.isArray(content) ? content : [];
+    return rows
+      .map((entry) => {
+        const row = entry as Record<string, unknown>;
+        const num = (key: string): number | null => {
+          const value = row[key] ?? row[key.charAt(0).toUpperCase() + key.slice(1)];
+          return typeof value === 'number' ? value : null;
+        };
+        const id = row.leaveTypeId ?? row.LeaveTypeId;
+        return {
+          leaveTypeId: typeof id === 'string' ? id : '',
+          balanceDays: num('balanceDays'),
+          entitledDays: num('entitledDays'),
+        };
+      })
+      .filter((r) => r.leaveTypeId !== '' && r.balanceDays !== null) as EmployeeLeaveBalance[];
+  },
+
+  /**
+   * Who else is off, or asking to be, between two dates.
+   *
+   * The leave report HR already uses on the web (LEAVE_APPLICATION.VIEW). Only
+   * the fields the decision needs are kept: a name, a department, and whose
+   * row it is, so the applicant can be left out.
+   */
+  async getLeaveOverlap(from: string, to: string): Promise<LeaveOverlapRow[]> {
+    const response = await axiosInstance.get(ENDPOINTS.WEB_LEAVE.REPORT, {
+      params: { from, to, statuses: 'APPROVED,PENDING' },
+    });
+    const content = response.data?.content ?? response.data?.Content;
+    const rows: unknown[] = Array.isArray(content?.rows) ? content.rows : Array.isArray(content?.Rows) ? content.Rows : [];
+    return rows.map((entry) => {
+      const row = entry as Record<string, unknown>;
+      const text = (key: string): string => {
+        const value = row[key] ?? row[key.charAt(0).toUpperCase() + key.slice(1)];
+        return typeof value === 'string' ? value : '';
+      };
+      return {
+        employeeId: text('employeeId'),
+        employeeName: text('employeeName'),
+        department: text('department') || null,
+      };
+    });
   },
 };
 

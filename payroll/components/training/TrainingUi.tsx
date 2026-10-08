@@ -1,11 +1,11 @@
 /**
  * The pieces the My Training screen is built from.
  *
- * Deliberately the sibling of components/documents/DocumentUi: a training
- * checklist asks the same question a document checklist does -- what is
- * required of me, what have I done, what is my problem right now -- so it
- * should not answer it in a different visual language. Same summary card, same
- * grouped rows, same sheet.
+ * Deliberately built on components/documents/DocumentUi: a training checklist
+ * asks the same question a document checklist does -- what is required of me,
+ * what have I done, what is my problem right now -- so it uses the same summary
+ * card, group heading, list panel, status row and bottom sheet, imported rather
+ * than copied, so the two screens cannot drift apart again.
  *
  * The status vocabulary is the server's: seven tokens defined once in
  * TrainingStatus and mirrored here. Each one gets its own icon as well as its
@@ -14,18 +14,31 @@
  * carries the meaning; the colour only reinforces it.
  *
  * Rows are grouped rather than listed flat, and the grouping is not a straight
- * status lookup. EXPIRING sits under DONE and not under "needs you": a
+ * status lookup. EXPIRING sits under COMING UP and not under "needs you": a
  * certificate valid for another six weeks is not something to act on today, and
  * putting it in the same pile as a course never taken would bury the one that
- * matters.
+ * matters. And an optional course that has lapsed is not the employee's
+ * problem at all.
  */
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { AUTH_COLORS as C } from '../auth/AuthBackdrop';
+import { StyleSheet, View } from 'react-native';
 import PrimaryButton, { type IconName } from '../auth/PrimaryButton';
 import { plainDate } from '../requests/RequestUi';
+import {
+  BottomSheet,
+  Fact,
+  FactList,
+  GroupHeading,
+  ListPanel,
+  ProgressSummary,
+  SheetHead,
+  SheetNote,
+  StatusRow,
+  type SheetNoteValue,
+} from '../documents/DocumentUi';
 import type { TrainingRow, TrainingStatus } from '../../api/services/trainingService';
+
+export { GroupHeading };
 
 // ── Status ────────────────────────────────────────────────────────────
 
@@ -54,7 +67,14 @@ export function lookOf(status: string): StatusLook {
   return STATUS_LOOK[status as TrainingStatus] ?? STATUS_LOOK['N/A'];
 }
 
+/**
+ * Where the row belongs. The server resolves an optional course with a lapsed
+ * record to EXPIRED as well, and putting that in red under NEEDS YOUR
+ * ATTENTION, with "retake it", chased the employee for something not required
+ * of them.
+ */
 export function groupOf(row: TrainingRow): TrainingGroup {
+  if (row.status === 'EXPIRED' && !row.isRequired) return 'notRequired';
   return lookOf(row.status).group;
 }
 
@@ -80,6 +100,7 @@ function daysUntil(value: string | null): number | null {
 export function rowMeta(row: TrainingRow): string {
   switch (row.status) {
     case 'EXPIRED': {
+      if (!row.isRequired) return 'Expired · optional';
       const days = daysUntil(row.expiresOn);
       if (days !== null && days < 0) {
         const n = Math.abs(days);
@@ -94,6 +115,8 @@ export function rowMeta(row: TrainingRow): string {
         : `Expires ${plainDate(row.expiresOn)}`;
     }
     case 'DUE_SOON':
+      // The server sends no due-by date yet (join date + grace days), so this
+      // cannot say when. See the backend note on EmployeeTrainingRowDto.
       return 'Due soon · not taken yet';
     case 'NOT_DONE':
       return 'You have not taken this yet';
@@ -111,77 +134,39 @@ export function rowMeta(row: TrainingRow): string {
 // ── Summary ───────────────────────────────────────────────────────────
 
 /**
- * The whole picture in one card: how far along, and the two numbers that say
- * whether anything is your problem today. The bar is segmented rather than a
- * single fill so "expiring" is visible as its own slice -- it is neither done
- * nor overdue, and a plain percentage hides the difference.
+ * How far along, in one short card. The bar is segmented so "coming up" is
+ * visible as its own slice -- it is neither done nor overdue, and a plain
+ * percentage hides the difference. The slices are counted from the required
+ * rows the list shows (the server's own counts include optional courses), so
+ * they add up to the "x of y" beside them.
  */
 export const TrainingSummary: React.FC<{
   percent: number;
   required: number;
+  /** Required courses done, the expiring ones included — they are valid today. */
   done: number;
+  /** Required courses that are expiring or due soon. */
+  comingUp: number;
+  /** Of `comingUp`, the ones already counted in `done`. */
   expiring: number;
   actionNeeded: number;
-}> = ({ percent, required, done, expiring, actionNeeded }) => {
-  const total = Math.max(required, 1);
-  // Typed as a percentage literal, not a plain string: a style width will not
-  // accept `string`, and widening it with a cast would hide the next mistake.
-  const share = (n: number): `${number}%` => `${Math.min(100, (n / total) * 100)}%`;
-
-  // "done" already counts the expiring ones -- they are complete until the day
-  // they are not -- so the green slice is drawn without them to keep the bar
-  // adding up to the same total the counts do.
-  const solid = Math.max(0, done - expiring);
-
-  return (
-    <View style={styles.summary}>
-      <View style={styles.summaryTop}>
-        <View style={styles.summaryHeadline}>
-          <Text style={styles.summaryPercent}>{percent}%</Text>
-          <Text style={styles.summaryPercentLabel}>complete</Text>
-        </View>
-        <Text style={styles.summaryCount}>
-          {done} of {required} trainings
-        </Text>
-      </View>
-
-      <View style={styles.track} accessibilityLabel={`${percent} percent complete`}>
-        <View style={[styles.fill, { width: share(solid), backgroundColor: '#16A34A' }]} />
-        <View style={[styles.fill, { width: share(expiring), backgroundColor: '#F59E0B' }]} />
-        <View style={[styles.fill, { width: share(actionNeeded), backgroundColor: '#DC2626' }]} />
-      </View>
-
-      <View style={styles.stats}>
-        <Stat value={actionNeeded} label={actionNeeded === 1 ? 'needs you' : 'need you'} tint="#DC2626" />
-        <View style={styles.statLine} />
-        <Stat value={expiring} label="expiring" tint="#B45309" />
-        <View style={styles.statLine} />
-        <Stat value={done} label="completed" tint="#15803D" />
-      </View>
-    </View>
-  );
-};
-
-const Stat: React.FC<{ value: number; label: string; tint: string }> = ({ value, label, tint }) => (
-  <View style={styles.stat}>
-    <Text style={[styles.statValue, { color: tint }]}>{value}</Text>
-    <Text style={styles.statLabel}>{label}</Text>
-  </View>
+}> = ({ percent, required, done, comingUp, expiring, actionNeeded }) => (
+  <ProgressSummary
+    percent={percent}
+    caption={`${done} of ${required} completed`}
+    total={required}
+    segments={[
+      { value: Math.max(0, done - expiring), color: '#16A34A' },
+      { value: comingUp, color: '#F59E0B' },
+      { value: actionNeeded, color: '#DC2626' },
+    ]}
+  />
 );
 
 // ── List ──────────────────────────────────────────────────────────────
 
-export const GroupHeading: React.FC<{ title: string; count: number }> = ({ title, count }) => (
-  <View style={styles.headingRow}>
-    <Text style={styles.heading}>{title}</Text>
-    <Text style={styles.headingCount}>{count}</Text>
-  </View>
-);
-
 /** The white card a group of rows sits on. */
-export const TrainingPanel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <View style={styles.panel}>{children}</View>
-);
+export const TrainingPanel = ListPanel;
 
 export const TrainingRowItem: React.FC<{
   row: TrainingRow;
@@ -189,133 +174,84 @@ export const TrainingRowItem: React.FC<{
   last?: boolean;
 }> = ({ row, onPress, last = false }) => {
   const look = lookOf(row.status);
-
+  const meta = rowMeta(row);
   return (
-    <TouchableOpacity
-      style={[styles.row, !last && styles.rowDivider]}
+    <StatusRow
+      icon={look.icon}
+      fg={look.fg}
+      bg={look.bg}
+      title={row.name}
+      meta={meta}
+      urgent={groupOf(row) === 'action'}
+      // An excused row is also "not required", but saying so here would blur a
+      // decision HR made about this person with a property of the course.
+      optional={!row.isRequired && row.status !== 'EXCUSED'}
+      badge={row.sessionHasProof ? 'clipboard-check-outline' : undefined}
       onPress={onPress}
-      activeOpacity={0.7}
-      accessibilityRole="button"
-      accessibilityLabel={`${row.name}. ${look.label}. ${rowMeta(row)}`}
-    >
-      <View style={[styles.rowIcon, { backgroundColor: look.bg }]}>
-        <MaterialCommunityIcons name={look.icon} size={22} color={look.fg} />
-      </View>
-
-      <View style={styles.rowBody}>
-        <View style={styles.rowTop}>
-          <Text style={styles.rowTitle} numberOfLines={1}>{row.name}</Text>
-          {/* An excused row is also "not required", but saying so here would blur
-              a decision HR made about this person with a property of the course. */}
-          {!row.isRequired && row.status !== 'EXCUSED' ? <Text style={styles.rowOptional}>Optional</Text> : null}
-        </View>
-        <Text style={[styles.rowMeta, { color: look.group === 'action' ? look.fg : C.body }]} numberOfLines={1}>
-          {rowMeta(row)}
-        </Text>
-      </View>
-
-      {row.sessionHasProof ? (
-        <MaterialCommunityIcons name="certificate-outline" size={18} color={C.muted} style={styles.rowBadge} />
-      ) : null}
-      <MaterialCommunityIcons name="chevron-right" size={22} color={C.muted} />
-    </TouchableOpacity>
+      last={last}
+      accessibilityLabel={`${row.name}. ${look.label}. ${meta}${row.sessionHasProof ? '. Attendance record on file' : ''}`}
+    />
   );
 };
 
 // ── One training ──────────────────────────────────────────────────────
 
 /**
- * Everything about one course, on its own surface.
+ * Everything about one course, on its own surface: who ran it, when it was
+ * taken, when it lapses, and whether there is a record to open.
  *
- * A sheet rather than an expanding row because the list answers "what do I
- * still owe" and this answers "what is the story with this one" -- who ran it,
- * when it was taken, when it lapses, and whether there is a certificate to
- * open. Inlining that would turn a dozen scannable rows into a dozen
- * paragraphs.
+ * The file behind "Open attendance record" is the session's signed attendance
+ * sheet -- the server has no per-person certificate -- so the button says what
+ * it opens rather than promising a certificate and handing over a sign-in list.
  */
 export const TrainingSheet: React.FC<{
   row: TrainingRow | null;
   opening: boolean;
+  note: SheetNoteValue | null;
   onClose: () => void;
   onCertificate: () => void;
-}> = ({ row, opening, onClose, onCertificate }) => {
+}> = ({ row, opening, note, onClose, onCertificate }) => {
   if (!row) return null;
 
   const look = lookOf(row.status);
-  const overdue = row.status === 'EXPIRED' || row.status === 'NOT_DONE' || row.status === 'DUE_SOON';
+  // Nothing on this screen books a place: training is arranged by HR, so an
+  // employee who has to act needs to know who to act on.
+  const needsSession =
+    row.isRequired && (row.status === 'EXPIRED' || row.status === 'NOT_DONE' || row.status === 'DUE_SOON');
+  const taken = row.status === 'DONE' || row.status === 'EXPIRING' || row.status === 'EXPIRED';
 
   return (
-    <Modal visible transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-      <View style={styles.sheetBackdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Dismiss" />
-        <View style={styles.sheet}>
-          <View style={styles.grabber} />
+    <BottomSheet onDismiss={onClose} footerLabel="Close" onFooter={onClose}>
+      <SheetHead icon={look.icon} fg={look.fg} bg={look.bg} title={row.name} label={look.label} />
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetScroll}>
-            <View style={styles.sheetHead}>
-              <View style={[styles.sheetIcon, { backgroundColor: look.bg }]}>
-                <MaterialCommunityIcons name={look.icon} size={24} color={look.fg} />
-              </View>
-              <View style={styles.flex}>
-                <Text style={styles.sheetTitle}>{row.name}</Text>
-                <View style={[styles.pill, { backgroundColor: look.bg }]}>
-                  <Text style={[styles.pillText, { color: look.fg }]}>{look.label}</Text>
-                </View>
-              </View>
-            </View>
+      <FactList>
+        {row.status === 'EXCUSED' && row.excusedReason ? <Fact label="Excused" value={row.excusedReason} /> : null}
+        <Fact label="Code" value={row.code} />
+        {row.category ? <Fact label="Category" value={prettyCategory(row.category)} /> : null}
+        <Fact label="Required" value={row.isRequired ? 'Yes, for your role' : 'Optional'} />
+        {needsSession ? <Fact label="Next session" value="Ask HR" /> : null}
+        {row.completedOn ? <Fact label="Completed" value={plainDate(row.completedOn)} /> : null}
+        {row.expiresOn ? <Fact label="Valid until" value={plainDate(row.expiresOn)} /> : null}
+        {row.trainer ? <Fact label="Trainer" value={row.trainer} /> : null}
+        {row.evidenceSource ? <Fact label="Recorded as" value={prettySource(row.evidenceSource)} /> : null}
+        {taken && !row.sessionHasProof ? <Fact label="Attendance record" value="Not filed" /> : null}
+      </FactList>
 
-            {row.status === 'EXCUSED' && row.excusedReason ? (
-              <View style={styles.quietBox}>
-                <Text style={styles.quietText}>{row.excusedReason}</Text>
-              </View>
-            ) : null}
+      {note ? <SheetNote tone={note.tone} text={note.text} /> : null}
 
-            {/* Nothing on this screen books a place: training is arranged by HR,
-                so an employee told to "act" needs to know who to act on. */}
-            {overdue ? (
-              <View style={styles.instructions}>
-                <MaterialCommunityIcons name="account-tie-outline" size={18} color={C.blue} />
-                <Text style={styles.instructionsText}>
-                  Sessions are arranged by HR. Ask them when this course is next running.
-                </Text>
-              </View>
-            ) : null}
-
-            <View style={styles.facts}>
-              <Fact label="Code" value={row.code} />
-              {row.category ? <Fact label="Category" value={prettyCategory(row.category)} /> : null}
-              <Fact label="Required" value={row.isRequired ? 'Yes, for your role' : 'Optional'} />
-              {row.completedOn ? <Fact label="Completed" value={plainDate(row.completedOn)} /> : null}
-              {row.expiresOn ? <Fact label="Valid until" value={plainDate(row.expiresOn)} /> : null}
-              {row.trainer ? <Fact label="Trainer" value={row.trainer} /> : null}
-              {row.evidenceSource ? <Fact label="Recorded as" value={prettySource(row.evidenceSource)} /> : null}
-            </View>
-
-            {row.sessionHasProof ? (
-              <View style={styles.actions}>
-                <PrimaryButton
-                  icon="certificate-outline"
-                  label="Open my certificate"
-                  onPress={onCertificate}
-                  loading={opening}
-                />
-              </View>
-            ) : row.status === 'DONE' || row.status === 'EXPIRING' || row.status === 'EXPIRED' ? (
-              <View style={styles.instructions}>
-                <MaterialCommunityIcons name="file-hidden" size={18} color={C.muted} />
-                <Text style={styles.instructionsText}>
-                  No certificate was filed for this one. HR still has it on your record.
-                </Text>
-              </View>
-            ) : null}
-          </ScrollView>
-
-          <TouchableOpacity style={styles.sheetClose} onPress={onClose} accessibilityRole="button">
-            <Text style={styles.sheetCloseText}>Close</Text>
-          </TouchableOpacity>
+      {row.sessionHasProof ? (
+        <View style={styles.actions}>
+          <PrimaryButton
+            icon="clipboard-text-outline"
+            label="Open attendance record"
+            onPress={onCertificate}
+            variant="outline"
+            loading={opening}
+            compact
+          />
         </View>
-      </View>
-    </Modal>
+      ) : null}
+    </BottomSheet>
   );
 };
 
@@ -329,87 +265,6 @@ function prettySource(value: string): string {
   return value === 'SESSION' ? 'A training session' : 'Entered by HR';
 }
 
-const Fact: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <View style={styles.fact}>
-    <Text style={styles.factLabel}>{label}</Text>
-    <Text style={styles.factValue} numberOfLines={2}>{value}</Text>
-  </View>
-);
-
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-
-  summary: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 18,
-    shadowColor: C.blue,
-    shadowOpacity: 0.07,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 2,
-  },
-  summaryTop: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
-  summaryHeadline: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
-  summaryPercent: { fontSize: 34, fontWeight: '800', color: C.ink, fontVariant: ['tabular-nums'] },
-  summaryPercentLabel: { fontSize: 14, color: C.body },
-  summaryCount: { fontSize: 13, color: C.muted },
-
-  track: { flexDirection: 'row', height: 8, borderRadius: 4, backgroundColor: C.line, overflow: 'hidden', marginTop: 14 },
-  fill: { height: 8 },
-
-  stats: { flexDirection: 'row', alignItems: 'center', marginTop: 16 },
-  stat: { flex: 1, alignItems: 'center' },
-  statLine: { width: 1, height: 30, backgroundColor: C.line },
-  statValue: { fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  statLabel: { fontSize: 12, color: C.body, marginTop: 2 },
-
-  headingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  heading: { fontSize: 12, fontWeight: '800', color: C.muted, letterSpacing: 0.8 },
-  headingCount: { fontSize: 12, fontWeight: '800', color: C.muted },
-
-  panel: { backgroundColor: '#FFFFFF', borderRadius: 16, paddingHorizontal: 14 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 },
-  rowDivider: { borderBottomWidth: 1, borderBottomColor: C.line },
-  rowIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
-  rowBody: { flex: 1, gap: 3 },
-  rowTop: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
-  rowTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: C.ink },
-  rowOptional: { fontSize: 11, color: C.muted },
-  rowMeta: { fontSize: 12 },
-  rowBadge: { marginRight: -4 },
-
-  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,27,45,0.45)', justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 8,
-    maxHeight: '86%',
-  },
-  grabber: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: C.line, marginBottom: 14 },
-  sheetScroll: { paddingBottom: 8 },
-  sheetHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  sheetIcon: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
-  sheetTitle: { fontSize: 19, fontWeight: '800', color: C.ink },
-  pill: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, marginTop: 5 },
-  pillText: { fontSize: 12, fontWeight: '700' },
-
-  quietBox: { backgroundColor: C.field, borderRadius: 14, padding: 14, marginTop: 16 },
-  quietText: { fontSize: 14, lineHeight: 20, color: C.body },
-
-  instructions: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 16 },
-  instructionsText: { flex: 1, fontSize: 13, lineHeight: 19, color: C.body },
-
-  facts: { marginTop: 16, borderTopWidth: 1, borderTopColor: C.line },
-  fact: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: C.line },
-  factLabel: { fontSize: 13, color: C.body },
-  factValue: { flex: 1, fontSize: 13, fontWeight: '700', color: C.ink, textAlign: 'right' },
-
-  actions: { marginTop: 18, gap: 10 },
-
-  sheetClose: { height: 48, justifyContent: 'center', alignItems: 'center', marginTop: 4 },
-  sheetCloseText: { fontSize: 15, fontWeight: '700', color: C.body },
+  actions: { marginTop: 14, gap: 10 },
 });

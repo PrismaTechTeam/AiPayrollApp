@@ -37,6 +37,12 @@ export interface ClaimApplication {
   approvedAt: string | null;
   rejectionReason: string | null;
   createdAt: string;
+  /**
+   * The claimant's allowance for this claim's type, sent only to an approver
+   * reading somebody else's claim. Optional: the server live today does not send
+   * it, and the screens show nothing about the allowance until it does.
+   */
+  balance?: ClaimBalance | null;
 }
 
 export interface ClaimType {
@@ -129,6 +135,7 @@ function toClaim(raw: any): ClaimApplication {
     approvedAt: str(raw?.approvedAt),
     rejectionReason: str(raw?.rejectionReason),
     createdAt: String(raw?.createdAt ?? ''),
+    balance: raw?.balance && typeof raw.balance === 'object' ? toBalance(raw.balance) : null,
   };
 }
 
@@ -250,6 +257,18 @@ const claimService = {
    */
   async getPendingApprovals(params?: { page?: number; pageSize?: number }): Promise<ClaimPage> {
     const response = await axiosInstance.get(ENDPOINTS.CLAIM.PENDING_APPROVALS, { params });
+    return toPage(response.data?.content);
+  },
+
+  /**
+   * Every claim in the company, decided ones included, for the Approved,
+   * Rejected and All tabs. The mobile controller has no such list, so this is
+   * the web one: guarded by CLAIM_APPLICATION.VIEW rather than APPROVE (a 403
+   * here means "may decide, may not browse"), and unlike the queue it does not
+   * leave out the caller's own claims. Leave `status` out for every status.
+   */
+  async getAllClaims(params: { status?: string; page?: number; pageSize?: number }): Promise<ClaimPage> {
+    const response = await axiosInstance.get(ENDPOINTS.WEB_CLAIM.APPLICATIONS, { params });
     return toPage(response.data?.content);
   },
 

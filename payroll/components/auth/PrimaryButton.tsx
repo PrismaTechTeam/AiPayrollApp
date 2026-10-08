@@ -1,11 +1,14 @@
 /**
- * The full-width blue gradient button used for the main action on the
- * signed-out and account screens. One component so the shadow, height and
- * disabled look cannot drift between screens.
+ * The full-width blue button used for the main action on the signed-out and
+ * account screens. One component so the shadow, height and disabled look cannot
+ * drift between screens.
+ *
+ * Flat fill, 12pt corners and a faint shadow, to the owner's "flat and
+ * lightweight" brief: the blue gradient with its 30% blue glow, 56pt tall, was
+ * the most visible sign of the old design on every form.
  */
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { AUTH_COLORS as C } from './AuthBackdrop';
 
@@ -34,7 +37,10 @@ export const PrimaryButton: React.FC<Props> = ({
   compact = false,
 }) => {
   const inactive = disabled || loading;
-  const height = compact ? 48 : 56;
+  const height = compact ? 44 : 50;
+  // Screen readers hear "busy" while it works and "dimmed" when it cannot be used,
+  // instead of a button that silently ignores the tap.
+  const a11yState = { disabled: inactive, busy: loading };
   const content = (color: string) => (
     <>
       {loading ? (
@@ -42,30 +48,28 @@ export const PrimaryButton: React.FC<Props> = ({
       ) : (
         <>
           {icon && <MaterialCommunityIcons name={icon} size={20} color={color} />}
-          <Text style={[styles.text, { color }]}>{label}</Text>
+          {/* One line, shrinking before it wraps: labels such as "Open <company name>"
+              carry a name of any length. */}
+          <Text style={[styles.text, { color }]} numberOfLines={1}>{label}</Text>
         </>
       )}
     </>
   );
 
   if (variant === 'solid' || variant === 'dangerSolid') {
-    const colors: [string, string] = variant === 'solid' ? [C.blueDeep, C.blueLight] : ['#DC2626', '#F87171'];
     return (
       <TouchableOpacity
         activeOpacity={0.85}
         onPress={onPress}
         disabled={inactive}
         accessibilityRole="button"
-        style={[styles.wrap, styles.shadow, variant === 'dangerSolid' && styles.shadowDanger, disabled && styles.disabled]}
+        accessibilityLabel={label}
+        accessibilityState={a11yState}
+        style={[styles.wrap, styles.shadow, disabled && styles.disabled]}
       >
-        <LinearGradient
-          colors={colors}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={[styles.body, { height }]}
-        >
+        <View style={[styles.body, { height, backgroundColor: variant === 'solid' ? C.blue : C.danger }]}>
           {content('#FFFFFF')}
-        </LinearGradient>
+        </View>
       </TouchableOpacity>
     );
   }
@@ -77,6 +81,8 @@ export const PrimaryButton: React.FC<Props> = ({
       onPress={onPress}
       disabled={inactive}
       accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={a11yState}
       style={[styles.wrap, disabled && styles.disabled]}
     >
       <View style={[styles.body, styles.outline, { height, borderColor: variant === 'danger' ? C.dangerLine : '#C9DAF8' }]}>
@@ -89,36 +95,36 @@ export const PrimaryButton: React.FC<Props> = ({
 const styles = StyleSheet.create({
   wrap: {
     width: '100%',
-    borderRadius: 16,
+    borderRadius: 12,
   },
+  // Navy, not blue, and faint: a coloured glow under every button read as heavy.
   shadow: {
-    shadowColor: C.blue,
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 5,
-  },
-  shadowDanger: {
-    shadowColor: C.danger,
+    shadowColor: C.ink,
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
   disabled: {
     opacity: 0.5,
   },
   body: {
-    height: 56,
-    borderRadius: 16,
+    height: 50,
+    borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
+    paddingHorizontal: 16,
   },
   outline: {
     backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
+    borderWidth: 1,
   },
   text: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '600',
+    flexShrink: 1,
   },
 });
 

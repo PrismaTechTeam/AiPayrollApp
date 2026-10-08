@@ -152,43 +152,8 @@ export interface TodayAttendance {
   dailyRecord: TodayDailyRecord | null;
 }
 
-/** One day of history, as GET /mobile/attendance/history returns it. */
-export interface AttendanceRecord {
-  workDate: string;
-  firstPunchIn: string | null;
-  lastPunchOut: string | null;
-  roundedPunchIn: string | null;
-  roundedPunchOut: string | null;
-  workedMinutes: number;
-  breakMinutes: number;
-  otMinutes: number;
-  lateMinutes: number;
-  earlyOutMinutes: number;
-  dayType: string;
-  status: string;
-  hasException: boolean;
-  exceptionNotes: string | null;
-}
-
-/** GET /mobile/attendance/summary. Minutes, not hours — the server counts in minutes. */
-export interface AttendanceSummary {
-  year: number;
-  month: number;
-  totalDays: number;
-  workingDays: number;
-  restDays: number;
-  holidays: number;
-  presentDays: number;
-  absentDays: number;
-  leaveDays: number;
-  lateDays: number;
-  earlyOutDays: number;
-  totalWorkedMinutes: number;
-  totalOtMinutes: number;
-  totalLateMinutes: number;
-  totalEarlyOutMinutes: number;
-  exceptionDays: number;
-}
+// GET /history and /summary had wrappers here that nothing called: My Attendance reads the
+// work card, the same record HR sees. Removed rather than left to drift from the server.
 
 /** REQUESTED is waiting for HR; CANCELLED is one the employee withdrew. */
 export type PunchRequestStatus = 'REQUESTED' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
@@ -220,6 +185,17 @@ export interface CreatedPunchRequest {
   status: PunchRequestStatus;
 }
 
+/**
+ * One employee's punch request as HR's queue lists it: the same request plus whose it is.
+ * GET /api/attendance/punch-requests, the web's own list, so the phone and the web always
+ * show the same queue.
+ */
+export interface TeamPunchRequest extends PunchRequest {
+  employeeId: string;
+  employeeCode: string | null;
+  employeeName: string;
+}
+
 const attendanceService = {
   async clock(data: ClockRequest): Promise<ClockResponse> {
     const response = await axiosInstance.post(ENDPOINTS.ATTENDANCE.CLOCK, data);
@@ -236,24 +212,41 @@ const attendanceService = {
     };
   },
 
-  /** Month is 1-12 and year is four digits — the server takes two integers, not "2026-09". */
-  async getHistory(params: { month: number; year: number; page?: number; pageSize?: number }): Promise<{ items: AttendanceRecord[]; total: number }> {
-    const response = await axiosInstance.get(ENDPOINTS.ATTENDANCE.HISTORY, { params });
-    const content = response.data?.content;
-    return {
-      items: Array.isArray(content?.items) ? content.items : [],
-      total: typeof content?.total === 'number' ? content.total : 0,
-    };
-  },
-
-  async getSummary(month: number, year: number): Promise<AttendanceSummary> {
-    const response = await axiosInstance.get(ENDPOINTS.ATTENDANCE.SUMMARY, { params: { month, year } });
-    return response.data.content;
-  },
-
+  /**
+   * Everyone in the company and where they stand today.
+   *
+   * Normalised here like every other read in this file. Today's server sends no
+   * 'checked-out' status, no checkedOut count and no last punch; the reworked one does.
+   * Missing counts become 0 and a missing name becomes '', so the screen never has to
+   * guard a null (a null name used to crash the avatar's initials).
+   */
   async getTeamToday(): Promise<TeamTodayResponse> {
     const response = await axiosInstance.get(ENDPOINTS.ATTENDANCE.TEAM_TODAY);
-    return response.data.content;
+    const content = response.data?.content ?? {};
+    const raw: Partial<TeamMemberAttendance>[] = Array.isArray(content.employees) ? content.employees : [];
+    const employees: TeamMemberAttendance[] = raw.map((e) => ({
+      employeeId: String(e.employeeId ?? ''),
+      employeeName: e.employeeName ?? '',
+      employeeCode: e.employeeCode ?? null,
+      position: e.position ?? null,
+      department: e.department ?? null,
+      status: teamStatusOf(e.status),
+      checkInTime: e.checkInTime ?? null,
+      lastPunchType: e.lastPunchType ?? null,
+      lastPunchTime: e.lastPunchTime ?? null,
+      latitude: typeof e.latitude === 'number' ? e.latitude : null,
+      longitude: typeof e.longitude === 'number' ? e.longitude : null,
+      onLeave: e.onLeave === true,
+    }));
+    const count = (s: TeamMemberStatus) => employees.filter((e) => e.status === s).length;
+    return {
+      date: content.date ?? '',
+      totalEmployees: content.totalEmployees ?? employees.length,
+      checkedIn: content.checkedIn ?? count('checked-in'),
+      checkedOut: content.checkedOut ?? count('checked-out'),
+      notCheckedIn: content.notCheckedIn ?? count('not-checked-in'),
+      employees,
+    };
   },
 
   /**
@@ -338,23 +331,81 @@ const attendanceService = {
   async cancelPunchRequest(id: string): Promise<void> {
     await axiosInstance.delete(ENDPOINTS.ATTENDANCE.PUNCH_REQUEST(id));
   },
+
+  /**
+   * Every employee's punch requests in one state, newest first (the server caps it at 500).
+   * Omit the status for the ones still waiting. Needs ATTENDANCE_WORK_CARD.VIEW.
+   */
+  async getTeamPunchRequests(status?: 'APPROVED' | 'REJECTED'): Promise<TeamPunchRequest[]> {
+    const response = await axiosInstance.get(ENDPOINTS.ATTENDANCE.TEAM_PUNCH_REQUESTS, { params: status ? { status } : undefined });
+    // A bare array today; read a wrapped one too, should the controller ever gain ResponseDTO.
+    const data = response.data;
+    const rows: Partial<TeamPunchRequest>[] = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.content)
+        ? data.content
+        : [];
+    return rows.map((r) => ({
+      id: String(r.id ?? ''),
+      employeeId: String(r.employeeId ?? ''),
+      employeeCode: r.employeeCode ?? null,
+      employeeName: r.employeeName ?? '',
+      punchType: (String(r.punchType ?? 'IN').toUpperCase() as PunchType),
+      punchTime: r.punchTime ?? '',
+      reason: r.reason ?? '',
+      status: (String(r.status ?? 'REQUESTED').toUpperCase() as PunchRequestStatus),
+      approverNotes: r.approverNotes ?? null,
+      decidedAt: r.decidedAt ?? null,
+      createdAt: r.createdAt ?? '',
+    }));
+  },
+
+  /** Adds the punch to the employee's work card and reprocesses the day. Needs ATTENDANCE_WORK_CARD.EDIT. */
+  async approveTeamPunchRequest(id: string, notes?: string): Promise<void> {
+    await axiosInstance.post(ENDPOINTS.ATTENDANCE.PUNCH_ADJUST_APPROVE(id), { notes: notes ?? null });
+  },
+
+  /** The reason is shown to the employee on their request. Needs ATTENDANCE_WORK_CARD.EDIT. */
+  async rejectTeamPunchRequest(id: string, reason: string): Promise<void> {
+    await axiosInstance.post(ENDPOINTS.ATTENDANCE.PUNCH_ADJUST_REJECT(id), { reason });
+  },
 };
+
+/**
+ * Where someone stands today. 'checked-out' (the last IN/OUT was an OUT) only comes from
+ * the reworked server; today's server calls everyone who clocked in 'checked-in'.
+ */
+export type TeamMemberStatus = 'checked-in' | 'checked-out' | 'not-checked-in';
+
+function teamStatusOf(raw: unknown): TeamMemberStatus {
+  const s = String(raw ?? '').toLowerCase();
+  return s === 'checked-in' || s === 'checked-out' ? s : 'not-checked-in';
+}
 
 export interface TeamMemberAttendance {
   employeeId: string;
   employeeName: string;
+  /** Not sent by today's server; shown beside the name when it arrives. */
+  employeeCode?: string | null;
   position: string | null;
   department: string | null;
-  status: 'checked-in' | 'not-checked-in';
+  status: TeamMemberStatus;
   checkInTime: string | null;
+  /** The latest IN or OUT, so a 'checked-out' row can say when they left. Reworked server only. */
+  lastPunchType?: string | null;
+  lastPunchTime?: string | null;
   latitude: number | null;
   longitude: number | null;
+  /** On approved leave today. No server sends it yet; until one does it is always false. */
+  onLeave?: boolean;
 }
 
 export interface TeamTodayResponse {
   date: string;
   totalEmployees: number;
   checkedIn: number;
+  /** 0 from today's server, which has no such state. */
+  checkedOut: number;
   notCheckedIn: number;
   employees: TeamMemberAttendance[];
 }

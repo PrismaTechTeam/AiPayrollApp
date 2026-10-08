@@ -1,6 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { API_CONFIG } from './config';
-import { tokenManager } from './tokenManager';
+import { tokenManager, tenantIdFromToken } from './tokenManager';
 import { ENDPOINTS } from './endpoints';
 
 /**
@@ -13,15 +13,33 @@ import { ENDPOINTS } from './endpoints';
  */
 
 let isRefreshing = false;
-let refreshSubscribers: ((token: string) => void)[] = [];
+// Requests that hit a 401 while a refresh was already running. Each is told the
+// outcome: the new token, or null when the refresh produced none.
+let refreshSubscribers: ((token: string | null) => void)[] = [];
 
-function onTokenRefreshed(newToken: string) {
-  refreshSubscribers.forEach(cb => cb(newToken));
+/**
+ * Settle every waiting request, then forget them. A failed refresh used to just
+ * empty the list, which left each waiting request as a promise that never
+ * settled, so its screen spun forever.
+ */
+function onTokenRefreshed(newToken: string | null) {
+  const waiting = refreshSubscribers;
   refreshSubscribers = [];
+  waiting.forEach(cb => cb(newToken));
 }
 
-function addRefreshSubscriber(cb: (token: string) => void) {
+function addRefreshSubscriber(cb: (token: string | null) => void) {
   refreshSubscribers.push(cb);
+}
+
+/**
+ * The server looked at the refresh token and refused it (expired, revoked by a
+ * sign-out elsewhere, or malformed). Only then is the session really over. A
+ * network error, a timeout, a 429 or a 5xx says nothing about the token.
+ */
+function refreshWasRefused(error: unknown): boolean {
+  const status = (error as AxiosError | null)?.response?.status;
+  return status === 400 || status === 401;
 }
 
 const axiosInstance = axios.create({
@@ -81,9 +99,14 @@ axiosInstance.interceptors.response.use(
       originalRequest._retry = true;
 
       if (isRefreshing) {
-        // Wait for the ongoing refresh to complete
-        return new Promise((resolve) => {
-          addRefreshSubscriber((newToken: string) => {
+        // Wait for the ongoing refresh. If it produces no token this request
+        // fails with its own 401, like the one that started the refresh.
+        return new Promise((resolve, reject) => {
+          addRefreshSubscriber((newToken: string | null) => {
+            if (!newToken) {
+              reject(error);
+              return;
+            }
             originalRequest.headers.Authorization = `Bearer ${newToken}`;
             resolve(axiosInstance(originalRequest));
           });
@@ -96,10 +119,14 @@ axiosInstance.interceptors.response.use(
           originalRequest.headers.Authorization = `Bearer ${newToken}`;
           return axiosInstance(originalRequest);
         }
-      } catch {
-        // Refresh failed - user needs to re-login
-        await tokenManager.clearTokens();
-        // The auth context will detect the cleared tokens and redirect to login
+      } catch (refreshError) {
+        // Clearing the tokens signs the person out: PayrollAuthContext listens
+        // through tokenManager.onCleared and returns to the login page. So only a
+        // refusal does it; a blip (offline, timeout, 429, 5xx) keeps the session
+        // and the next request tries the refresh again.
+        if (refreshWasRefused(refreshError)) {
+          await tokenManager.clearTokens();
+        }
       }
     }
 
@@ -111,21 +138,58 @@ async function refreshAccessToken(): Promise<string | null> {
   isRefreshing = true;
   try {
     const refreshToken = await tokenManager.getRefreshToken();
-    if (!refreshToken) return null;
+    if (!refreshToken) {
+      onTokenRefreshed(null);
+      return null;
+    }
+
+    // The company the app is showing. A refresh that does not name it gets a token for
+    // whichever company the account last chose anywhere (the web, another phone), and a
+    // multi-company HR kept seeing company A while every call ran in company B. The reworked
+    // server honours tenantId; the live one ignores the field, so the switch below covers it.
+    const oldClaim = await tokenManager.getTenantClaim();
 
     // Use a raw axios call to avoid interceptor loops
     const response = await axios.post(
       `${API_CONFIG.baseUrl}${ENDPOINTS.AUTH.REFRESH}`,
-      { refreshToken },
+      { refreshToken, tenantId: oldClaim ?? undefined },
       { headers: { 'Content-Type': 'application/json' } }
     );
 
-    const { token, expiresIn } = response.data.content;
-    await tokenManager.updateAccessToken(token, expiresIn);
-    onTokenRefreshed(token);
-    return token;
+    // The server rotates the refresh token on every refresh. Keeping only the
+    // original one signed people out 30 days after they last typed a password,
+    // however often they opened the app.
+    const { token, expiresIn, refreshToken: rotated } = response.data.content;
+    let finalToken: string = token;
+    let finalExpiresIn: number | undefined = expiresIn;
+
+    // The live server answered for another company: move the new token back to the one on
+    // screen, the same call the company switcher makes, before anything else runs with it.
+    const issuedFor = tenantIdFromToken(token);
+    if (oldClaim && issuedFor && issuedFor.toLowerCase() !== oldClaim.toLowerCase()) {
+      try {
+        const switched = await axios.post(
+          `${API_CONFIG.baseUrl}${ENDPOINTS.AUTH.SWITCH_TENANT}`,
+          { tenantId: oldClaim },
+          { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } }
+        );
+        const content = switched.data?.content;
+        if (typeof content?.token === 'string' && content.token) {
+          finalToken = content.token;
+          finalExpiresIn = typeof content.expiresIn === 'number' ? content.expiresIn : expiresIn;
+        }
+      } catch {
+        // Removed from that company, or offline: keep the refreshed token. A working session
+        // in the other company is no worse than before this check existed, and the company
+        // switcher still moves it by hand.
+      }
+    }
+
+    await tokenManager.updateAccessToken(finalToken, finalExpiresIn, rotated);
+    onTokenRefreshed(finalToken);
+    return finalToken;
   } catch (error) {
-    refreshSubscribers = [];
+    onTokenRefreshed(null);
     throw error;
   } finally {
     isRefreshing = false;

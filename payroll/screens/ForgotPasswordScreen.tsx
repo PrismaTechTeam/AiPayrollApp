@@ -2,66 +2,72 @@
  * Forgot Password Screen
  * Requests a password reset email via backend (Firebase reset link).
  *
- * Visual language matches LoginScreen and RegisterScreen — this screen is one tap
- * from the sign-in form, so it shares AuthBackdrop, the same palette and the same
- * single floating card. The old saturated blue header made it read as a different
- * app the moment "Forgot Password?" was tapped.
+ * Built from the same pieces as LoginScreen — it is one tap from the sign-in
+ * form, so a different look reads as a different app. The page used to explain
+ * itself three times (subtitle, a paragraph in the card, a footnote) under a 62pt
+ * tile, which put the Send button under the keyboard; now one line says it.
+ * Problems show inline, and the confirmation replaces the form in place instead
+ * of a dialog that then threw the person back to Login.
  */
 
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  StatusBar,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-} from 'react-native';
+import React, { useRef, useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, StatusBar, KeyboardAvoidingView, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import authService from '../api/services/authService';
-import { useDialog } from '../components/ui/AppDialog';
-import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
+import AuthBackdrop, {
+  AUTH_COLORS as C,
+  AuthCard,
+  AuthField,
+  AuthHeader,
+  AuthNotice,
+} from '../components/auth/AuthBackdrop';
 import PrimaryButton from '../components/auth/PrimaryButton';
+import { describeAuthError, looksLikeEmail } from '../lib/firebaseErrors';
+import type { RootStackParamList } from '../navigation/types';
 
 export const ForgotPasswordScreen: React.FC = () => {
   const navigation = useNavigation();
-  const dialog = useDialog();
-  const [email, setEmail] = useState('');
+  // Login passes the address already typed there.
+  const route = useRoute<RouteProp<RootStackParamList, 'ForgotPassword'>>();
+  const inputRef = useRef<TextInput>(null);
+  const [email, setEmail] = useState(route.params?.email ?? '');
   const [loading, setLoading] = useState(false);
-  const [focused, setFocused] = useState(false);
+  const [fieldError, setFieldError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  // The address the link went to; set, the card shows the confirmation instead of the form.
+  const [sentTo, setSentTo] = useState<string | null>(null);
 
-  const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+  const backToSignIn = () => {
+    if (navigation.canGoBack()) navigation.goBack();
+    else navigation.navigate('Login');
+  };
 
   const handleSubmit = async () => {
+    if (loading) return;
     const trimmed = email.trim();
     if (!trimmed) {
-      void dialog.notify({ title: 'Email required', message: 'Please enter your email address.', tone: 'warning' });
+      setFieldError('Enter the email you sign in with.');
+      inputRef.current?.focus();
       return;
     }
-    if (!isValidEmail(trimmed)) {
-      void dialog.notify({ title: 'Check the email', message: 'Please enter a valid email address.', tone: 'warning' });
+    if (!looksLikeEmail(trimmed)) {
+      setFieldError('This does not look like an email address.');
+      inputRef.current?.focus();
       return;
     }
 
+    setFieldError(null);
+    setError(null);
     setLoading(true);
     try {
+      // The server answers the same for an unknown address, so a failure here is
+      // the network, the rate limit or the server — never "no such account".
       await authService.forgotPassword(trimmed);
-      await dialog.notify({
-        title: 'Check your email',
-        message: "If an account exists for that email, we've sent a password reset link. Please check your inbox and follow the instructions.",
-        tone: 'success',
-      });
-      navigation.goBack();
+      setSentTo(trimmed);
     } catch (err: unknown) {
-      // Backend returns success even for unknown emails (security), so this is usually network/config
-      const message = err && typeof err === 'object' && 'message' in err ? String((err as Error).message) : 'Unable to send reset email. Please try again.';
-      await dialog.notify({ title: 'Request failed', message, tone: 'danger' });
+      setError(describeAuthError(err, 'Could not send the reset link. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -70,86 +76,77 @@ export const ForgotPasswordScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      <AuthBackdrop scriptLines={[]} />
+      <AuthBackdrop />
 
-      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.keyboardView}
-        >
+      <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
+        <KeyboardAvoidingView behavior="padding" style={styles.flex}>
           <ScrollView
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={styles.scroll}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {/* Header */}
-            <View style={styles.header}>
-              <LinearGradient
-                colors={[C.blueLight, C.blueDeep]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.logoTile}
-              >
-                <MaterialCommunityIcons name="lock-reset" size={32} color="#FFFFFF" />
-              </LinearGradient>
+            <AuthHeader
+              title="Reset password"
+              subtitle="We will email you a link to set a new password."
+              onBack={backToSignIn}
+            />
 
-              <Text style={styles.title}>Reset Password</Text>
-              <Text style={styles.subtitle}>Enter your email to receive a reset link</Text>
-            </View>
-
-            {/* Card */}
-            <View style={styles.card}>
-              <Text style={styles.instructionText}>
-                We&apos;ll send you an email with a link to reset your password.
-              </Text>
-
-              <Text style={styles.fieldLabel}>Email address</Text>
-              <View style={[styles.field, focused && styles.fieldFocused]}>
-                <MaterialCommunityIcons name="email-outline" size={19} color={C.muted} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="you@company.com"
-                  placeholderTextColor={C.muted}
-                  value={email}
-                  onChangeText={setEmail}
-                  onFocus={() => setFocused(true)}
-                  onBlur={() => setFocused(false)}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  autoComplete="email"
-                  editable={!loading}
-                  returnKeyType="send"
-                  onSubmitEditing={handleSubmit}
-                />
-              </View>
-
-              <View style={styles.actionGap} />
-
-              <PrimaryButton
-                label="Send reset link"
-                icon="send-outline"
-                onPress={handleSubmit}
-                loading={loading}
-              />
-
-              <TouchableOpacity
-                style={styles.backLink}
-                onPress={() => navigation.goBack()}
-                disabled={loading}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel="Back to Sign In"
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <MaterialCommunityIcons name="arrow-left" size={18} color={C.blue} />
-                <Text style={styles.backLinkText}>Back to Sign In</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.footNote}>
-              The link expires shortly after it is sent. Request a new one if it has.
-            </Text>
+            <AuthCard>
+              {sentTo ? (
+                <View style={styles.sent}>
+                  <View style={styles.sentIcon}>
+                    <MaterialCommunityIcons name="email-check-outline" size={26} color="#15803D" />
+                  </View>
+                  <Text style={styles.sentTitle}>Check your inbox</Text>
+                  <Text style={styles.sentBody}>
+                    If <Text style={styles.sentEmail}>{sentTo}</Text> has an account, the reset link is on its way.
+                  </Text>
+                  <View style={styles.actionGap} />
+                  <PrimaryButton label="Back to sign in" icon="arrow-left" onPress={backToSignIn} />
+                  <TouchableOpacity
+                    style={styles.textButton}
+                    onPress={() => {
+                      setSentTo(null);
+                      setTimeout(() => inputRef.current?.focus(), 50);
+                    }}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.textButtonLabel}>Use a different email</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  <AuthNotice message={error} />
+                  <AuthField
+                    ref={inputRef}
+                    label="Email"
+                    icon="email-outline"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChangeText={(v) => {
+                      setEmail(v);
+                      if (fieldError) setFieldError(null);
+                    }}
+                    error={fieldError}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoComplete="email"
+                    textContentType="emailAddress"
+                    editable={!loading}
+                    returnKeyType="send"
+                    onSubmitEditing={() => { void handleSubmit(); }}
+                  />
+                  <View style={styles.actionGap} />
+                  <PrimaryButton
+                    label="Send reset link"
+                    icon="send-outline"
+                    onPress={() => { void handleSubmit(); }}
+                    loading={loading}
+                  />
+                </>
+              )}
+            </AuthCard>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -158,82 +155,26 @@ export const ForgotPasswordScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F6F8FF' },
-  safeArea: { flex: 1 },
-  keyboardView: { flex: 1 },
-  scrollContent: { flexGrow: 1, paddingHorizontal: 22, paddingTop: 26, paddingBottom: 30 },
+  container: { flex: 1, backgroundColor: C.page },
+  flex: { flex: 1 },
+  scroll: { flexGrow: 1, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16 },
+  actionGap: { height: 16 },
 
-  // Header
-  header: { marginTop: 22, marginBottom: 26 },
-  logoTile: {
-    width: 62,
-    height: 62,
-    borderRadius: 18,
-    alignItems: 'center',
+  sent: { alignItems: 'center', paddingTop: 4 },
+  sentIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#ECFDF3',
     justifyContent: 'center',
-    shadowColor: C.blueDeep,
-    shadowOpacity: 0.3,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-  },
-  title: { marginTop: 18, fontSize: 28, fontWeight: '800', color: C.ink, letterSpacing: -0.5 },
-  subtitle: { marginTop: 6, fontSize: 14.5, lineHeight: 20, color: C.body },
-
-  // Card
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 20,
-    shadowColor: C.blue,
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
-  },
-  instructionText: { fontSize: 13.5, lineHeight: 20, color: C.body, marginBottom: 18 },
-
-  fieldLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: C.body,
-    letterSpacing: 0.3,
-    marginBottom: 6,
-    marginLeft: 2,
-  },
-  field: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 11,
-    height: 54,
-    borderRadius: 14,
-    paddingHorizontal: 15,
-    backgroundColor: C.field,
-    borderWidth: 1,
-    borderColor: C.line,
+    marginBottom: 10,
   },
-  fieldFocused: { borderColor: C.blue, backgroundColor: '#FFFFFF' },
-  input: { flex: 1, fontSize: 15, color: C.ink, padding: 0 },
-
-  actionGap: { height: 20 },
-
-  backLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 18,
-    paddingVertical: 6,
-  },
-  backLinkText: { fontSize: 14, fontWeight: '700', color: C.blue },
-
-  footNote: {
-    marginTop: 22,
-    textAlign: 'center',
-    fontSize: 12,
-    lineHeight: 18,
-    color: C.muted,
-  },
+  sentTitle: { fontSize: 17, fontWeight: '700', color: C.ink, textAlign: 'center' },
+  sentBody: { marginTop: 4, fontSize: 14, lineHeight: 20, color: C.body, textAlign: 'center' },
+  sentEmail: { fontWeight: '700', color: C.ink },
+  textButton: { minHeight: 44, justifyContent: 'center', alignItems: 'center', marginTop: 4, alignSelf: 'stretch' },
+  textButtonLabel: { fontSize: 14, fontWeight: '700', color: C.blue },
 });
 
 export default ForgotPasswordScreen;

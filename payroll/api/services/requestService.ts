@@ -2,6 +2,9 @@ import axiosInstance from '../axiosInstance';
 import { ENDPOINTS } from '../endpoints';
 
 export interface RequestType {
+  /** The type's row id; what a new request is linked by. */
+  id: string;
+  /** The short code, upper-cased by the server ("EQUIP", "OTHER"). */
   key: string;
   label: string;
 }
@@ -18,8 +21,10 @@ export interface EmployeeRequest {
   /** Historic only — no longer collected or shown. Kept so old rows still parse. */
   startDate?: string | null;
   notes: string | null;
-  status: string; // PENDING, APPROVED, REJECTED, CANCELLED
+  status: string; // PENDING, APPROVED, REJECTED, CANCELLED; DRAFT on old rows only
   reviewedByUserId?: string | null;
+  /** Who approved or rejected it. Not sent by the server live today; shown when it arrives. */
+  reviewedByName?: string | null;
   reviewedAt?: string | null;
   rejectionReason?: string | null;
   /** HR's written answer. Separate from the approve/reject decision. */
@@ -55,9 +60,15 @@ export interface UploadableFile {
 }
 
 export interface CreateRequestPayload {
+  /**
+   * Links the request to its type by id. Names are not unique (only short codes
+   * are), and the server's name fallback takes the first match, so two types
+   * called "Letter" could put a request under the wrong one.
+   */
+  requestTypeId?: string;
+  /** The type's name, or for "Other" what the employee typed in its place. */
   requestType: string;
   notes?: string;
-  isDraft?: boolean;
 }
 
 // --- Request Type CRUD (Owner/HR) ---
@@ -97,14 +108,35 @@ export interface RequestApplicationFilter {
   employeeId?: string;
   page?: number;
   pageSize?: number;
+  /**
+   * 'oldest' puts the longest-waiting first, for the Pending queue. The live
+   * server does not read it yet and always answers newest first; the app copes
+   * with either order.
+   */
+  sort?: 'newest' | 'oldest';
+  /**
+   * Leave out the caller's own requests on the server, so the Pending total
+   * matches the Home tile. Not read by the live server yet; the app filters
+   * them out itself as well.
+   */
+  excludeOwn?: boolean;
 }
+
+/**
+ * One row of the approver's queue (GET /api/mobile/request/pending-approvals): the fields that
+ * route sends, nothing more.
+ */
+export type WaitingRequest = Pick<
+  EmployeeRequest,
+  'id' | 'employeeId' | 'employeeName' | 'employeeCode' | 'requestType' | 'notes' | 'createdAt'
+>;
 
 const requestService = {
   // ==========================================
   // Employee endpoints (mobile API)
   // ==========================================
 
-  /** Get available request types from database. Maps { id, shortCode, description } to { key, label }. */
+  /** The active request types an employee may choose from. */
   async getTypes(): Promise<RequestType[]> {
     const response = await axiosInstance.get(ENDPOINTS.REQUEST.TYPES);
     const content = response.data?.content ?? response.data;
@@ -112,16 +144,16 @@ const requestService = {
     return list.map((t: { id?: string; shortCode?: string; description?: string }) => {
       const label = t.description || t.shortCode || '';
       const key = t.shortCode || t.id || '';
-      return { key, label };
+      return { id: t.id ?? '', key, label };
     });
   },
 
-  /** Get current employee's requests */
+  /** The current employee's own requests, one page, with the server's count of all that match. */
   async getApplications(params?: {
     status?: string;
     page?: number;
     pageSize?: number;
-  }): Promise<{ items: EmployeeRequest[]; totalCount: number }> {
+  }): Promise<{ items: EmployeeRequest[]; total: number }> {
     const response = await axiosInstance.get(ENDPOINTS.REQUEST.APPLICATIONS, { params });
     return response.data.content;
   },
@@ -132,16 +164,21 @@ const requestService = {
     return response.data.content;
   },
 
-  /** Cancel own pending request */
+  /** Withdraw the employee's own request while it is still pending. */
   async cancelApplication(id: string): Promise<void> {
     await axiosInstance.delete(`${ENDPOINTS.REQUEST.APPLICATIONS}/${id}`);
   },
 
   // ==========================================
-  // Owner/HR endpoints (web API)
+  // Owner/HR endpoints
   // ==========================================
 
-  /** Get all employee requests with filters (Owner/HR view) */
+  /**
+   * Every request in the company except drafts, newest first unless `sort` says
+   * otherwise (and the server reads it), one page at a time.
+   * Filter by status on the server: filtering a fixed page on the phone loses
+   * whatever falls off the end of it.
+   */
   async getAllRequests(filter: RequestApplicationFilter = {}): Promise<{ items: EmployeeRequest[]; total: number }> {
     const params: Record<string, string> = {};
     if (filter.status) params.status = filter.status;
@@ -149,24 +186,47 @@ const requestService = {
     if (filter.employeeId) params.employeeId = filter.employeeId;
     if (filter.page) params.page = filter.page.toString();
     if (filter.pageSize) params.pageSize = filter.pageSize.toString();
+    if (filter.sort) params.sort = filter.sort;
+    if (filter.excludeOwn) params.excludeOwn = 'true';
     const response = await axiosInstance.get(ENDPOINTS.WEB_REQUEST.APPLICATIONS, { params });
     return response.data.content;
   },
 
-  /** Get a single request by ID (Owner/HR view) */
+  /**
+   * The requests waiting for this approver, newest first, and how many there are in all:
+   * pending and not their own, which the server leaves out. Home's Waiting list and its
+   * Requests count read one page of it, so both agree with the Pending tab.
+   */
+  async getPendingApprovals(params: { page?: number; pageSize?: number } = {}): Promise<{ items: WaitingRequest[]; total: number }> {
+    const response = await axiosInstance.get(ENDPOINTS.REQUEST.PENDING_APPROVALS, {
+      params: { page: params.page ?? 1, pageSize: params.pageSize ?? 20 },
+    });
+    const content = response.data?.content;
+    const items: WaitingRequest[] = Array.isArray(content?.items) ? content.items : [];
+    const total = content?.total;
+    return { items, total: typeof total === 'number' && Number.isFinite(total) ? Math.max(0, total) : items.length };
+  },
+
+  /** How many requests are waiting for this approver: the same number the Pending tab shows. */
+  async getPendingApprovalCount(): Promise<number> {
+    const page = await requestService.getPendingApprovals({ page: 1, pageSize: 1 });
+    return page.total;
+  },
+
+  /** One request for the approver, with every file on it from both sides. */
   async getRequestById(id: string): Promise<EmployeeRequest> {
     const response = await axiosInstance.get(`${ENDPOINTS.WEB_REQUEST.APPLICATIONS}/${id}`);
     return response.data.content;
   },
 
-  /** Approve a request (Owner/HR) */
+  /** Approve a request. Refused (403) when it is the approver's own. */
   async approveRequest(id: string): Promise<void> {
-    await axiosInstance.post(`${ENDPOINTS.WEB_REQUEST.APPLICATIONS}/${id}/approve`);
+    await axiosInstance.post(ENDPOINTS.REQUEST.APPROVE(id));
   },
 
-  /** Reject a request with reason (Owner/HR) */
+  /** Reject a request with the reason the employee will read. Refused (403) when it is the approver's own. */
   async rejectRequest(id: string, reason: string): Promise<void> {
-    await axiosInstance.post(`${ENDPOINTS.WEB_REQUEST.APPLICATIONS}/${id}/reject`, { reason });
+    await axiosInstance.post(ENDPOINTS.REQUEST.REJECT(id), { reason });
   },
 
   // --- Request Type CRUD (Owner/HR) ---
@@ -175,12 +235,6 @@ const requestService = {
   async getRequestTypes(status?: string): Promise<RequestTypeDetail[]> {
     const params = status ? { status } : {};
     const response = await axiosInstance.get(ENDPOINTS.WEB_REQUEST.TYPES, { params });
-    return response.data.content;
-  },
-
-  /** Get a request type by ID */
-  async getRequestTypeById(id: string): Promise<RequestTypeDetail> {
-    const response = await axiosInstance.get(`${ENDPOINTS.WEB_REQUEST.TYPES}/${id}`);
     return response.data.content;
   },
 
@@ -210,11 +264,6 @@ const requestService = {
     return response.data.content;
   },
 
-  async getAttachments(requestId: string): Promise<RequestAttachment[]> {
-    const response = await axiosInstance.get(`${ENDPOINTS.REQUEST.APPLICATIONS}/${requestId}/attachments`);
-    return Array.isArray(response.data?.content) ? response.data.content : [];
-  },
-
   /**
    * Attach a file to the employee's own request. A photo on a slow connection
    * outlives the default API timeout, so this call gets its own.
@@ -240,13 +289,8 @@ const requestService = {
   },
 
   // ==========================================
-  // Attachments + reply — approver side (web API)
+  // Attachments + reply — approver side
   // ==========================================
-
-  async getAttachmentsAsApprover(requestId: string): Promise<RequestAttachment[]> {
-    const response = await axiosInstance.get(`${ENDPOINTS.WEB_REQUEST.APPLICATIONS}/${requestId}/attachments`);
-    return Array.isArray(response.data?.content) ? response.data.content : [];
-  },
 
   async uploadAttachmentAsApprover(requestId: string, file: UploadableFile): Promise<RequestAttachment> {
     const form = new FormData();
@@ -272,7 +316,7 @@ const requestService = {
     await axiosInstance.post(`${ENDPOINTS.REQUEST.APPLICATIONS}/${requestId}/reply`, { message });
   },
 
-  /** Send, edit, or (with an empty message) clear HR's reply. */
+  /** Send, edit, or (with an empty message) clear HR's reply. The app never offers it on the approver's own request. */
   async replyToRequest(requestId: string, message: string): Promise<void> {
     await axiosInstance.post(`${ENDPOINTS.WEB_REQUEST.APPLICATIONS}/${requestId}/reply`, { message });
   },

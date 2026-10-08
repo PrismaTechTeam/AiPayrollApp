@@ -1,7 +1,11 @@
 /**
  * Request Types
  * The kinds of request employees can choose from. HR keeps this list; every
- * entry here becomes an option on the employee's New Request screen.
+ * active entry here becomes an option on the employee's New Request screen.
+ *
+ * A type that has been used cannot be deleted — the requests filed under it
+ * keep pointing at it — so the way to retire one is to switch it off. The form
+ * carries that switch, and a refused delete offers it.
  */
 
 import React, { useCallback, useState } from 'react';
@@ -11,23 +15,30 @@ import {
   StyleSheet,
   StatusBar,
   FlatList,
+  ScrollView,
   TouchableOpacity,
   TextInput,
-  Modal,
-  Pressable,
   RefreshControl,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
 import PrimaryButton from '../components/auth/PrimaryButton';
+import { SwitchRow } from '../components/leave/LeaveUi';
 import { useDialog } from '../components/ui/AppDialog';
+import { useApproverAccess } from '../hooks/useApproverAccess';
 import requestService, { RequestTypeDetail } from '../api/services/requestService';
-import { serverMessage } from '../lib/serverMessage';
+import { serverMessage, statusOfError } from '../lib/serverMessage';
+import {
+  CARD_SURFACE,
+  ErrorBanner,
+  ListState,
+  RequestHeader,
+  RequestSheet,
+  requestError,
+} from '../components/requests/RequestUi';
 
 /** The API has answered with both 'ACTIVE' and 'Active' over time. */
 function isActive(status: string | null | undefined): boolean {
@@ -37,6 +48,14 @@ function isActive(status: string | null | undefined): boolean {
 export const RequestTypesScreen: React.FC = () => {
   const navigation = useNavigation();
   const dialog = useDialog();
+  const insets = useSafeAreaInsets();
+  // The screen opens on REQUEST_TYPE.VIEW, but each change needs its own right, and a
+  // view-only role was shown Edit and Delete only to meet "Access denied" after tapping
+  // them. A refusal that still happens is put in plain words by requestError.
+  const access = useApproverAccess();
+  const canCreate = access.requestTypeCreate;
+  const canEdit = access.requestTypeEdit;
+  const canDelete = access.requestTypeDelete;
 
   const [types, setTypes] = useState<RequestTypeDetail[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -47,6 +66,7 @@ export const RequestTypesScreen: React.FC = () => {
   const [shortCode, setShortCode] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
+  const [offered, setOffered] = useState(true);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [focused, setFocused] = useState<'code' | 'desc' | 'cat' | null>(null);
@@ -57,7 +77,7 @@ export const RequestTypesScreen: React.FC = () => {
       setTypes(await requestService.getRequestTypes());
     } catch (err) {
       setTypes((prev) => prev ?? []);
-      setListError(serverMessage(err, 'Could not load the request types. Pull down to try again.'));
+      setListError(requestError(err, 'Could not load the request types.'));
     }
   }, []);
 
@@ -73,13 +93,23 @@ export const RequestTypesScreen: React.FC = () => {
     setRefreshing(false);
   };
 
+  const retry = () => {
+    setTypes(null);
+    void load();
+  };
+
   const openForm = (type: RequestTypeDetail | null) => {
     setEditing(type);
     setShortCode(type?.shortCode ?? '');
     setDescription(type?.description ?? '');
     setCategory(type?.category ?? '');
+    setOffered(type ? isActive(type.status) : true);
     setFormError(null);
     setFormOpen(true);
+  };
+
+  const closeForm = () => {
+    if (!saving) setFormOpen(false);
   };
 
   const save = async () => {
@@ -100,27 +130,49 @@ export const RequestTypesScreen: React.FC = () => {
     setFormError(null);
     setSaving(true);
     try {
-      const payload = {
-        shortCode: code,
-        description: description.trim() || undefined,
-        category: category.trim() || undefined,
-      };
-      if (editing) await requestService.updateRequestType(editing.id, payload);
-      else await requestService.createRequestType({ ...payload, status: 'ACTIVE' });
+      const status = offered ? 'ACTIVE' : 'INACTIVE';
+      // An edit sends the cleared field as '': the server only changes fields it
+      // is sent, so leaving an emptied one out made Save quietly bring the old
+      // name or category back. A new type simply goes without them.
+      if (editing) {
+        await requestService.updateRequestType(editing.id, {
+          shortCode: code,
+          description: description.trim(),
+          category: category.trim(),
+          status,
+        });
+      } else {
+        await requestService.createRequestType({
+          shortCode: code,
+          description: description.trim() || undefined,
+          category: category.trim() || undefined,
+          status,
+        });
+      }
 
       setFormOpen(false);
       await load();
     } catch (err) {
-      setFormError(serverMessage(err, 'Could not save the request type.'));
+      setFormError(requestError(err, 'Could not save the request type.'));
     } finally {
       setSaving(false);
     }
   };
 
+  const turnOff = async (type: RequestTypeDetail) => {
+    try {
+      await requestService.updateRequestType(type.id, { status: 'INACTIVE' });
+      await load();
+    } catch (err) {
+      await dialog.notify({ title: 'Could not turn it off', message: requestError(err, 'Please try again.'), tone: 'danger' });
+    }
+  };
+
   const remove = async (type: RequestTypeDetail) => {
+    const name = type.description || type.shortCode;
     const ok = await dialog.confirm({
       title: 'Delete this request type?',
-      message: `"${type.description || type.shortCode}" will no longer be offered to employees. Requests already sent keep their type.`,
+      message: `"${name}" will no longer be offered to employees.`,
       confirmText: 'Delete',
       destructive: true,
     });
@@ -130,80 +182,116 @@ export const RequestTypesScreen: React.FC = () => {
       await requestService.deleteRequestType(type.id);
       await load();
     } catch (err) {
+      // The server keeps any type a request was filed under. Retiring it is
+      // what HR is after, and switching it off does exactly that.
+      const inUse = statusOfError(err) === 400 && /in use/i.test(serverMessage(err, ''));
+      if (inUse && isActive(type.status) && canEdit) {
+        const off = await dialog.confirm({
+          title: 'This type has been used',
+          message: `Requests already sent under "${name}" keep it, so it cannot be deleted. Turn it off instead? Employees will stop seeing it.`,
+          confirmText: 'Turn it off',
+          tone: 'warning',
+        });
+        if (off) await turnOff(type);
+        return;
+      }
+      const kept = `Requests already sent under "${name}" keep it, so it cannot be deleted.`;
       await dialog.notify({
         title: 'Could not delete',
-        message: serverMessage(err, 'It may be in use by existing requests.'),
-        tone: 'danger',
+        message: !inUse
+          ? requestError(err, 'Please try again.')
+          : isActive(type.status)
+            ? kept
+            : `${kept} It is already off, so employees no longer see it.`,
+        tone: inUse ? 'info' : 'danger',
       });
     }
   };
 
-  const renderCard = ({ item }: { item: RequestTypeDetail }) => (
-    <View style={styles.card}>
-      <View style={styles.cardTop}>
-        <View style={styles.codeTile}>
-          <Text style={styles.codeText} numberOfLines={1}>{item.shortCode.slice(0, 4).toUpperCase()}</Text>
-        </View>
-        <View style={styles.cardText}>
-          <Text style={styles.cardTitle} numberOfLines={1}>{item.description || item.shortCode}</Text>
-          <Text style={styles.cardMeta} numberOfLines={1}>
-            {item.shortCode}
-            {item.category ? ` · ${item.category}` : ''}
-          </Text>
-        </View>
-        <View style={[styles.pill, isActive(item.status) ? styles.pillOn : styles.pillOff]}>
-          <Text style={[styles.pillText, isActive(item.status) ? styles.pillTextOn : styles.pillTextOff]}>
-            {isActive(item.status) ? 'Active' : 'Inactive'}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.cardActions}>
-        <TouchableOpacity style={styles.cardAction} onPress={() => openForm(item)} accessibilityRole="button">
-          <MaterialCommunityIcons name="pencil-outline" size={16} color={C.blue} />
-          <Text style={styles.cardActionText}>Edit</Text>
-        </TouchableOpacity>
+  const renderCard = ({ item }: { item: RequestTypeDetail }) => {
+    const on = isActive(item.status);
+    const name = item.description || item.shortCode;
+    return (
+      <View style={styles.card}>
         <TouchableOpacity
-          style={[styles.cardAction, styles.cardActionDanger]}
-          onPress={() => { void remove(item); }}
-          accessibilityRole="button"
+          style={styles.cardMain}
+          onPress={() => openForm(item)}
+          disabled={!canEdit}
+          activeOpacity={0.75}
+          accessibilityRole={canEdit ? 'button' : undefined}
+          accessibilityLabel={canEdit ? `Edit ${name}` : name}
         >
-          <MaterialCommunityIcons name="trash-can-outline" size={16} color={C.danger} />
-          <Text style={[styles.cardActionText, styles.cardActionTextDanger]}>Delete</Text>
+          {/* A plain line icon: the short code used to sit in a blue tile here and
+              again in the line below, saying the same thing twice. */}
+          <View style={styles.iconTile}>
+            <MaterialCommunityIcons name="text-box-outline" size={18} color={on ? C.body : C.muted} />
+          </View>
+          <View style={styles.cardText}>
+            <Text style={[styles.cardTitle, !on && styles.cardTitleOff]} numberOfLines={1}>{name}</Text>
+            <View style={styles.metaRow}>
+              {/* Only the exception is marked. Most types are on, and an "Active"
+                  pill on every row was noise. */}
+              {!on ? (
+                <View style={styles.pillOff}>
+                  <Text style={styles.pillTextOff}>Off</Text>
+                </View>
+              ) : null}
+              <Text style={styles.cardMeta} numberOfLines={1}>
+                {item.shortCode}
+                {item.category ? ` · ${item.category}` : ''}
+              </Text>
+            </View>
+          </View>
         </TouchableOpacity>
+        {canEdit ? (
+          <TouchableOpacity
+            style={styles.iconAction}
+            onPress={() => openForm(item)}
+            accessibilityRole="button"
+            accessibilityLabel={`Edit ${name}`}
+          >
+            <MaterialCommunityIcons name="pencil-outline" size={20} color={C.body} />
+          </TouchableOpacity>
+        ) : null}
+        {canDelete ? (
+          <TouchableOpacity
+            style={styles.iconAction}
+            onPress={() => { void remove(item); }}
+            accessibilityRole="button"
+            accessibilityLabel={`Delete ${name}`}
+          >
+            <MaterialCommunityIcons name="trash-can-outline" size={20} color={C.danger} />
+          </TouchableOpacity>
+        ) : null}
       </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       <AuthBackdrop scriptLines={[]} />
 
-      <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.iconButton}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <MaterialCommunityIcons name="arrow-left" size={26} color={C.ink} />
-          </TouchableOpacity>
-          <View style={styles.headerText} pointerEvents="none">
-            <Text style={styles.headerTitle}>Request Types</Text>
-          </View>
-          <TouchableOpacity
-            onPress={() => openForm(null)}
-            style={styles.iconButton}
-            accessibilityRole="button"
-            accessibilityLabel="Add a request type"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <MaterialCommunityIcons name="plus" size={26} color={C.blue} />
-          </TouchableOpacity>
-        </View>
+      <SafeAreaView style={styles.flex} edges={['top']}>
+        <RequestHeader
+          title="Request Types"
+          onBack={() => navigation.goBack()}
+          right={
+            canCreate ? (
+              <TouchableOpacity
+                onPress={() => openForm(null)}
+                style={styles.headerAdd}
+                accessibilityRole="button"
+                accessibilityLabel="Add a request type"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <MaterialCommunityIcons name="plus" size={26} color={C.blue} />
+              </TouchableOpacity>
+            ) : null
+          }
+        />
+
+        {listError && (types ?? []).length > 0 ? <ErrorBanner message={listError} onRetry={() => { void load(); }} /> : null}
 
         {types === null ? (
           <View style={styles.center}>
@@ -214,101 +302,111 @@ export const RequestTypesScreen: React.FC = () => {
             data={types}
             keyExtractor={(t) => t.id}
             renderItem={renderCard}
-            contentContainerStyle={styles.list}
+            contentContainerStyle={[styles.list, { paddingBottom: 16 + insets.bottom }]}
             showsVerticalScrollIndicator={false}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.blue} colors={[C.blue]} />}
             ListEmptyComponent={
-              <View style={styles.emptyCard}>
-                <View style={styles.emptyIcon}>
-                  <MaterialCommunityIcons name={listError ? 'wifi-off' : 'format-list-bulleted-type'} size={32} color={listError ? C.danger : C.blue} />
-                </View>
-                <Text style={styles.emptyTitle}>{listError ? 'Could not load' : 'No request types yet'}</Text>
-                <Text style={styles.emptyBody}>
-                  {listError ?? 'Add one so employees have something to choose when they send a request.'}
-                </Text>
-                {!listError ? (
-                  <>
-                    <View style={styles.gap} />
-                    <PrimaryButton icon="plus" label="Add a type" onPress={() => openForm(null)} />
-                  </>
-                ) : null}
-              </View>
+              listError ? (
+                <ListState
+                  icon="wifi-off"
+                  tone="danger"
+                  title="Could not load the request types"
+                  body={listError}
+                  actionLabel="Try again"
+                  onAction={retry}
+                />
+              ) : (
+                <ListState
+                  icon="format-list-bulleted-type"
+                  title="No request types yet"
+                  body="Employees choose from this list when they send a request."
+                  actionLabel={canCreate ? 'Add a type' : undefined}
+                  onAction={canCreate ? () => openForm(null) : undefined}
+                />
+              )
             }
           />
         )}
       </SafeAreaView>
 
-      {/* Create / edit */}
-      <Modal visible={formOpen} transparent animationType="fade" statusBarTranslucent onRequestClose={() => !saving && setFormOpen(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
-          <View style={styles.sheetBackdrop}>
-            <Pressable style={StyleSheet.absoluteFill} onPress={() => !saving && setFormOpen(false)} accessibilityLabel="Dismiss" />
-            <View style={styles.sheet}>
-              <Text style={styles.sheetTitle}>{editing ? 'Edit request type' : 'New request type'}</Text>
-
-              <Text style={styles.label}>Short code</Text>
-              <View style={[styles.field, focused === 'code' && styles.fieldFocused]}>
-                <TextInput
-                  style={styles.input}
-                  value={shortCode}
-                  onChangeText={setShortCode}
-                  onFocus={() => setFocused('code')}
-                  onBlur={() => setFocused(null)}
-                  placeholder="e.g. EQUIP"
-                  placeholderTextColor={C.muted}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  maxLength={20}
-                />
-              </View>
-
-              <Text style={styles.label}>Name employees see</Text>
-              <View style={[styles.field, focused === 'desc' && styles.fieldFocused]}>
-                <TextInput
-                  style={styles.input}
-                  value={description}
-                  onChangeText={setDescription}
-                  onFocus={() => setFocused('desc')}
-                  onBlur={() => setFocused(null)}
-                  placeholder="e.g. Equipment Request"
-                  placeholderTextColor={C.muted}
-                  maxLength={100}
-                />
-              </View>
-
-              <Text style={styles.label}>Category (optional)</Text>
-              <View style={[styles.field, focused === 'cat' && styles.fieldFocused]}>
-                <TextInput
-                  style={styles.input}
-                  value={category}
-                  onChangeText={setCategory}
-                  onFocus={() => setFocused('cat')}
-                  onBlur={() => setFocused(null)}
-                  placeholder="e.g. Facilities"
-                  placeholderTextColor={C.muted}
-                  maxLength={50}
-                />
-              </View>
-
-              {formError ? (
-                <View style={styles.errorBox}>
-                  <MaterialCommunityIcons name="alert-circle-outline" size={18} color={C.danger} />
-                  <Text style={styles.errorText}>{formError}</Text>
-                </View>
-              ) : null}
-
-              <View style={styles.sheetActions}>
-                <View style={styles.half}>
-                  <PrimaryButton label="Cancel" onPress={() => setFormOpen(false)} variant="outline" disabled={saving} compact />
-                </View>
-                <View style={styles.half}>
-                  <PrimaryButton label={editing ? 'Save' : 'Add'} onPress={() => { void save(); }} loading={saving} compact />
-                </View>
-              </View>
-            </View>
+      {/* Create / edit. Anchored to the bottom and lifted by the keyboard, so the
+          last field and Save stay visible while typing on either platform. */}
+      <RequestSheet
+        visible={formOpen}
+        onClose={closeForm}
+        title={editing ? 'Edit request type' : 'New request type'}
+        avoidKeyboard
+        showCancel={false}
+      >
+        <ScrollView style={styles.formScroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <Text style={styles.label}>Short code</Text>
+          <View style={[styles.field, focused === 'code' && styles.fieldFocused]}>
+            <TextInput
+              style={styles.input}
+              value={shortCode}
+              onChangeText={setShortCode}
+              onFocus={() => setFocused('code')}
+              onBlur={() => setFocused(null)}
+              placeholder="e.g. EQUIP"
+              placeholderTextColor={C.muted}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={20}
+              returnKeyType="next"
+            />
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
+
+          <Text style={styles.label}>Name employees see</Text>
+          <View style={[styles.field, focused === 'desc' && styles.fieldFocused]}>
+            <TextInput
+              style={styles.input}
+              value={description}
+              onChangeText={setDescription}
+              onFocus={() => setFocused('desc')}
+              onBlur={() => setFocused(null)}
+              placeholder="e.g. Equipment"
+              placeholderTextColor={C.muted}
+              maxLength={100}
+              returnKeyType="next"
+            />
+          </View>
+
+          <Text style={styles.label}>Category (optional)</Text>
+          <View style={[styles.field, focused === 'cat' && styles.fieldFocused]}>
+            <TextInput
+              style={styles.input}
+              value={category}
+              onChangeText={setCategory}
+              onFocus={() => setFocused('cat')}
+              onBlur={() => setFocused(null)}
+              placeholder="e.g. Facilities"
+              placeholderTextColor={C.muted}
+              maxLength={50}
+              returnKeyType="done"
+            />
+          </View>
+
+          <View style={styles.switchGap}>
+            <SwitchRow label="Offered to employees" value={offered} onChange={setOffered} disabled={saving} />
+          </View>
+
+          {formError ? (
+            <View style={styles.errorBox} accessibilityRole="alert">
+              <MaterialCommunityIcons name="alert-circle-outline" size={18} color={C.danger} />
+              <Text style={styles.errorText}>{formError}</Text>
+            </View>
+          ) : null}
+        </ScrollView>
+
+        <View style={styles.sheetActions}>
+          <View style={styles.half}>
+            <PrimaryButton label="Cancel" onPress={closeForm} variant="outline" disabled={saving} compact />
+          </View>
+          <View style={styles.half}>
+            <PrimaryButton label={editing ? 'Save' : 'Add'} onPress={() => { void save(); }} loading={saving} compact />
+          </View>
+        </View>
+      </RequestSheet>
     </View>
   );
 };
@@ -316,76 +414,35 @@ export const RequestTypesScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F6F8FF' },
   flex: { flex: 1 },
-  gap: { height: 12, width: '100%' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 56, paddingHorizontal: 12, paddingTop: 4 },
-  iconButton: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  headerText: { position: 'absolute', left: 88, right: 88, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: C.ink },
+  headerAdd: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
 
-  list: { paddingHorizontal: 16, paddingBottom: 24, paddingTop: 8, gap: 12 },
+  list: { paddingHorizontal: 16, paddingTop: 4, gap: 10 },
 
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 16,
-    shadowColor: C.blue,
-    shadowOpacity: 0.07,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 2,
-  },
-  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  codeTile: { width: 46, height: 46, borderRadius: 14, backgroundColor: '#E8F0FE', justifyContent: 'center', alignItems: 'center' },
-  codeText: { fontSize: 12, fontWeight: '800', color: C.blue },
-  cardText: { flex: 1 },
-  cardTitle: { fontSize: 15, fontWeight: '800', color: C.ink },
-  cardMeta: { fontSize: 12, color: C.body, marginTop: 2 },
-  pill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-  pillOn: { backgroundColor: '#DCFCE7' },
-  pillOff: { backgroundColor: '#EEF2F7' },
-  pillText: { fontSize: 11, fontWeight: '700' },
-  pillTextOn: { color: '#15803D' },
-  pillTextOff: { color: C.body },
-
-  cardActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  cardAction: {
-    flex: 1,
+    ...CARD_SURFACE,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    height: 40,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#C9DAF8',
-    backgroundColor: '#F8FBFF',
+    paddingLeft: 14,
+    paddingRight: 4,
+    paddingVertical: 10,
   },
-  cardActionDanger: { borderColor: C.dangerLine, backgroundColor: C.dangerBg },
-  cardActionText: { fontSize: 13, fontWeight: '700', color: C.blue },
-  cardActionTextDanger: { color: C.danger },
+  cardMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44 },
+  iconTile: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.field, borderWidth: 1, borderColor: C.line, justifyContent: 'center', alignItems: 'center' },
+  cardText: { flex: 1 },
+  cardTitle: { fontSize: 15, fontWeight: '700', color: C.ink },
+  cardTitleOff: { color: C.body },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
+  cardMeta: { flex: 1, fontSize: 12, color: C.muted },
+  pillOff: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: '#EEF2F7' },
+  pillTextOff: { fontSize: 11, fontWeight: '700', color: C.body },
+  iconAction: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
 
-  emptyCard: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 28, alignItems: 'center', gap: 8, marginTop: 20 },
-  emptyIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#E6EEFF', justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
-  emptyTitle: { fontSize: 17, fontWeight: '800', color: C.ink },
-  emptyBody: { fontSize: 14, lineHeight: 20, color: C.body, textAlign: 'center' },
-
-  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,27,45,0.45)', justifyContent: 'center', padding: 22 },
-  sheet: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 22,
-    shadowColor: C.ink,
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 10,
-  },
-  sheetTitle: { fontSize: 19, fontWeight: '800', color: C.ink, marginBottom: 6 },
+  formScroll: { flexGrow: 0, flexShrink: 1 },
   label: { fontSize: 12, fontWeight: '700', color: C.body, letterSpacing: 0.3, marginTop: 10, marginBottom: 6 },
   field: {
-    height: 50,
+    height: 48,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: C.line,
@@ -395,6 +452,7 @@ const styles = StyleSheet.create({
   },
   fieldFocused: { borderColor: C.blue, backgroundColor: '#FFFFFF' },
   input: { fontSize: 15, color: C.ink, paddingVertical: 0 },
+  switchGap: { marginTop: 6 },
 
   errorBox: {
     flexDirection: 'row',
@@ -405,11 +463,11 @@ const styles = StyleSheet.create({
     borderColor: C.dangerLine,
     borderRadius: 12,
     padding: 10,
-    marginTop: 12,
+    marginTop: 8,
   },
   errorText: { flex: 1, fontSize: 13, lineHeight: 18, color: C.danger },
 
-  sheetActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  sheetActions: { flexDirection: 'row', gap: 10, marginTop: 14, marginBottom: 10 },
   half: { flex: 1 },
 });
 

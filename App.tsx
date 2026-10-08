@@ -24,6 +24,7 @@ import { AccountProfileScreen } from './payroll/screens/AccountProfileScreen';
 import { AccountPasswordScreen } from './payroll/screens/AccountPasswordScreen';
 import { AccountTwoFactorScreen } from './payroll/screens/AccountTwoFactorScreen';
 import { AccountDevicesScreen } from './payroll/screens/AccountDevicesScreen';
+import { InviteEmployeesScreen } from './payroll/screens/InviteEmployeesScreen';
 import { MyJoinRequestsScreen } from './payroll/screens/MyJoinRequestsScreen';
 import { ActivityScreen } from './payroll/screens/ActivityScreen';
 import { TenantHubScreen } from './payroll/screens/TenantHubScreen';
@@ -39,9 +40,8 @@ import { CreateLeaveScreen } from './payroll/screens/CreateLeaveScreen';
 import { PayslipDetailsScreen } from './payroll/screens/PayslipDetailsScreen';
 import { MyPayslipScreen } from './payroll/screens/MyPayslipScreen';
 import MyAttendanceScreen from './payroll/screens/MyAttendanceScreen';
-import AttendanceDetailsScreen from './payroll/screens/AttendanceDetailsScreen';
 import AttendanceCheckInScreen from './payroll/screens/AttendanceCheckInScreen';
-import { PunchRequestsScreen } from './payroll/screens/PunchRequestsScreen';
+import { PunchRequestsScreen, PunchApprovalScreen } from './payroll/screens/PunchRequestsScreen';
 import { CreatePunchRequestScreen } from './payroll/screens/CreatePunchRequestScreen';
 import EmployeeListScreen from './payroll/screens/EmployeeListScreen';
 import EmployeeMapScreen from './payroll/screens/EmployeeMapScreen';
@@ -74,6 +74,8 @@ const linking = {
     screens: {
       EmailVerification: 'verify-email',
       PayrollHome: 'home',
+      // HR's invite QR (payrollapp://join?code=XXXX) opens the join form with the code filled in.
+      JoinTenant: 'join',
     },
   },
 };
@@ -152,17 +154,26 @@ function AuthenticatedApp() {
             <Stack.Screen name="About" component={AboutScreen} />
           </>
         ) : (
-          // Full app — authenticated with linked employee
-          // TenantHub is the entry point; user selects a tenant → PayrollHome
+          // Full app. Somebody already inside a company opens straight on its Home
+          // (Punch, payslips) and Back from Home leaves the app; the company list is
+          // one tap away through the company pill's "Manage companies". Somebody who
+          // belongs to companies but has none chosen starts on the list.
+          //
+          // The stack opens on the first screen listed, so Home is listed first when
+          // a company is chosen. initialRouteName would not do it: the navigator reads
+          // that once, when it first mounts — usually on the sign-in screens — and
+          // ignores it after sign-in.
           <>
+            {user?.tenantId ? <Stack.Screen name="PayrollHome" component={PayrollHomeScreen} /> : null}
             <Stack.Screen name="TenantHub" component={TenantHubScreen} />
             <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />
             <Stack.Screen name="AccountProfile" component={AccountProfileScreen} />
             <Stack.Screen name="AccountPassword" component={AccountPasswordScreen} />
             <Stack.Screen name="AccountTwoFactor" component={AccountTwoFactorScreen} />
             <Stack.Screen name="AccountDevices" component={AccountDevicesScreen} />
+            <Stack.Screen name="InviteEmployees" component={InviteEmployeesScreen} />
             <Stack.Screen name="MyJoinRequests" component={MyJoinRequestsScreen} />
-            <Stack.Screen name="PayrollHome" component={PayrollHomeScreen} />
+            {user?.tenantId ? null : <Stack.Screen name="PayrollHome" component={PayrollHomeScreen} />}
             <Stack.Screen name="Activity" component={ActivityScreen} />
             <Stack.Screen name="JoinTenant" component={JoinTenantScreen} />
             <Stack.Screen name="JoinRequestPending" component={JoinRequestPendingScreen} />
@@ -175,11 +186,12 @@ function AuthenticatedApp() {
             <Stack.Screen name="MyPayslip" component={MyPayslipScreen} />
             <Stack.Screen name="PayslipDetails" component={PayslipDetailsScreen} />
             <Stack.Screen name="Attendance" component={MyAttendanceScreen} />
-            <Stack.Screen name="AttendanceDetails" component={AttendanceDetailsScreen} />
             <Stack.Screen name="AttendanceCheckIn" component={AttendanceCheckInScreen} />
             {/* Reached from My Attendance: missed punches the employee asked HR to add. */}
             <Stack.Screen name="PunchRequests" component={PunchRequestsScreen} />
             <Stack.Screen name="CreatePunchRequest" component={CreatePunchRequestScreen} />
+            {/* HR's queue of everyone's forgotten-punch requests, from Home and All services. */}
+            <Stack.Screen name="PunchApproval" component={PunchApprovalScreen} />
             <Stack.Screen name="EmployeeList" component={EmployeeListScreen} />
             <Stack.Screen name="EmployeeMap" component={EmployeeMapScreen} />
             <Stack.Screen name="Help" component={HelpScreen} />

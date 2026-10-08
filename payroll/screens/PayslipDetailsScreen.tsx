@@ -17,8 +17,11 @@
  * documents.
  *
  * The two columns the web prints side by side are stacked here, and the wide
- * tables scroll sideways inside their own sections. That is the only liberty
- * taken: a phone is not 210mm.
+ * tables scroll sideways inside their own sections. Two other liberties, both
+ * for a phone: a month with no overtime says so in one line instead of drawing
+ * an empty table, and "Save PDF" and "Print" sit in a bar pinned above the
+ * bottom edge — at the end of the document they were two thousand points of
+ * scrolling away, and they are the only things on the page to tap.
  */
 import React, { useCallback, useRef, useState } from 'react';
 import {
@@ -31,13 +34,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
 import { PrimaryButton } from '../components/auth/PrimaryButton';
 import { useDialog } from '../components/ui/AppDialog';
-import payslipService, { PayslipDocument } from '../api/services/payslipService';
+import payslipService, { PayslipDocument, PayslipListItem } from '../api/services/payslipService';
 import { serverMessage } from '../lib/serverMessage';
 import { payslipFileName, printPayslip, sharePayslipPdf } from '../lib/payslipPdf';
 import {
@@ -59,10 +62,11 @@ import {
   count,
   monthLabel,
   ringgit,
+  runLabel,
 } from '../components/payslips/PayslipUi';
 
 type PayslipDetailsRoute = RouteProp<
-  { PayslipDetails: { payrollRunId?: string; payslip?: { payrollRunId?: string } } },
+  { PayslipDetails: { payrollRunId?: string; payslip?: Partial<PayslipListItem> } },
   'PayslipDetails'
 >;
 
@@ -75,6 +79,7 @@ export const PayslipDetailsScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<PayslipDetailsRoute>();
   const dialog = useDialog();
+  const insets = useSafeAreaInsets();
 
   // The list passes payrollRunId; older call sites passed the whole list row.
   const payrollRunId = route.params?.payrollRunId ?? route.params?.payslip?.payrollRunId ?? null;
@@ -102,7 +107,9 @@ export const PayslipDetailsScreen: React.FC = () => {
   useFocusEffect(
     useCallback(() => {
       alive.current = true;
-      setLoad({ kind: 'loading' });
+      // Coming back to the screen keeps the payslip (and the scroll position)
+      // while it refreshes; only a first open shows the spinner.
+      setLoad((prev) => (prev.kind === 'ready' ? prev : { kind: 'loading' }));
       void fetch();
       return () => {
         alive.current = false;
@@ -126,7 +133,7 @@ export const PayslipDetailsScreen: React.FC = () => {
       await use(html);
     } catch (err) {
       await dialog.notify({
-        title: 'Could not create the PDF',
+        title: what === 'print' ? 'Could not print' : 'Could not create the PDF',
         message: serverMessage(err, 'Something went wrong preparing your payslip. Please try again.'),
         tone: 'danger',
       });
@@ -138,24 +145,35 @@ export const PayslipDetailsScreen: React.FC = () => {
   const onShare = () =>
     void withHtml('share', async (html) => {
       const name = payslipFileName(doc!.year, doc!.month, doc!.employee.code);
-      const { uri, shared } = await sharePayslipPdf(html, name);
+      const { shared } = await sharePayslipPdf(html, name);
       // The share sheet is its own confirmation; a dialog on top of it is noise.
-      // Only a phone that has no sheet needs to be told where the file went.
+      // A phone without one gets the other route — a cache path is meaningless
+      // to the person and the OS may clear it.
       if (!shared) {
-        await dialog.notify({ title: 'Payslip saved', message: uri, tone: 'success' });
+        await dialog.notify({
+          title: 'Sharing is not available',
+          message: 'This phone cannot share files from the app. Tap Print and choose Save as PDF.',
+          tone: 'warning',
+        });
       }
     });
 
   const onPrint = () => void withHtml('print', (html) => printPayslip(html));
 
-  const title = doc ? monthLabel(doc.year, doc.month) : 'Payslip';
+  // The run is named only when the list handed it over; a payslip opened from a
+  // notification has just the month, which is still right.
+  const run = route.params?.payslip ? runLabel(route.params.payslip) : null;
+  const title = doc ? `${monthLabel(doc.year, doc.month)}${run ? ` · ${run}` : ''}` : 'Payslip';
+  const noOvertime = doc ? doc.overtimeLines.length === 0 && !doc.overtimeTotal : false;
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       <AuthBackdrop scriptLines={[]} />
 
-      <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
+      {/* Top edge only: the action bar takes the bottom inset itself, so its
+          white runs to the bottom of the screen under the home indicator. */}
+      <SafeAreaView style={styles.flex} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
@@ -166,14 +184,15 @@ export const PayslipDetailsScreen: React.FC = () => {
           >
             <MaterialCommunityIcons name="arrow-left" size={26} color={C.ink} />
           </TouchableOpacity>
-          <View style={styles.headerText} pointerEvents="none">
-            <Text style={styles.headerTitle}>Payslip</Text>
-            <Text style={styles.headerSubtitle}>{title}</Text>
+          <View style={styles.headerText}>
+            <Text style={styles.headerTitle} numberOfLines={1}>Payslip</Text>
+            <Text style={styles.headerSubtitle} numberOfLines={1}>{title}</Text>
           </View>
+          <View style={styles.headerSpacer} />
         </View>
 
         <ScrollView
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={[styles.scroll, !doc && { paddingBottom: 16 + insets.bottom }]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.blue} colors={[C.blue]} />
@@ -256,7 +275,11 @@ export const PayslipDetailsScreen: React.FC = () => {
                 </Panel>
 
                 <Panel title="Overtime" flush>
-                  <OvertimeTable lines={doc!.overtimeLines} total={doc!.overtimeTotal} />
+                  {noOvertime ? (
+                    <QuietLine>No overtime</QuietLine>
+                  ) : (
+                    <OvertimeTable lines={doc!.overtimeLines} total={doc!.overtimeTotal} />
+                  )}
                 </Panel>
 
                 <Panel title="Leave" flush>
@@ -289,27 +312,35 @@ export const PayslipDetailsScreen: React.FC = () => {
 
                 <DocumentFooter />
               </DocumentSheet>
-
-              <View style={styles.actions}>
-                <PrimaryButton
-                  label="Save or share PDF"
-                  icon="tray-arrow-down"
-                  onPress={onShare}
-                  loading={busy === 'share'}
-                  disabled={busy === 'print'}
-                />
-                <PrimaryButton
-                  label="Print"
-                  icon="printer-outline"
-                  variant="outline"
-                  onPress={onPrint}
-                  loading={busy === 'print'}
-                  disabled={busy === 'share'}
-                />
-              </View>
             </>
           )}
         </ScrollView>
+
+        {doc ? (
+          <View style={[styles.actions, { paddingBottom: Math.max(8, insets.bottom) }]}>
+            <View style={styles.half}>
+              <PrimaryButton
+                label="Save PDF"
+                icon="tray-arrow-down"
+                onPress={onShare}
+                loading={busy === 'share'}
+                disabled={busy === 'print'}
+                compact
+              />
+            </View>
+            <View style={styles.half}>
+              <PrimaryButton
+                label="Print"
+                icon="printer-outline"
+                variant="outline"
+                onPress={onPrint}
+                loading={busy === 'print'}
+                disabled={busy === 'share'}
+                compact
+              />
+            </View>
+          </View>
+        ) : null}
       </SafeAreaView>
     </View>
   );
@@ -319,16 +350,32 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F6F8FF' },
   flex: { flex: 1 },
 
-  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, justifyContent: 'center' },
-  back: { width: 40, height: 40, alignItems: 'flex-start', justifyContent: 'center' },
-  headerText: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  // Back arrow, centred title, and a spacer the same width as the arrow: the
+  // title is centred on the screen and a long subtitle truncates instead of
+  // running under the arrow.
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 6, paddingBottom: 10 },
+  back: { width: 40, height: 44, alignItems: 'flex-start', justifyContent: 'center' },
+  headerText: { flex: 1, alignItems: 'center' },
+  headerSpacer: { width: 40 },
   headerTitle: { fontSize: 22, fontWeight: '800', color: C.ink },
-  headerSubtitle: { fontSize: 13, color: C.body, marginTop: 2 },
+  headerSubtitle: { fontSize: 13, color: C.body, marginTop: 1 },
 
-  scroll: { paddingHorizontal: 20, paddingBottom: 40 },
-  centre: { alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
+  scroll: { paddingHorizontal: 20, paddingBottom: 16 },
+  centre: { alignItems: 'center', justifyContent: 'center', paddingTop: 40 },
 
-  actions: { gap: 12, marginTop: 8 },
+  // Pinned under the scrolling document, above the home indicator (the safe
+  // area's bottom edge), so the two actions are always one tap away.
+  actions: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 8,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: C.line,
+  },
+  half: { flex: 1 },
 });
 
 export default PayslipDetailsScreen;

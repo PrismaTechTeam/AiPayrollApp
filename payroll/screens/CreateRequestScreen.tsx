@@ -1,14 +1,18 @@
 /**
  * New Request
- * Pick a type, say when and why, attach anything that supports it, send.
+ * Pick a type, say what you need, attach anything that supports it, send.
  *
  * Files are held on the phone until the request exists, then uploaded to it —
  * there is nothing to attach them to before that. If a file fails to upload the
  * request still stands, and the person is told exactly which one to add again
  * from the detail screen.
+ *
+ * There is no "Save as draft". A draft could never be sent, edited or cancelled
+ * afterwards — no endpoint does any of those to one — so the button only made
+ * requests HR never saw.
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -18,16 +22,14 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Modal,
-  Pressable,
   KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
 import PrimaryButton from '../components/auth/PrimaryButton';
+import { FieldError } from '../components/leave/LeaveUi';
 import { useDialog } from '../components/ui/AppDialog';
 import requestService, { RequestType } from '../api/services/requestService';
 import {
@@ -40,17 +42,29 @@ import {
   type PickSource,
 } from '../lib/requestAttachments';
 import { serverMessage } from '../lib/serverMessage';
-import { AttachButton, PickSourceSheet } from '../components/requests/RequestUi';
+import {
+  AttachButton,
+  PickSourceSheet,
+  RequestHeader,
+  RequestSheet,
+  useKeyboardVisible,
+} from '../components/requests/RequestUi';
 
-const OTHER_KEY = 'other';
+/** The server upper-cases every short code, so "Other" arrives as OTHER. */
+const OTHER_CODE = 'OTHER';
+const NOTE_LIMIT = 2000;
+
+type FieldErrors = { type?: string; other?: string; notes?: string };
 
 export const CreateRequestScreen: React.FC = () => {
   const navigation = useNavigation();
   const dialog = useDialog();
+  const insets = useSafeAreaInsets();
+  const keyboardUp = useKeyboardVisible();
 
   const [types, setTypes] = useState<RequestType[] | null>(null);
-  const [typeKey, setTypeKey] = useState('');
-  const [typeLabel, setTypeLabel] = useState('');
+  const [typesError, setTypesError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<RequestType | null>(null);
   const [otherText, setOtherText] = useState('');
   const [notes, setNotes] = useState('');
   const [pending, setPending] = useState<PickedFile[]>([]);
@@ -58,26 +72,43 @@ export const CreateRequestScreen: React.FC = () => {
   const [typePickerOpen, setTypePickerOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [sendError, setSendError] = useState<string | null>(null);
   const [focused, setFocused] = useState<'other' | 'notes' | null>(null);
 
-  const isOther = typeKey === OTHER_KEY;
+  // State updates land a frame late; two quick taps on Send would both see
+  // `submitting` as false and create the request twice.
+  const sendingRef = useRef(false);
+
+  const isOther = (selected?.key ?? '').toUpperCase() === OTHER_CODE;
 
   const loadTypes = useCallback(async () => {
+    setTypes(null);
+    setTypesError(null);
     try {
       setTypes(await requestService.getTypes());
     } catch (err) {
+      // Kept apart from "none set up": a failed call is not an empty list, and
+      // telling someone to ask HR to add types when the network dropped sends
+      // them to the wrong person.
       setTypes([]);
-      setError(serverMessage(err, 'Could not load the request types. Pull back and try again.'));
+      setTypesError(serverMessage(err, 'Could not load the request types.'));
     }
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     void loadTypes();
   }, [loadTypes]);
 
+  const openTypePicker = () => {
+    if (typesError) {
+      void loadTypes();
+      return;
+    }
+    setTypePickerOpen(true);
+  };
+
   const addFile = async (source: PickSource) => {
-    setSheetOpen(false);
     if (pending.length >= MAX_FILES_PER_SIDE) {
       await dialog.notify({
         title: 'That is enough files',
@@ -112,28 +143,32 @@ export const CreateRequestScreen: React.FC = () => {
     setPending((prev) => [...prev, file]);
   };
 
-  const validate = (): string | null => {
-    if (!typeKey) return 'Choose what kind of request this is.';
-    if (isOther && !otherText.trim()) return 'Say what kind of request this is.';
-    if (!notes.trim()) return 'Add a note so HR knows what you need.';
-    return null;
+  const validate = (): FieldErrors => {
+    const found: FieldErrors = {};
+    if (!selected) found.type = 'Choose what kind of request this is.';
+    else if (isOther && !otherText.trim()) found.other = 'Say what kind of request this is.';
+    if (!notes.trim()) found.notes = 'Add a note so HR knows what you need.';
+    return found;
   };
 
-  const submit = async (asDraft: boolean) => {
-    const invalid = asDraft ? (typeKey ? null : 'Choose what kind of request this is.') : validate();
-    if (invalid) {
-      setError(invalid);
-      return;
-    }
-    setError(null);
+  const submit = async () => {
+    if (sendingRef.current) return;
+    const found = validate();
+    setFieldErrors(found);
+    if (Object.keys(found).length > 0 || !selected) return;
+
+    sendingRef.current = true;
+    setSendError(null);
     setSubmitting(true);
 
     try {
-      const created = await requestService.createApplication({
-        requestType: isOther ? otherText.trim() : typeLabel || typeKey,
-        notes: notes.trim() || undefined,
-        isDraft: asDraft,
-      });
+      // "Other" goes by the words the employee typed: linking it by id would
+      // make the server name it after the type and drop what they wrote.
+      const created = await requestService.createApplication(
+        isOther
+          ? { requestType: otherText.trim(), notes: notes.trim() }
+          : { requestTypeId: selected.id || undefined, requestType: selected.label || selected.key, notes: notes.trim() },
+      );
 
       // The request exists now; anything that fails from here is about the files.
       const failed: string[] = [];
@@ -147,123 +182,142 @@ export const CreateRequestScreen: React.FC = () => {
 
       if (failed.length > 0) {
         await dialog.notify({
-          title: asDraft ? 'Saved, but some files did not attach' : 'Sent, but some files did not attach',
-          message: `${failed.join(', ')} could not be uploaded. Open the request to try again.`,
+          title: 'Sent, but some files did not attach',
+          message: `${failed.join(', ')} could not be uploaded. Open the request in My Requests to add them again.`,
           tone: 'warning',
         });
       } else {
         await dialog.notify({
-          title: asDraft ? 'Saved as draft' : 'Request sent',
-          message: asDraft ? 'You can finish it later from My Requests.' : 'HR will review it and reply here.',
+          title: 'Request sent',
+          message: 'HR will review it. You can follow it in My Requests.',
           tone: 'success',
         });
       }
       navigation.goBack();
     } catch (err) {
-      setError(serverMessage(err, 'Could not send the request. Please try again.'));
+      setSendError(serverMessage(err, 'Could not send the request. Please try again.'));
     } finally {
+      sendingRef.current = false;
       setSubmitting(false);
     }
   };
+
+  const typeFieldText = types === null
+    ? 'Loading types…'
+    : typesError
+      ? 'Could not load types. Tap to try again.'
+      : selected?.label || 'Choose a type';
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       <AuthBackdrop scriptLines={[]} />
 
-      <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={styles.backButton}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <MaterialCommunityIcons name="arrow-left" size={26} color={C.ink} />
-            </TouchableOpacity>
-            <View style={styles.headerText} pointerEvents="none">
-              <Text style={styles.headerTitle}>New Request</Text>
-            </View>
-          </View>
+      <SafeAreaView style={styles.flex} edges={['top']}>
+        {/* "padding" on both platforms: Android runs edge to edge, so the window
+            no longer shrinks for the keyboard and the Send button would sit under it. */}
+        <KeyboardAvoidingView behavior="padding" style={styles.flex}>
+          <RequestHeader title="New Request" onBack={() => navigation.goBack()} />
 
-          <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-            {/* What */}
+          <ScrollView
+            style={styles.flex}
+            contentContainerStyle={styles.scroll}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {/* What and why */}
             <View style={styles.card}>
               <Text style={styles.label}>Request type</Text>
               <TouchableOpacity
-                style={[styles.field, typePickerOpen && styles.fieldFocused]}
-                onPress={() => setTypePickerOpen(true)}
+                style={[
+                  styles.field,
+                  typePickerOpen && styles.fieldFocused,
+                  (fieldErrors.type || typesError) && styles.fieldInvalid,
+                ]}
+                onPress={openTypePicker}
                 disabled={types === null}
                 accessibilityRole="button"
+                accessibilityLabel={typeFieldText}
               >
-                <MaterialCommunityIcons name="format-list-bulleted-type" size={20} color={C.muted} />
-                <Text style={[styles.fieldText, !typeLabel && styles.placeholder]} numberOfLines={1}>
-                  {types === null ? 'Loading…' : typeLabel || 'Choose a type'}
+                <MaterialCommunityIcons
+                  name={typesError ? 'refresh' : 'format-list-bulleted-type'}
+                  size={20}
+                  color={typesError || fieldErrors.type ? C.danger : C.muted}
+                />
+                <Text
+                  style={[styles.fieldText, !selected && styles.placeholder, typesError && styles.fieldTextDanger]}
+                  numberOfLines={1}
+                >
+                  {typeFieldText}
                 </Text>
                 {types === null ? (
                   <ActivityIndicator size="small" color={C.blue} />
-                ) : (
+                ) : typesError ? null : (
                   <MaterialCommunityIcons name="chevron-down" size={22} color={C.muted} />
                 )}
               </TouchableOpacity>
+              <FieldError message={fieldErrors.type ?? typesError} />
 
               {isOther ? (
                 <>
-                  <Text style={styles.label}>Please specify</Text>
-                  <View style={[styles.field, focused === 'other' && styles.fieldFocused]}>
+                  <Text style={[styles.label, styles.labelGap]}>Please specify</Text>
+                  <View style={[styles.field, focused === 'other' && styles.fieldFocused, fieldErrors.other && styles.fieldInvalid]}>
                     <MaterialCommunityIcons name="pencil-outline" size={20} color={C.muted} />
                     <TextInput
                       style={styles.input}
                       value={otherText}
-                      onChangeText={setOtherText}
+                      onChangeText={(text) => {
+                        setOtherText(text);
+                        if (fieldErrors.other) setFieldErrors((prev) => ({ ...prev, other: undefined }));
+                      }}
                       onFocus={() => setFocused('other')}
                       onBlur={() => setFocused(null)}
                       placeholder="What kind of request?"
                       placeholderTextColor={C.muted}
                       maxLength={50}
+                      returnKeyType="next"
                     />
                   </View>
+                  <FieldError message={fieldErrors.other} />
                 </>
               ) : null}
 
-            </View>
-
-            {/* Why */}
-            <View style={styles.card}>
-              <Text style={styles.label}>Note for HR</Text>
-              <View style={[styles.textAreaWrap, focused === 'notes' && styles.fieldFocused]}>
+              <Text style={[styles.label, styles.labelGap]}>Note for HR</Text>
+              <View style={[styles.textAreaWrap, focused === 'notes' && styles.fieldFocused, fieldErrors.notes && styles.fieldInvalid]}>
                 <TextInput
                   style={styles.textArea}
                   value={notes}
-                  onChangeText={setNotes}
+                  onChangeText={(text) => {
+                    setNotes(text);
+                    if (fieldErrors.notes) setFieldErrors((prev) => ({ ...prev, notes: undefined }));
+                  }}
                   onFocus={() => setFocused('notes')}
                   onBlur={() => setFocused(null)}
-                  placeholder="Say what you need and why."
+                  placeholder="What do you need, and why?"
                   placeholderTextColor={C.muted}
                   multiline
-                  maxLength={2000}
+                  maxLength={NOTE_LIMIT}
                   textAlignVertical="top"
                 />
               </View>
-              <Text style={styles.counter}>{notes.length}/2000</Text>
+              <FieldError message={fieldErrors.notes} />
+              {/* Only near the limit: a "0/2000" under every note is noise. */}
+              {notes.length > NOTE_LIMIT - 200 ? (
+                <Text style={styles.counter}>{notes.length}/{NOTE_LIMIT}</Text>
+              ) : null}
             </View>
 
             {/* Files */}
             <View style={styles.card}>
-              <View style={styles.cardHead}>
-                <View style={styles.cardIcon}>
-                  <MaterialCommunityIcons name="paperclip" size={20} color={C.blue} />
-                </View>
-                <Text style={styles.cardTitle}>Supporting files</Text>
-                {pending.length > 0 ? <Text style={styles.cardCount}>{pending.length}</Text> : null}
+              <View style={styles.labelRow}>
+                <Text style={styles.label}>Supporting files (optional)</Text>
+                {pending.length > 0 ? <Text style={styles.labelCount}>{pending.length}</Text> : null}
               </View>
 
               {pending.map((file, index) => (
                 <View key={file.uri} style={[styles.fileRow, index < pending.length - 1 && styles.fileDivider]}>
                   <View style={styles.fileIcon}>
-                    <MaterialCommunityIcons name={iconForFile(file.name)} size={22} color={C.blue} />
+                    <MaterialCommunityIcons name={iconForFile(file.name)} size={20} color={C.blue} />
                   </View>
                   <View style={styles.fileText}>
                     <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
@@ -274,7 +328,7 @@ export const CreateRequestScreen: React.FC = () => {
                     style={styles.fileRemove}
                     accessibilityRole="button"
                     accessibilityLabel={`Remove ${file.name}`}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                   >
                     <MaterialCommunityIcons name="close" size={18} color={C.danger} />
                   </TouchableOpacity>
@@ -288,57 +342,54 @@ export const CreateRequestScreen: React.FC = () => {
                 label={pending.length > 0 ? 'Add another file' : 'Add a file'}
               />
             </View>
+          </ScrollView>
 
-            {error ? (
-              <View style={styles.errorBox}>
+          {/* Pinned, so Send is always on screen — and above the keyboard while typing. */}
+          <View style={[styles.footer, { paddingBottom: keyboardUp ? 10 : 10 + insets.bottom }]}>
+            {sendError ? (
+              <View style={styles.errorBox} accessibilityRole="alert">
                 <MaterialCommunityIcons name="alert-circle-outline" size={18} color={C.danger} />
-                <Text style={styles.errorText}>{error}</Text>
+                <Text style={styles.errorText}>{sendError}</Text>
               </View>
             ) : null}
-
-            <PrimaryButton icon="send-outline" label="Send request" onPress={() => { void submit(false); }} loading={submitting} />
-            <PrimaryButton label="Save as draft" onPress={() => { void submit(true); }} variant="outline" disabled={submitting} />
-          </ScrollView>
+            <PrimaryButton
+              icon="send-outline"
+              label="Send request"
+              onPress={() => { void submit(); }}
+              loading={submitting}
+              disabled={types === null}
+            />
+          </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
 
-      {/* Type picker */}
-      <Modal visible={typePickerOpen} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setTypePickerOpen(false)}>
-        <View style={styles.sheetBackdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setTypePickerOpen(false)} accessibilityLabel="Dismiss" />
-          <View style={styles.sheet}>
-            <Text style={styles.sheetTitle}>Request type</Text>
-            <ScrollView style={styles.sheetList} showsVerticalScrollIndicator={false}>
-              {(types ?? []).length === 0 ? (
-                <Text style={styles.blockText}>No request types have been set up for your company yet. Ask HR to add one.</Text>
-              ) : (
-                (types ?? []).map((t, index) => {
-                  const active = t.key === typeKey;
-                  return (
-                    <TouchableOpacity
-                      key={t.key}
-                      style={[styles.sheetRow, index < (types ?? []).length - 1 && styles.fileDivider]}
-                      onPress={() => {
-                        setTypeKey(t.key);
-                        setTypeLabel(t.label);
-                        setTypePickerOpen(false);
-                        setError(null);
-                      }}
-                      accessibilityRole="button"
-                    >
-                      <Text style={[styles.sheetRowText, active && styles.sheetRowTextActive]}>{t.label}</Text>
-                      {active ? <MaterialCommunityIcons name="check" size={20} color={C.blue} /> : null}
-                    </TouchableOpacity>
-                  );
-                })
-              )}
-            </ScrollView>
-            <TouchableOpacity style={styles.sheetCancel} onPress={() => setTypePickerOpen(false)} accessibilityRole="button">
-              <Text style={styles.sheetCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <RequestSheet visible={typePickerOpen} onClose={() => setTypePickerOpen(false)} title="Request type">
+        <ScrollView style={styles.sheetList} showsVerticalScrollIndicator={false}>
+          {(types ?? []).length === 0 ? (
+            <Text style={styles.blockText}>No request types have been set up for your company yet. Ask HR to add one.</Text>
+          ) : (
+            (types ?? []).map((t, index) => {
+              const active = t.key === selected?.key;
+              return (
+                <TouchableOpacity
+                  key={t.id || t.key}
+                  style={[styles.sheetRow, index < (types ?? []).length - 1 && styles.fileDivider]}
+                  onPress={() => {
+                    setSelected(t);
+                    setTypePickerOpen(false);
+                    setFieldErrors((prev) => ({ ...prev, type: undefined, other: undefined }));
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text style={[styles.sheetRowText, active && styles.sheetRowTextActive]}>{t.label}</Text>
+                  {active ? <MaterialCommunityIcons name="check" size={20} color={C.blue} /> : null}
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </ScrollView>
+      </RequestSheet>
 
       <PickSourceSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} onPick={(source) => { void addFile(source); }} />
     </View>
@@ -348,45 +399,40 @@ export const CreateRequestScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F6F8FF' },
   flex: { flex: 1 },
-  gap: { height: 10 },
+  gap: { height: 8 },
 
-  header: { flexDirection: 'row', alignItems: 'center', minHeight: 56, paddingHorizontal: 12, paddingTop: 4 },
-  backButton: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  headerText: { position: 'absolute', left: 88, right: 88, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: C.ink },
-
-  scroll: { paddingHorizontal: 16, paddingBottom: 28, gap: 12 },
+  scroll: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 16, gap: 10 },
 
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 18,
+    borderRadius: 16,
+    padding: 14,
     shadowColor: C.blue,
     shadowOpacity: 0.07,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 5 },
     elevation: 2,
   },
-  cardHead: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
-  cardIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#E6EEFF', justifyContent: 'center', alignItems: 'center' },
-  cardTitle: { flex: 1, fontSize: 16, fontWeight: '800', color: C.ink },
-  cardCount: { fontSize: 13, fontWeight: '700', color: C.muted },
 
-  label: { fontSize: 12, fontWeight: '700', color: C.body, letterSpacing: 0.3, marginBottom: 6, marginTop: 4 },
+  label: { fontSize: 12, fontWeight: '700', color: C.body, letterSpacing: 0.3, marginBottom: 6 },
+  labelGap: { marginTop: 12 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  labelCount: { fontSize: 12, fontWeight: '700', color: C.muted, marginBottom: 6 },
   field: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    height: 52,
+    height: 50,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: C.line,
     backgroundColor: C.field,
     paddingHorizontal: 14,
-    marginBottom: 6,
   },
   fieldFocused: { borderColor: C.blue, backgroundColor: '#FFFFFF' },
+  fieldInvalid: { borderColor: C.dangerLine, backgroundColor: C.dangerBg },
   fieldText: { flex: 1, fontSize: 15, color: C.ink },
+  fieldTextDanger: { color: C.danger },
   placeholder: { color: C.muted },
   input: { flex: 1, fontSize: 15, color: C.ink, paddingVertical: 0 },
 
@@ -396,14 +442,14 @@ const styles = StyleSheet.create({
     borderColor: C.line,
     backgroundColor: C.field,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
   },
-  textArea: { minHeight: 120, fontSize: 15, lineHeight: 22, color: C.ink },
-  counter: { alignSelf: 'flex-end', fontSize: 11, color: C.muted, marginTop: 6 },
+  textArea: { minHeight: 88, maxHeight: 160, fontSize: 15, lineHeight: 21, color: C.ink, paddingVertical: 0 },
+  counter: { alignSelf: 'flex-end', fontSize: 11, color: C.muted, marginTop: 4 },
 
-  fileRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11 },
+  fileRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
   fileDivider: { borderBottomWidth: 1, borderBottomColor: C.line },
-  fileIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#E8F0FE', justifyContent: 'center', alignItems: 'center' },
+  fileIcon: { width: 36, height: 36, borderRadius: 11, backgroundColor: '#E8F0FE', justifyContent: 'center', alignItems: 'center' },
   fileText: { flex: 1 },
   fileName: { fontSize: 14, fontWeight: '700', color: C.ink },
   fileMeta: { fontSize: 12, color: C.body, marginTop: 2 },
@@ -411,6 +457,14 @@ const styles = StyleSheet.create({
 
   blockText: { fontSize: 14, lineHeight: 21, color: C.body, paddingVertical: 8 },
 
+  footer: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    gap: 8,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: C.line,
+  },
   errorBox: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -419,31 +473,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.dangerLine,
     borderRadius: 12,
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
-  errorText: { flex: 1, fontSize: 13, lineHeight: 19, color: C.danger },
+  errorText: { flex: 1, fontSize: 13, lineHeight: 18, color: C.danger },
 
-  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,27,45,0.45)', justifyContent: 'flex-end', padding: 16 },
-  sheet: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    paddingHorizontal: 16,
-    paddingTop: 18,
-    paddingBottom: 10,
-    maxHeight: '70%',
-    shadowColor: C.ink,
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 10,
-  },
-  sheetTitle: { fontSize: 18, fontWeight: '800', color: C.ink, marginBottom: 6 },
-  sheetList: { flexGrow: 0 },
-  sheetRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14 },
+  sheetList: { flexGrow: 0, flexShrink: 1 },
+  sheetRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 48, paddingVertical: 12 },
   sheetRowText: { flex: 1, fontSize: 15, color: C.ink },
   sheetRowTextActive: { fontWeight: '800', color: C.blue },
-  sheetCancel: { height: 48, justifyContent: 'center', alignItems: 'center', marginTop: 6 },
-  sheetCancelText: { fontSize: 15, fontWeight: '700', color: C.body },
 });
 
 export default CreateRequestScreen;

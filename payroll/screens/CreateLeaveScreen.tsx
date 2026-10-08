@@ -4,7 +4,7 @@
  * The form asks for as little as the chosen leave type allows and no more. A
  * half-day switch appears only where the type permits half days; the hourly
  * controls only where it permits hours; the attachment card only where it wants
- * evidence. A type that uses none of them gets four rows and a button.
+ * evidence. A type that uses none of them gets three cards and a button.
  *
  * Two things it deliberately does not do for itself. It does not count the days
  * — weekends, public holidays and the employee's own shift roster decide that,
@@ -17,10 +17,16 @@
  * The balance comes from the employee's entitlements, which is what My Leaves
  * shows. The old form read /leave/balance, a table the entitlement engine never
  * writes, and printed numbers that belonged to nobody.
+ *
+ * Fits one phone screen for an ordinary leave: the two dates sit side by side,
+ * the day count is a line in the dates card rather than a card of its own, and
+ * Apply lives in a footer outside the scroll so it rides above the keyboard
+ * while the reason is typed instead of being pushed off the bottom.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -33,7 +39,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -41,6 +47,7 @@ import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop'
 import PrimaryButton from '../components/auth/PrimaryButton';
 import { useDialog } from '../components/ui/AppDialog';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
+import type { RootStackParamList } from '../navigation/types';
 import leaveService, {
   LeavePreview,
   LeaveType,
@@ -55,13 +62,14 @@ import {
   type PickSource,
   type PickedFile,
 } from '../lib/requestAttachments';
-import { AttachButton, PickSourceSheet } from '../components/requests/RequestUi';
+import { AttachButton, PickSourceSheet, useKeyboardVisible } from '../components/requests/RequestUi';
 import {
   BalanceNote,
   DayTally,
   FieldError,
   FieldLabel,
   FormCard,
+  LeaveHeader,
   LeaveState,
   LeaveTypeOption,
   Segmented,
@@ -69,14 +77,16 @@ import {
   SwitchRow,
 } from '../components/leave/LeaveUi';
 
-type Params = { CreateLeave: { leaveTypeId?: string } | undefined };
-
 const HALVES = [
   { key: 'AM', label: 'Morning' },
   { key: 'PM', label: 'Afternoon' },
 ];
 
 const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** The reason box counts characters only once the limit is close enough to matter. */
+const REASON_MAX = 500;
+const REASON_COUNT_FROM = 400;
 
 /**
  * A calendar day as the server stores it. Built from the local components on
@@ -128,12 +138,20 @@ type Load =
   | { kind: 'ready' }
   | { kind: 'failed'; message: string };
 
-type Picking = 'start' | 'end' | 'startTime' | 'endTime' | null;
+type Picking = 'start' | 'end' | 'startTime' | 'endTime';
+
+const PICKER_TITLE: Record<Picking, string> = {
+  start: 'First day',
+  end: 'Last day',
+  startTime: 'From',
+  endTime: 'To',
+};
 
 export const CreateLeaveScreen: React.FC = () => {
   const navigation = useNavigation();
-  const route = useRoute<RouteProp<Params, 'CreateLeave'>>();
+  const route = useRoute<RouteProp<RootStackParamList, 'CreateLeave'>>();
   const dialog = useDialog();
+  const insets = useSafeAreaInsets();
   const { employee } = usePayrollAuth();
 
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
@@ -156,8 +174,14 @@ export const CreateLeaveScreen: React.FC = () => {
 
   const [typeSheet, setTypeSheet] = useState(false);
   const [sourceSheet, setSourceSheet] = useState(false);
-  const [picking, setPicking] = useState<Picking>(null);
+  const [picking, setPicking] = useState<Picking | null>(null);
+  // The picker's value: what it opened on, and on iOS where it has been turned
+  // to since. Committed by Done on iOS, by the system dialog on Android.
+  const [draft, setDraft] = useState<Date | null>(null);
   const [reasonFocused, setReasonFocused] = useState(false);
+  // The footer drops its home-indicator padding while the keyboard is up, so
+  // Apply sits right on top of the keyboard instead of 34pt above it.
+  const keyboardUp = useKeyboardVisible();
 
   const [preview, setPreview] = useState<LeavePreview | null>(null);
   const [previewing, setPreviewing] = useState(false);
@@ -165,6 +189,7 @@ export const CreateLeaveScreen: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  const scrollRef = useRef<ScrollView>(null);
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
 
@@ -221,6 +246,19 @@ export const CreateLeaveScreen: React.FC = () => {
     const active = new Set(types.filter((t) => t.isActive).map((t) => t.id));
     return entitlements.filter((e) => active.has(e.leaveTypeId));
   }, [entitlements, types]);
+
+  /**
+   * A type handed in by the page that opened the form (Leave Type's "Apply for
+   * this leave") that this employee cannot pick this year is dropped once, on
+   * arrival. Otherwise the field read "Choose a leave type" while the preview
+   * and the submit quietly ran for a type the form was not showing.
+   */
+  const preselectChecked = useRef(false);
+  useEffect(() => {
+    if (load.kind !== 'ready' || preselectChecked.current) return;
+    preselectChecked.current = true;
+    if (typeId && !options.some((o) => o.leaveTypeId === typeId)) setTypeId(null);
+  }, [load.kind, options, typeId]);
 
   /**
    * Whether the employee is eligible for a type at all, answered before any
@@ -344,14 +382,19 @@ export const CreateLeaveScreen: React.FC = () => {
   const dateError = issues.dates ?? issues.startDate ?? null;
   const attachmentError = issues.attachment ?? null;
 
+  /**
+   * What is still missing, said on the Apply button itself. A greyed button
+   * that reads "Choose the last day" tells the employee both why it will not
+   * press and what to do, without a hint row of its own under the form.
+   */
   const missing = !typeId
-    ? 'Choose a leave type.'
+    ? 'Choose a leave type'
     : !startDate
-      ? 'Choose the first day.'
+      ? 'Choose the first day'
       : !endDate
-        ? 'Choose the last day.'
+        ? 'Choose the last day'
         : hourly && (!startTime || !endTime)
-          ? 'Give the hours you will be away.'
+          ? 'Add the hours you will be away'
           : null;
 
   // A preview that failed to arrive does not block anything: the server checks
@@ -361,6 +404,8 @@ export const CreateLeaveScreen: React.FC = () => {
     || typeBlock !== null
     || previewing
     || (preview !== null && preview.issues.length > 0);
+
+  const buttonLabel = missing ?? (previewing ? 'Checking the dates…' : 'Apply for leave');
 
   // ── Doing things ────────────────────────────────────────────────────
 
@@ -380,13 +425,24 @@ export const CreateLeaveScreen: React.FC = () => {
     setSubmitError(null);
   };
 
-  const onDatePicked = (event: { type?: string }, value?: Date) => {
-    const which = picking;
-    // Android draws its own dialog and reports the dismissal; iOS keeps the
-    // spinner on screen until it is closed from here.
-    if (Platform.OS !== 'ios') setPicking(null);
-    if (event?.type === 'dismissed' || !value) return;
+  /** The value a picker opens on: what is already chosen, else today or now. */
+  const pickerStart = (which: Picking): Date => {
+    if (which === 'start') return fromYmd(startDate) ?? new Date();
+    if (which === 'end') return fromYmd(endDate) ?? fromYmd(startDate) ?? new Date();
+    const source = which === 'endTime' ? endTime : startTime;
+    const match = /^(\d{2}):(\d{2})$/.exec(source ?? '');
+    const now = new Date();
+    if (match) now.setHours(Number(match[1]), Number(match[2]), 0, 0);
+    return now;
+  };
 
+  const openPicker = (which: Picking) => {
+    Keyboard.dismiss();
+    setDraft(pickerStart(which));
+    setPicking(which);
+  };
+
+  const applyPicked = (which: Picking, value: Date) => {
     if (which === 'start') {
       const next = toYmd(value);
       setStartDate(next);
@@ -397,11 +453,48 @@ export const CreateLeaveScreen: React.FC = () => {
       setEndDate(toYmd(value));
     } else if (which === 'startTime') {
       setStartTime(toHm(value));
-    } else if (which === 'endTime') {
+    } else {
       setEndTime(toHm(value));
     }
-    if (Platform.OS === 'ios') setPicking(null);
     setSubmitError(null);
+  };
+
+  /**
+   * Android draws its own dialog and reports the answer, or the dismissal, once.
+   *
+   * Stable on purpose: the Android picker re-opens its dialog whenever its
+   * onChange or value changes, and the preview timer re-renders this screen
+   * while the dialog is up. The value it opens on is the draft taken when the
+   * field was tapped, for the same reason.
+   */
+  const pickingRef = useRef<Picking | null>(null);
+  pickingRef.current = picking;
+  const applyRef = useRef(applyPicked);
+  applyRef.current = applyPicked;
+  const onAndroidPicked = useCallback((event: { type?: string }, value?: Date) => {
+    const which = pickingRef.current;
+    setPicking(null);
+    setDraft(null);
+    if (!which || event?.type === 'dismissed' || !value) return;
+    applyRef.current(which, value);
+  }, []);
+
+  /**
+   * iOS has no dialog of its own. The wheel used to sit loose at the bottom of
+   * the page, close after the first turn (so changing month and day took two
+   * openings), offer no way to keep the date it opened on, and draw white text
+   * on the light page when the phone was in dark mode. It now lives in a sheet
+   * with Cancel and Done, keeps its own draft while it turns, and is pinned to
+   * the light theme the rest of the app is drawn in.
+   */
+  const closePicker = () => {
+    setPicking(null);
+    setDraft(null);
+  };
+
+  const confirmPicker = () => {
+    if (picking && draft) applyPicked(picking, draft);
+    closePicker();
   };
 
   const addFile = async (source: PickSource) => {
@@ -442,6 +535,7 @@ export const CreateLeaveScreen: React.FC = () => {
    */
   const submit = async () => {
     if (!typeId || !startDate || !endDate) return;
+    Keyboard.dismiss();
     setSubmitError(null);
     setSubmitting(true);
 
@@ -472,9 +566,11 @@ export const CreateLeaveScreen: React.FC = () => {
         await leaveService.createApplication(payload);
       }
 
+      // Nothing here promises that the approver is told: the server does not
+      // notify approvers of a new application, only the employee of the answer.
       await dialog.notify({
-        title: 'Leave applied for',
-        message: 'Your approver will be notified and you will see the answer here.',
+        title: 'Sent for approval',
+        message: 'You will get a notification when it is decided, and can track it on My Leaves.',
         tone: 'success',
       });
       navigation.goBack();
@@ -485,42 +581,27 @@ export const CreateLeaveScreen: React.FC = () => {
     }
   };
 
+  // The reason is the last thing on the form; once the keyboard is up, bring it
+  // into view rather than leave the employee typing into a box they cannot see.
+  const onReasonFocus = () => {
+    setReasonFocused(true);
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 250);
+  };
+
   // ── Screen ──────────────────────────────────────────────────────────
 
-  const pickerValue = picking === 'end'
-    ? fromYmd(endDate) ?? fromYmd(startDate) ?? new Date()
-    : fromYmd(startDate) ?? new Date();
-
-  const timePickerValue = () => {
-    const source = picking === 'endTime' ? endTime : startTime;
-    const match = /^(\d{2}):(\d{2})$/.exec(source ?? '');
-    const now = new Date();
-    if (!match) return now;
-    now.setHours(Number(match[1]), Number(match[2]), 0, 0);
-    return now;
-  };
+  const isDatePick = picking === 'start' || picking === 'end';
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       <AuthBackdrop scriptLines={[]} />
 
-      <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={styles.back}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <MaterialCommunityIcons name="arrow-left" size={26} color={C.ink} />
-            </TouchableOpacity>
-            <View style={styles.headerText} pointerEvents="none">
-              <Text style={styles.headerTitle}>Apply for Leave</Text>
-            </View>
-          </View>
+      <SafeAreaView style={styles.flex} edges={['top']}>
+        {/* "padding" on both platforms: Android runs edge to edge, so the window
+            no longer shrinks for the keyboard and Apply would sit under it. */}
+        <KeyboardAvoidingView behavior="padding" style={styles.flex}>
+          <LeaveHeader title="Apply for Leave" onBack={() => navigation.goBack()} />
 
           {load.kind === 'loading' ? (
             <View style={styles.centre}>
@@ -537,208 +618,227 @@ export const CreateLeaveScreen: React.FC = () => {
               />
             </View>
           ) : (
-            <ScrollView
-              contentContainerStyle={styles.scroll}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              {/* What kind of leave */}
-              <FormCard>
-                <FieldLabel>Leave type</FieldLabel>
-                <SelectField
-                  icon="palm-tree"
-                  value={entitlement?.description ?? null}
-                  placeholder={options.length === 0 ? 'No leave types are set up for you' : 'Choose a leave type'}
-                  onPress={() => setTypeSheet(true)}
-                  disabled={options.length === 0}
-                  invalid={typeError !== null}
-                />
-                {entitlement && !typeError ? <BalanceNote item={entitlement} /> : null}
-                <FieldError message={typeError} />
-              </FormCard>
+            <>
+              <ScrollView
+                ref={scrollRef}
+                style={styles.flex}
+                contentContainerStyle={styles.scroll}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                showsVerticalScrollIndicator={false}
+              >
+                {/* What kind of leave */}
+                <FormCard>
+                  <FieldLabel>Leave type</FieldLabel>
+                  <SelectField
+                    icon="palm-tree"
+                    value={entitlement?.description ?? type?.description ?? null}
+                    placeholder={options.length === 0 ? 'No leave types are set up for you' : 'Choose a leave type'}
+                    onPress={() => setTypeSheet(true)}
+                    disabled={options.length === 0}
+                    invalid={typeError !== null}
+                    label="Leave type"
+                  />
+                  {entitlement && !typeError ? <BalanceNote item={entitlement} /> : null}
+                  <FieldError message={typeError} />
+                </FormCard>
 
-              {/* When */}
-              <FormCard>
-                <FieldLabel>First day</FieldLabel>
-                <SelectField
-                  icon="calendar-start"
-                  value={prettyDay(startDate)}
-                  placeholder="Choose a date"
-                  onPress={() => setPicking('start')}
-                  invalid={dateError !== null}
-                />
-
-                <FieldLabel>Last day</FieldLabel>
-                <SelectField
-                  icon="calendar-end"
-                  value={prettyDay(endDate)}
-                  placeholder="Choose a date"
-                  onPress={() => setPicking('end')}
-                  disabled={!startDate}
-                  invalid={dateError !== null || issues.endDate !== undefined}
-                />
-                <FieldError message={dateError ?? issues.endDate ?? null} />
-
-                {/* Only where the type says so. */}
-                {canHourly ? (
-                  <>
-                    <View style={styles.rule} />
-                    <SwitchRow label="Just a few hours" value={hourly} onChange={setHourly} />
-                  </>
-                ) : null}
-
-                {hourly ? (
+                {/* When, and what it comes to */}
+                <FormCard>
                   <View style={styles.pair}>
                     <View style={styles.pairHalf}>
-                      <FieldLabel>From</FieldLabel>
+                      <FieldLabel>First day</FieldLabel>
                       <SelectField
-                        icon="clock-outline"
-                        value={prettyTime(startTime)}
-                        placeholder="Start"
-                        onPress={() => setPicking('startTime')}
-                        invalid={issues.time !== undefined}
+                        compact
+                        icon="calendar-start"
+                        value={prettyDay(startDate)}
+                        placeholder="Select date"
+                        onPress={() => openPicker('start')}
+                        invalid={dateError !== null}
+                        label="First day"
                       />
                     </View>
                     <View style={styles.pairHalf}>
-                      <FieldLabel>To</FieldLabel>
+                      <FieldLabel>Last day</FieldLabel>
                       <SelectField
-                        icon="clock-outline"
-                        value={prettyTime(endTime)}
-                        placeholder="End"
-                        onPress={() => setPicking('endTime')}
-                        invalid={issues.time !== undefined}
+                        compact
+                        icon="calendar-end"
+                        value={prettyDay(endDate)}
+                        placeholder="Select date"
+                        onPress={() => openPicker('end')}
+                        disabled={!startDate}
+                        invalid={dateError !== null || issues.endDate !== undefined}
+                        label="Last day"
                       />
                     </View>
                   </View>
-                ) : null}
-                <FieldError message={issues.time ?? null} />
+                  <FieldError message={dateError ?? issues.endDate ?? null} />
 
-                {canHalfDay && startDate ? (
-                  <>
-                    <View style={styles.rule} />
-                    <SwitchRow
-                      label={singleDay ? 'Half day only' : 'First day is a half day'}
-                      value={halfStart}
-                      onChange={turnOnHalfStart}
-                    />
-                    {halfStart ? (
-                      <Segmented options={HALVES} value={startPeriod} onChange={setStartPeriod} />
-                    ) : null}
+                  {/* Only where the type says so. */}
+                  {canHourly ? (
+                    <>
+                      <View style={styles.rule} />
+                      <SwitchRow label="Just a few hours" value={hourly} onChange={setHourly} />
+                    </>
+                  ) : null}
 
-                    {!singleDay ? (
-                      <>
-                        <SwitchRow
-                          label="Last day is a half day"
-                          value={halfEnd}
-                          onChange={setHalfEnd}
+                  {hourly ? (
+                    <View style={styles.pair}>
+                      <View style={styles.pairHalf}>
+                        <FieldLabel>From</FieldLabel>
+                        <SelectField
+                          compact
+                          icon="clock-outline"
+                          value={prettyTime(startTime)}
+                          placeholder="Start"
+                          onPress={() => openPicker('startTime')}
+                          invalid={issues.time !== undefined}
+                          label="From"
                         />
-                        {halfEnd ? (
-                          <Segmented options={HALVES} value={endPeriod} onChange={setEndPeriod} />
-                        ) : null}
-                      </>
-                    ) : null}
-                  </>
-                ) : null}
-                <FieldError message={issues.halfDay ?? null} />
-              </FormCard>
-
-              {/* What it costs — the server's figure, not a date subtraction. */}
-              {typeId && startDate && endDate ? (
-                <>
-                  <DayTally
-                    state={previewing ? 'busy' : preview ? 'ready' : 'blank'}
-                    days={preview?.totalDays}
-                    hours={preview?.totalHours ?? null}
-                    excluded={preview?.excludedHolidays}
-                  />
-                  <FieldError message={issues.balance ?? previewError} />
-                </>
-              ) : null}
-
-              {/* Evidence, only for types that ask for it. */}
-              {wantsAttachment ? (
-                <FormCard title="Supporting document" icon="paperclip">
-                  {file ? (
-                    <View style={styles.fileRow}>
-                      <View style={styles.fileIcon}>
-                        <MaterialCommunityIcons name={iconForFile(file.name)} size={22} color={C.blue} />
                       </View>
-                      <View style={styles.fileText}>
-                        <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
-                        <Text style={styles.fileMeta}>
-                          {file.size != null ? formatBytes(file.size) : 'Ready to upload'}
-                        </Text>
+                      <View style={styles.pairHalf}>
+                        <FieldLabel>To</FieldLabel>
+                        <SelectField
+                          compact
+                          icon="clock-outline"
+                          value={prettyTime(endTime)}
+                          placeholder="End"
+                          onPress={() => openPicker('endTime')}
+                          invalid={issues.time !== undefined}
+                          label="To"
+                        />
                       </View>
-                      <TouchableOpacity
-                        onPress={() => setFile(null)}
-                        style={styles.fileRemove}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Remove ${file.name}`}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <MaterialCommunityIcons name="close" size={18} color={C.danger} />
-                      </TouchableOpacity>
                     </View>
-                  ) : (
-                    <AttachButton
-                      onPress={() => setSourceSheet(true)}
-                      disabled={submitting}
-                      label={preview?.requiresAttachment ? 'Attach the certificate' : 'Add a file'}
-                    />
-                  )}
-                  <FieldError message={attachmentError} />
+                  ) : null}
+                  <FieldError message={issues.time ?? null} />
+
+                  {canHalfDay && startDate ? (
+                    <>
+                      <View style={styles.rule} />
+                      <SwitchRow
+                        label={singleDay ? 'Half day only' : 'First day is a half day'}
+                        value={halfStart}
+                        onChange={turnOnHalfStart}
+                      />
+                      {halfStart ? (
+                        <Segmented options={HALVES} value={startPeriod} onChange={setStartPeriod} />
+                      ) : null}
+
+                      {!singleDay ? (
+                        <>
+                          <SwitchRow
+                            label="Last day is a half day"
+                            value={halfEnd}
+                            onChange={setHalfEnd}
+                          />
+                          {halfEnd ? (
+                            <Segmented options={HALVES} value={endPeriod} onChange={setEndPeriod} />
+                          ) : null}
+                        </>
+                      ) : null}
+                    </>
+                  ) : null}
+                  <FieldError message={issues.halfDay ?? null} />
+
+                  {/* What it costs — the server's figure, not a date subtraction. */}
+                  {typeId && startDate && endDate ? (
+                    <>
+                      <DayTally
+                        state={previewing ? 'busy' : preview ? 'ready' : 'blank'}
+                        days={preview?.totalDays}
+                        hours={preview?.totalHours ?? null}
+                        excluded={preview?.excludedHolidays}
+                      />
+                      <FieldError message={issues.balance ?? previewError} />
+                    </>
+                  ) : null}
                 </FormCard>
-              ) : null}
 
-              {/* Why */}
-              <FormCard>
-                <FieldLabel>Reason</FieldLabel>
-                <View style={[styles.textAreaWrap, reasonFocused && styles.textAreaFocused]}>
-                  <TextInput
-                    style={styles.textArea}
-                    value={reason}
-                    onChangeText={setReason}
-                    onFocus={() => setReasonFocused(true)}
-                    onBlur={() => setReasonFocused(false)}
-                    placeholder="Say why, so your approver does not have to ask."
-                    placeholderTextColor={C.muted}
-                    multiline
-                    maxLength={500}
-                    textAlignVertical="top"
-                  />
-                </View>
-                <Text style={styles.counter}>{reason.length}/500</Text>
-              </FormCard>
+                {/* Evidence, only for types that ask for it. */}
+                {wantsAttachment ? (
+                  <FormCard title="Supporting document" icon="paperclip">
+                    {file ? (
+                      <View style={styles.fileRow}>
+                        <View style={styles.fileIcon}>
+                          <MaterialCommunityIcons name={iconForFile(file.name)} size={20} color={C.blue} />
+                        </View>
+                        <View style={styles.fileText}>
+                          <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
+                          <Text style={styles.fileMeta}>
+                            {file.size != null ? formatBytes(file.size) : 'Ready to upload'}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => setFile(null)}
+                          style={styles.fileRemove}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Remove ${file.name}`}
+                          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                        >
+                          <MaterialCommunityIcons name="close" size={18} color={C.danger} />
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <AttachButton
+                        onPress={() => setSourceSheet(true)}
+                        disabled={submitting}
+                        label={preview?.requiresAttachment ? 'Attach the certificate' : 'Add a file'}
+                      />
+                    )}
+                    <FieldError message={attachmentError} />
+                  </FormCard>
+                ) : null}
 
-              {missing && !submitting ? (
-                <View style={styles.hint}>
-                  <MaterialCommunityIcons name="information-outline" size={16} color={C.body} />
-                  <Text style={styles.hintText}>{missing}</Text>
-                </View>
-              ) : null}
+                {/* Why */}
+                <FormCard>
+                  <FieldLabel>Reason (optional)</FieldLabel>
+                  <View style={[styles.textAreaWrap, reasonFocused && styles.textAreaFocused]}>
+                    <TextInput
+                      style={styles.textArea}
+                      value={reason}
+                      onChangeText={setReason}
+                      onFocus={onReasonFocus}
+                      onBlur={() => setReasonFocused(false)}
+                      placeholder="Say why, so your approver does not have to ask."
+                      placeholderTextColor={C.muted}
+                      multiline
+                      maxLength={REASON_MAX}
+                      textAlignVertical="top"
+                      accessibilityLabel="Reason, optional"
+                    />
+                  </View>
+                  {reason.length >= REASON_COUNT_FROM ? (
+                    <Text style={styles.counter}>{reason.length}/{REASON_MAX}</Text>
+                  ) : null}
+                </FormCard>
+              </ScrollView>
 
-              {submitError ? (
-                <View style={styles.errorBox}>
-                  <MaterialCommunityIcons name="alert-circle-outline" size={18} color={C.danger} />
-                  <Text style={styles.errorText}>{submitError}</Text>
-                </View>
-              ) : null}
-
-              <PrimaryButton
-                icon="send-outline"
-                label="Apply for leave"
-                onPress={() => { void submit(); }}
-                loading={submitting}
-                disabled={blocked}
-              />
-            </ScrollView>
+              {/* Outside the scroll, inside the keyboard avoider: always on screen,
+                  and above the keyboard while the reason is being typed. */}
+              <View style={[styles.footer, { paddingBottom: keyboardUp ? 10 : Math.max(insets.bottom, 12) }]}>
+                {submitError ? (
+                  <View style={styles.errorBox}>
+                    <MaterialCommunityIcons name="alert-circle-outline" size={18} color={C.danger} />
+                    <Text style={styles.errorText}>{submitError}</Text>
+                  </View>
+                ) : null}
+                <PrimaryButton
+                  icon={missing ? undefined : 'send-outline'}
+                  label={buttonLabel}
+                  onPress={() => { void submit(); }}
+                  loading={submitting}
+                  disabled={blocked}
+                  compact
+                />
+              </View>
+            </>
           )}
         </KeyboardAvoidingView>
       </SafeAreaView>
 
       {/* Leave type picker */}
       <Modal visible={typeSheet} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setTypeSheet(false)}>
-        <View style={styles.sheetBackdrop}>
+        <View style={[styles.sheetBackdrop, { paddingBottom: insets.bottom + 12 }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setTypeSheet(false)} accessibilityLabel="Dismiss" />
           <View style={styles.sheet}>
             <Text style={styles.sheetTitle}>Leave type</Text>
@@ -767,22 +867,45 @@ export const CreateLeaveScreen: React.FC = () => {
         onPick={(source) => { void addFile(source); }}
       />
 
-      {picking === 'start' || picking === 'end' ? (
+      {/* Dates and times. Android: the system dialog, unchanged. iOS: a sheet
+          with Cancel and Done (see closePicker). */}
+      {Platform.OS === 'ios' ? (
+        <Modal visible={picking !== null} transparent animationType="fade" onRequestClose={closePicker}>
+          <View style={styles.pickerBackdrop}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={closePicker} accessibilityLabel="Cancel" />
+            <View style={[styles.pickerSheet, { paddingBottom: insets.bottom + 8 }]}>
+              <View style={styles.pickerHead}>
+                <TouchableOpacity onPress={closePicker} style={styles.pickerButton} accessibilityRole="button">
+                  <Text style={styles.pickerCancel}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={styles.pickerTitle}>{picking ? PICKER_TITLE[picking] : ''}</Text>
+                <TouchableOpacity onPress={confirmPicker} style={[styles.pickerButton, styles.pickerButtonEnd]} accessibilityRole="button">
+                  <Text style={styles.pickerDone}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              {picking && draft ? (
+                <DateTimePicker
+                  value={draft}
+                  mode={isDatePick ? 'date' : 'time'}
+                  display={isDatePick ? 'inline' : 'spinner'}
+                  themeVariant="light"
+                  accentColor={C.blue}
+                  textColor={C.ink}
+                  minimumDate={picking === 'end' ? fromYmd(startDate) ?? undefined : undefined}
+                  onChange={(_event, value) => { if (value) setDraft(value); }}
+                  style={styles.pickerControl}
+                />
+              ) : null}
+            </View>
+          </View>
+        </Modal>
+      ) : picking && draft ? (
         <DateTimePicker
-          value={pickerValue}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={onDatePicked}
+          value={draft}
+          mode={isDatePick ? 'date' : 'time'}
+          display="default"
+          onChange={onAndroidPicked}
           minimumDate={picking === 'end' ? fromYmd(startDate) ?? undefined : undefined}
-        />
-      ) : null}
-
-      {picking === 'startTime' || picking === 'endTime' ? (
-        <DateTimePicker
-          value={timePickerValue()}
-          mode="time"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={onDatePicked}
         />
       ) : null}
     </View>
@@ -793,16 +916,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F6F8FF' },
   flex: { flex: 1 },
 
-  header: { flexDirection: 'row', alignItems: 'center', minHeight: 56, paddingHorizontal: 12, paddingTop: 4 },
-  back: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  headerText: { position: 'absolute', left: 88, right: 88, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: C.ink },
-
   centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  scroll: { paddingHorizontal: 16, paddingBottom: 32, gap: 12 },
+  scroll: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 16, gap: 10 },
 
-  rule: { height: 1, backgroundColor: C.line, marginTop: 14, marginBottom: 4 },
-  pair: { flexDirection: 'row', gap: 12 },
+  rule: { height: 1, backgroundColor: C.line, marginTop: 12, marginBottom: 2 },
+  pair: { flexDirection: 'row', gap: 10 },
   pairHalf: { flex: 1 },
 
   textAreaWrap: {
@@ -811,22 +929,27 @@ const styles = StyleSheet.create({
     borderColor: C.line,
     backgroundColor: C.field,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
   },
   textAreaFocused: { borderColor: C.blue, backgroundColor: '#FFFFFF' },
-  textArea: { minHeight: 96, fontSize: 15, lineHeight: 22, color: C.ink },
+  textArea: { minHeight: 56, maxHeight: 132, fontSize: 15, lineHeight: 21, color: C.ink },
   counter: { alignSelf: 'flex-end', fontSize: 11, color: C.muted, marginTop: 6 },
 
   fileRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  fileIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#E8F0FE', justifyContent: 'center', alignItems: 'center' },
+  fileIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#E8F0FE', justifyContent: 'center', alignItems: 'center' },
   fileText: { flex: 1 },
   fileName: { fontSize: 14, fontWeight: '700', color: C.ink },
   fileMeta: { fontSize: 12, color: C.body, marginTop: 2 },
-  fileRemove: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.dangerBg, justifyContent: 'center', alignItems: 'center' },
+  fileRemove: { width: 40, height: 40, borderRadius: 10, backgroundColor: C.dangerBg, justifyContent: 'center', alignItems: 'center' },
 
-  hint: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4 },
-  hintText: { flex: 1, fontSize: 13, color: C.body },
-
+  footer: {
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: C.line,
+  },
   errorBox: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -835,17 +958,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.dangerLine,
     borderRadius: 12,
-    padding: 12,
+    padding: 10,
   },
   errorText: { flex: 1, fontSize: 13, lineHeight: 19, color: C.danger },
 
-  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,27,45,0.45)', justifyContent: 'flex-end', padding: 16 },
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,27,45,0.45)', justifyContent: 'flex-end', paddingHorizontal: 16, paddingTop: 16 },
   sheet: {
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
     paddingHorizontal: 16,
     paddingTop: 18,
-    paddingBottom: 10,
+    paddingBottom: 6,
     maxHeight: '72%',
     shadowColor: C.ink,
     shadowOpacity: 0.18,
@@ -857,6 +980,28 @@ const styles = StyleSheet.create({
   sheetList: { flexGrow: 0 },
   sheetCancel: { height: 48, justifyContent: 'center', alignItems: 'center', marginTop: 6 },
   sheetCancelText: { fontSize: 15, fontWeight: '700', color: C.body },
+
+  pickerBackdrop: { flex: 1, backgroundColor: 'rgba(15,27,45,0.45)', justifyContent: 'flex-end' },
+  pickerSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 12,
+    paddingTop: 6,
+  },
+  pickerHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: C.line,
+  },
+  pickerButton: { minWidth: 72, height: 48, justifyContent: 'center', paddingHorizontal: 8 },
+  pickerButtonEnd: { alignItems: 'flex-end' },
+  pickerTitle: { fontSize: 16, fontWeight: '800', color: C.ink },
+  pickerCancel: { fontSize: 16, fontWeight: '600', color: C.body },
+  pickerDone: { fontSize: 16, fontWeight: '800', color: C.blue },
+  pickerControl: { alignSelf: 'center' },
 });
 
 export default CreateLeaveScreen;

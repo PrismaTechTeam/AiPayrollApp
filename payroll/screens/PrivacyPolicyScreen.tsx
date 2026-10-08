@@ -6,6 +6,13 @@
  * presentation changed -- numbered sections on white cards instead of a wall of
  * grey paragraphs, so a person looking for one clause can find it.
  *
+ * All sections sit in one card, split by thin rules, instead of one card each:
+ * eleven cards of padding made a short policy several screens long.
+ *
+ * "Collected automatically" names the clock-in photo and that HR sees where a
+ * clock-in came from. A privacy notice that leaves out a photo of the person's
+ * face is not complete; the owner should confirm this wording.
+ *
  * The prototype's contact block named an address, a phone number and a street
  * that belong to nobody. A privacy policy whose "contact us" is invented is the
  * one lie on the page that actually costs someone something -- it is the route
@@ -57,6 +64,8 @@ const SECTIONS: Section[] = [
         bullets: [
           'Device information (model, OS version)',
           'IP address, and location when you record attendance',
+          "Your clock-in location, which your employer's HR can see",
+          'A photo of you taken at clock-in when fingerprint or face unlock is not used',
           'App usage statistics',
           'Log data and crash reports',
         ],
@@ -144,52 +153,54 @@ const SECTIONS: Section[] = [
 ];
 
 export const PrivacyPolicyScreen: React.FC = () => (
-  <AccountPage title="Privacy Policy" subtitle="What is collected, and why">
-    {SECTIONS.map((section) => (
-      <Card key={section.title}>
-        <View style={styles.head}>
-          {section.n ? (
-            <View style={styles.number}>
-              <Text style={styles.numberText}>{section.n}</Text>
-            </View>
-          ) : null}
-          <Text style={styles.title}>{section.title}</Text>
-        </View>
-
-        {section.body?.map((p) => (
-          <Text key={p} style={styles.paragraph}>{p}</Text>
-        ))}
-
-        {section.bullets ? <Bullets items={section.bullets} /> : null}
-
-        {section.sub?.map((sub) => (
-          <View key={sub.title} style={styles.sub}>
-            <Text style={styles.subTitle}>{sub.title}</Text>
-            {sub.body ? <Text style={styles.paragraph}>{sub.body}</Text> : null}
-            {sub.bullets ? <Bullets items={sub.bullets} /> : null}
-          </View>
-        ))}
-      </Card>
-    ))}
-
+  <AccountPage title="Privacy Policy">
     <Card>
-      <View style={styles.head}>
-        <View style={styles.number}>
-          <Text style={styles.numberText}>10</Text>
+      {SECTIONS.map((section, index) => (
+        <View key={section.title} style={[styles.section, index > 0 && styles.sectionRule]}>
+          <View style={styles.head}>
+            {section.n ? (
+              <View style={styles.number}>
+                <Text style={styles.numberText}>{section.n}</Text>
+              </View>
+            ) : null}
+            <Text style={styles.title}>{section.title}</Text>
+          </View>
+
+          {section.body?.map((p) => (
+            <Text key={p} style={styles.paragraph}>{p}</Text>
+          ))}
+
+          {section.bullets ? <Bullets items={section.bullets} /> : null}
+
+          {section.sub?.map((sub) => (
+            <View key={sub.title} style={styles.sub}>
+              <Text style={styles.subTitle}>{sub.title}</Text>
+              {sub.body ? <Text style={styles.paragraph}>{sub.body}</Text> : null}
+              {sub.bullets ? <Bullets items={sub.bullets} /> : null}
+            </View>
+          ))}
         </View>
-        <Text style={styles.title}>Contact</Text>
+      ))}
+
+      <View style={[styles.section, styles.sectionRule]}>
+        <View style={styles.head}>
+          <View style={styles.number}>
+            <Text style={styles.numberText}>10</Text>
+          </View>
+          <Text style={styles.title}>Contact</Text>
+        </View>
+        {/* The employer is the data controller, so a request sent anywhere else
+            has to be forwarded to them anyway. Naming a generic mailbox here
+            would only add a hop -- and the one the prototype named did not exist. */}
+        <Text style={styles.paragraph}>
+          Your employer holds and controls your records. Address any question about this policy, any request to see or
+          correct your data, and any complaint to whoever handles HR or data protection where you work.
+        </Text>
       </View>
-      {/* The employer is the data controller, so a request sent anywhere else
-          has to be forwarded to them anyway. Naming a generic mailbox here
-          would only add a hop -- and the one the prototype named did not exist. */}
-      <Text style={styles.paragraph}>
-        Your employer holds and controls your records. Address any question about this policy, any request to see or
-        correct your data, and any complaint to whoever handles HR or data protection where you work.
-      </Text>
     </Card>
 
     <View style={styles.consent}>
-      <MaterialCommunityIcons name="shield-check-outline" size={22} color="#15803D" />
+      <MaterialCommunityIcons name="shield-check-outline" size={20} color="#15803D" />
       <View style={styles.flex}>
         <Text style={styles.consentTitle}>Your consent</Text>
         <Text style={styles.consentText}>
@@ -214,28 +225,31 @@ const Bullets: React.FC<{ items: string[] }> = ({ items }) => (
 const styles = StyleSheet.create({
   flex: { flex: 1 },
 
-  head: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  section: { paddingVertical: 12 },
+  sectionRule: { borderTopWidth: 1, borderTopColor: C.line },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   number: {
-    minWidth: 28,
-    height: 28,
-    paddingHorizontal: 6,
-    borderRadius: 10,
-    backgroundColor: '#E8F0FE',
+    minWidth: 24,
+    height: 24,
+    paddingHorizontal: 5,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  numberText: { fontSize: 13, fontWeight: '800', color: C.blue },
-  title: { flex: 1, fontSize: 17, fontWeight: '800', color: C.ink },
+  // Grey, not blue: the numbers and dots are not buttons, and blue is kept for things to tap.
+  numberText: { fontSize: 12, fontWeight: '700', color: C.ink },
+  title: { flex: 1, fontSize: 15, fontWeight: '700', color: C.ink },
 
-  paragraph: { fontSize: 14, lineHeight: 22, color: C.body, marginBottom: 8 },
+  paragraph: { fontSize: 14, lineHeight: 20, color: C.body, marginBottom: 6 },
 
-  sub: { marginTop: 8 },
-  subTitle: { fontSize: 14, fontWeight: '700', color: C.ink, marginBottom: 6 },
+  sub: { marginTop: 6 },
+  subTitle: { fontSize: 14, fontWeight: '700', color: C.ink, marginBottom: 4 },
 
-  bullets: { marginTop: 2, marginBottom: 4, gap: 7 },
+  bullets: { marginTop: 2, marginBottom: 2, gap: 5 },
   bulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: C.blue, marginTop: 8 },
-  bulletText: { flex: 1, fontSize: 14, lineHeight: 21, color: C.body },
+  dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: C.muted, marginTop: 8 },
+  bulletText: { flex: 1, fontSize: 14, lineHeight: 20, color: C.body },
 
   consent: {
     flexDirection: 'row',
@@ -245,11 +259,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#CBEFD8',
     borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
+    padding: 14,
+    marginBottom: 8,
   },
-  consentTitle: { fontSize: 15, fontWeight: '800', color: '#15803D' },
-  consentText: { fontSize: 13, lineHeight: 20, color: '#2F6B47', marginTop: 3 },
+  consentTitle: { fontSize: 14, fontWeight: '700', color: '#15803D' },
+  consentText: { fontSize: 13, lineHeight: 19, color: '#2F6B47', marginTop: 2 },
 });
 
 export default PrivacyPolicyScreen;

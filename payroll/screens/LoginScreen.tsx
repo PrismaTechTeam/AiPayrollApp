@@ -2,14 +2,18 @@
  * Login Screen
  * Firebase-based authentication with email/password.
  *
- * Visual language (2026-09-07 redesign): a light, airy page rather than the old
- * solid-blue header. The brand block is left-aligned at the top over a soft
- * gradient with decorative shapes, and the form sits in one floating white card.
- * Errors render inline in the card instead of a native Alert — a system dialog
- * on top of this layout reads as a crash, and it covers the field it refers to.
+ * One phone screen, no scrolling: the brand, one heading, two labelled fields,
+ * one button, centred as a group. The 2026-09-07 version spent half the height on a brand block, a
+ * tilted ID card, a handwritten "People / Power / Progress", a pitch, a second
+ * "Welcome Back!" heading and a copyright line, so the button sat under the
+ * keyboard and people could not tell what the page wanted from them.
+ *
+ * Errors render inline — a field's own problem under that field, the server's
+ * answer at the top of the card — instead of a native Alert, which covers the
+ * field it refers to and reads as a crash.
  */
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -18,221 +22,195 @@ import {
   StyleSheet,
   StatusBar,
   KeyboardAvoidingView,
-  Platform,
   ScrollView,
-  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { usePayrollAuth, setKeepSignedIn } from '../context/PayrollAuthContext';
-import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
-import { describeAuthError } from '../lib/firebaseErrors';
+import AuthBackdrop, {
+  AUTH_COLORS as C,
+  AuthCard,
+  AuthField,
+  AuthHeader,
+  AuthNotice,
+  AuthSwitchRow,
+  useKeepFocusedInView,
+} from '../components/auth/AuthBackdrop';
+import PrimaryButton from '../components/auth/PrimaryButton';
+import { describeAuthError, authErrorCode, looksLikeEmail } from '../lib/firebaseErrors';
 
+type FieldErrors = { email?: string; password?: string };
 
 export const LoginScreen: React.FC = () => {
-  const { login } = usePayrollAuth();
+  const { login, sessionNotice, dismissSessionNotice } = usePayrollAuth();
   const navigation = useNavigation();
+  const keep = useKeepFocusedInView();
+  const emailRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [keepSignedIn, setKeep] = useState(true);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
-  const [focused, setFocused] = useState<'email' | 'password' | null>(null);
 
   const handleLogin = async () => {
-    if (!email.trim() || !password) {
-      setError('Enter your email address and password to sign in.');
+    if (loading) return;
+    const trimmed = email.trim();
+    const errors: FieldErrors = {};
+    if (!trimmed) errors.email = 'Enter your email address.';
+    else if (!looksLikeEmail(trimmed)) errors.email = 'This does not look like an email address.';
+    if (!password) errors.password = 'Enter your password.';
+    setFieldErrors(errors);
+    if (errors.email || errors.password) {
+      (errors.email ? emailRef : passwordRef).current?.focus();
       return;
     }
 
     setError(null);
+    dismissSessionNotice();
     setLoading(true);
     try {
       // Recorded before the call so the choice survives even if the app is
       // killed straight after a successful sign-in.
       await setKeepSignedIn(keepSignedIn);
-      await login(email.trim(), password);
+      // On success the navigator swaps to the signed-in screens by itself.
+      await login(trimmed, password);
     } catch (err) {
-      setError(describeAuthError(err, 'We could not sign you in. Check your details and try again.'));
+      const message = describeAuthError(err, 'We could not sign you in. Please try again.');
+      if (authErrorCode(err) === 'auth/invalid-email') {
+        setFieldErrors({ email: message });
+        emailRef.current?.focus();
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  // The address typed here goes along, so it is not typed twice.
+  const openForgotPassword = () => {
+    const typed = email.trim();
+    navigation.navigate('ForgotPassword', typed ? { email: typed } : undefined);
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      <AuthBackdrop scriptLines={['People', 'Power', 'Progress']} showIdCard />
+      <AuthBackdrop />
 
-      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.keyboardView}
-        >
+      <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
+        {/* "padding" on both platforms: the app draws edge to edge, so Android no
+            longer shrinks the window for the keyboard and an undefined behaviour
+            left the keyboard over the password field and the button. */}
+        <KeyboardAvoidingView behavior="padding" style={styles.flex}>
           <ScrollView
-            contentContainerStyle={styles.scrollContent}
+            ref={keep.scrollRef}
+            contentContainerStyle={styles.scroll}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {/* Brand */}
-            <View style={styles.brand}>
-              <LinearGradient
-                colors={[C.blueLight, C.blueDeep]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.logoTile}
-              >
-                <MaterialCommunityIcons name="briefcase-account" size={34} color="#FFFFFF" />
-              </LinearGradient>
+            {/* HR accounts are made on the web, and "the email you registered with"
+                sent HR to Create account, which then said the email was taken. */}
+            <AuthHeader title="Welcome back" subtitle="Same email and password as AiPayroll on the web." />
 
-              <Text style={styles.wordmark}>
-                Payroll <Text style={styles.wordmarkAccent}>App</Text>
-              </Text>
-              <Text style={styles.tagline}>Employee Management System</Text>
-              <Text style={styles.pitch}>
-                Simpler People Management{'\n'}for a Brighter Tomorrow
-              </Text>
-            </View>
-
-            {/* Card */}
-            <View style={styles.card}>
-              <Text style={styles.welcome}>Welcome Back!</Text>
-              <Text style={styles.welcomeSub}>Sign in to continue to Payroll App</Text>
-
-              {error !== null && (
-                <View style={styles.errorBox}>
-                  <MaterialCommunityIcons name="alert-circle-outline" size={17} color={C.danger} />
-                  <Text style={styles.errorText}>{error}</Text>
-                </View>
+            <AuthCard onLayout={keep.onCardLayout}>
+              {error ? (
+                <AuthNotice message={error} />
+              ) : (
+                <AuthNotice message={sessionNotice} tone="info" />
               )}
 
-              <View style={[styles.field, focused === 'email' && styles.fieldFocused]}>
-                <MaterialCommunityIcons name="email-outline" size={19} color={C.muted} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Email address"
-                  placeholderTextColor={C.muted}
-                  value={email}
-                  onChangeText={setEmail}
-                  onFocus={() => setFocused('email')}
-                  onBlur={() => setFocused(null)}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  autoComplete="email"
-                  editable={!loading}
-                  returnKeyType="next"
-                />
-              </View>
+              <AuthField
+                ref={emailRef}
+                label="Email"
+                icon="email-outline"
+                placeholder="you@example.com"
+                value={email}
+                onChangeText={(v) => {
+                  setEmail(v);
+                  if (fieldErrors.email) setFieldErrors((f) => ({ ...f, email: undefined }));
+                }}
+                error={fieldErrors.email}
+                onLayout={keep.onFieldLayout('email')}
+                onFocus={() => keep.onFieldFocus('email')}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="email"
+                textContentType="username"
+                editable={!loading}
+                returnKeyType="next"
+                submitBehavior="submit"
+                onSubmitEditing={() => passwordRef.current?.focus()}
+              />
 
-              <View style={[styles.field, focused === 'password' && styles.fieldFocused]}>
-                <MaterialCommunityIcons name="lock-outline" size={19} color={C.muted} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Password"
-                  placeholderTextColor={C.muted}
-                  value={password}
-                  onChangeText={setPassword}
-                  onFocus={() => setFocused('password')}
-                  onBlur={() => setFocused(null)}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  spellCheck={false}
-                  autoComplete="password"
-                  editable={!loading}
-                  returnKeyType="go"
-                  onSubmitEditing={handleLogin}
-                />
-                <TouchableOpacity
-                  onPress={() => setShowPassword(v => !v)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  <MaterialCommunityIcons
-                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={19}
-                    color={C.muted}
-                  />
-                </TouchableOpacity>
-              </View>
+              <AuthField
+                ref={passwordRef}
+                label="Password"
+                icon="lock-outline"
+                placeholder="Your password"
+                secret
+                value={password}
+                onChangeText={(v) => {
+                  setPassword(v);
+                  if (fieldErrors.password) setFieldErrors((f) => ({ ...f, password: undefined }));
+                }}
+                error={fieldErrors.password}
+                onLayout={keep.onFieldLayout('password')}
+                onFocus={() => keep.onFieldFocus('password')}
+                autoCapitalize="none"
+                autoCorrect={false}
+                spellCheck={false}
+                autoComplete="password"
+                textContentType="password"
+                editable={!loading}
+                returnKeyType="go"
+                onSubmitEditing={() => { void handleLogin(); }}
+              />
 
               <View style={styles.optionsRow}>
                 <TouchableOpacity
                   style={styles.keepRow}
-                  onPress={() => setKeep(v => !v)}
+                  onPress={() => setKeep((v) => !v)}
                   activeOpacity={0.7}
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: keepSignedIn }}
                   accessibilityLabel="Keep me signed in"
                 >
                   <View style={[styles.checkbox, keepSignedIn && styles.checkboxOn]}>
-                    {keepSignedIn && (
-                      <MaterialCommunityIcons name="check-bold" size={13} color="#FFFFFF" />
-                    )}
+                    {keepSignedIn && <MaterialCommunityIcons name="check-bold" size={13} color="#FFFFFF" />}
                   </View>
                   <Text style={styles.keepLabel}>Keep me signed in</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={() => navigation.navigate('ForgotPassword')}
+                  style={styles.forgot}
+                  onPress={openForgotPassword}
                   disabled={loading}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
                 >
-                  <Text style={styles.link}>Forgot Password?</Text>
+                  <Text style={styles.link}>Forgot password?</Text>
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity
-                onPress={handleLogin}
-                disabled={loading}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                style={styles.submitShadow}
-              >
-                <LinearGradient
-                  colors={loading ? ['#9DBEFB', '#9DBEFB'] : [C.blueDeep, C.blueLight]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.submit}
-                >
-                  {loading ? (
-                    <ActivityIndicator color="#FFFFFF" />
-                  ) : (
-                    <>
-                      <Text style={styles.submitText}>Sign In</Text>
-                      <MaterialCommunityIcons name="arrow-right" size={19} color="#FFFFFF" />
-                    </>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
+              <PrimaryButton label="Sign in" onPress={() => { void handleLogin(); }} loading={loading} />
+            </AuthCard>
 
-              <View style={styles.divider}>
-                <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>OR</Text>
-                <View style={styles.dividerLine} />
-              </View>
-
-              <TouchableOpacity
-                style={styles.secondary}
+            {/* Right under the card, as one centred group. Pinned to the bottom it
+                sat about 230pt below the form on a 390x800 phone and looked like
+                it belonged to something else. */}
+            <View style={styles.switchGap}>
+              <AuthSwitchRow
+                prompt="New here?"
+                action="Create account"
                 onPress={() => navigation.navigate('Register')}
                 disabled={loading}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.secondaryText}>
-                  Don&apos;t have an account?{' '}
-                  <Text style={styles.secondaryLink}>Create Account</Text>
-                </Text>
-              </TouchableOpacity>
+              />
             </View>
-
-            <Text style={styles.footer}>
-              © {new Date().getFullYear()} Payroll App. All rights reserved.
-            </Text>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -241,86 +219,24 @@ export const LoginScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F1F6FE' },
-  safeArea: { flex: 1 },
-  keyboardView: { flex: 1 },
-  scrollContent: { flexGrow: 1, paddingHorizontal: 22, paddingTop: 26, paddingBottom: 26 },
-
-  // Backdrop
-
-  // Brand
-  brand: { marginTop: 18, marginBottom: 26 },
-  logoTile: {
-    width: 62,
-    height: 62,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: C.blueDeep,
-    shadowOpacity: 0.3,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-  },
-  wordmark: { marginTop: 18, fontSize: 33, fontWeight: '800', color: C.ink, letterSpacing: -0.6 },
-  wordmarkAccent: { color: C.blue },
-  tagline: { marginTop: 4, fontSize: 15, color: C.body },
-  pitch: { marginTop: 14, fontSize: 13, lineHeight: 19, color: C.muted },
-
-  // Card
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 26,
-    padding: 22,
-    shadowColor: '#1D3B72',
-    shadowOpacity: 0.09,
-    shadowRadius: 26,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 5,
-  },
-  welcome: { fontSize: 25, fontWeight: '800', color: C.ink, letterSpacing: -0.4 },
-  welcomeSub: { marginTop: 5, marginBottom: 20, fontSize: 13.5, color: C.body },
-
-  errorBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    backgroundColor: C.dangerBg,
-    borderWidth: 1,
-    borderColor: C.dangerLine,
-    borderRadius: 12,
-    paddingVertical: 11,
-    paddingHorizontal: 13,
-    marginBottom: 14,
-  },
-  errorText: { flex: 1, fontSize: 12.5, lineHeight: 17, color: C.danger },
-
-  field: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 11,
-    height: 54,
-    borderRadius: 13,
-    paddingHorizontal: 15,
-    marginBottom: 13,
-    backgroundColor: C.field,
-    borderWidth: 1,
-    borderColor: C.line,
-  },
-  fieldFocused: { borderColor: C.blue, backgroundColor: '#FFFFFF' },
-  input: { flex: 1, fontSize: 15, color: C.ink, padding: 0 },
+  container: { flex: 1, backgroundColor: C.page },
+  flex: { flex: 1 },
+  // Centred when it fits; with the keyboard up the page is shorter than the
+  // content and simply scrolls, so nothing is pushed off the top.
+  scroll: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 },
 
   optionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 3,
-    marginBottom: 20,
+    marginTop: 4,
+    marginBottom: 8,
   },
-  keepRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  // Both are a full 44pt tall: the checkbox row used to be 21pt with no slop.
+  keepRow: { flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 44, paddingRight: 8 },
   checkbox: {
-    width: 21,
-    height: 21,
+    width: 20,
+    height: 20,
     borderRadius: 6,
     borderWidth: 1.5,
     borderColor: '#CBD5E1',
@@ -330,43 +246,10 @@ const styles = StyleSheet.create({
   },
   checkboxOn: { backgroundColor: C.blue, borderColor: C.blue },
   keepLabel: { fontSize: 13, color: C.body },
-  link: { fontSize: 13, fontWeight: '600', color: C.blue },
+  forgot: { minHeight: 44, justifyContent: 'center', paddingLeft: 8 },
+  link: { fontSize: 13, fontWeight: '700', color: C.blue },
 
-  submitShadow: {
-    borderRadius: 14,
-    shadowColor: C.blueDeep,
-    shadowOpacity: 0.32,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 6,
-  },
-  submit: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 9,
-    height: 55,
-    borderRadius: 14,
-  },
-  submitText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.2 },
-
-  divider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 18 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: C.line },
-  dividerText: { fontSize: 11.5, fontWeight: '600', color: C.muted, letterSpacing: 0.6 },
-
-  secondary: {
-    height: 54,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: C.field,
-    borderWidth: 1,
-    borderColor: C.line,
-  },
-  secondaryText: { fontSize: 13.5, color: C.body },
-  secondaryLink: { fontWeight: '700', color: C.blue },
-
-  footer: { marginTop: 22, textAlign: 'center', fontSize: 11.5, color: C.muted },
+  switchGap: { marginTop: 12 },
 });
 
 export default LoginScreen;

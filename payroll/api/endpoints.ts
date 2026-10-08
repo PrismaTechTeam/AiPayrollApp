@@ -18,8 +18,9 @@ export const ENDPOINTS = {
   ME: {
     EMPLOYEE: '/api/mobile/me/employee',
   },
+  // Searching companies by name is retired: it listed every customer company to any signed-in
+  // account. Joining goes through HR's invitation code (JOIN_VIA_CODE).
   COMPANY: {
-    SEARCH: '/api/mobile/company/search',
     JOIN_REQUEST: '/api/mobile/company/join-request',
     JOIN_REQUESTS: '/api/mobile/company/join-requests',
     JOIN_VIA_CODE: '/api/mobile/company/join-via-code',
@@ -63,10 +64,18 @@ export const ENDPOINTS = {
     WORK_CARD: '/api/mobile/attendance/work-card',
     TEAM_TODAY: '/api/mobile/attendance/team-today',
     // "I forgot to punch": the employee's own requests (GET, newest first) and a
-    // new one (POST). Nothing lands on the work card until HR approves it on the web.
+    // new one (POST). Nothing lands on the work card until HR approves it.
     PUNCH_REQUESTS: '/api/mobile/attendance/punch-requests',
     // DELETE withdraws one still waiting for HR; the server refuses once it is decided.
     PUNCH_REQUEST: (id: string) => `/api/mobile/attendance/punch-requests/${id}`,
+    // HR's side of the same requests. On the web controller (AttendanceWorkCardController),
+    // the one the web's Attendance > Daily > Punch Requests page uses, so a request decided in
+    // either place is gone from the other. Its answers carry no ResponseDTO wrapper.
+    // [HasRight ATTENDANCE_WORK_CARD.VIEW]; no status means REQUESTED (still waiting).
+    TEAM_PUNCH_REQUESTS: '/api/attendance/punch-requests',
+    // [HasRight ATTENDANCE_WORK_CARD.EDIT] for both decisions.
+    PUNCH_ADJUST_APPROVE: (id: string) => `/api/attendance/punches/adjust/${id}/approve`,
+    PUNCH_ADJUST_REJECT: (id: string) => `/api/attendance/punches/adjust/${id}/reject`,
   },
   PAYSLIP: {
     LIST: '/api/mobile/payslip/list',
@@ -87,6 +96,11 @@ export const ENDPOINTS = {
     TYPES: '/api/mobile/request/types',
     APPLICATIONS: '/api/mobile/request/applications',
     PENDING_APPROVALS: '/api/mobile/request/pending-approvals',
+    // The decision routes. On the mobile controller rather than the web one
+    // because these refuse a decision on the approver's own request; the web
+    // routes check the right only.
+    APPROVE: (id: string) => `/api/mobile/request/${id}/approve`,
+    REJECT: (id: string) => `/api/mobile/request/${id}/reject`, // { reason }
     // Files on a request. The employee routes are scoped to their own record
     // server-side; a crafted id reaches nothing.
     ATTACHMENTS: '/api/mobile/request/attachments', // /{id}/content, DELETE /{id}
@@ -116,7 +130,6 @@ export const ENDPOINTS = {
   PROFILE: {
     GET: '/api/mobile/profile/profile',
     UPDATE: '/api/mobile/profile/profile',
-    CHANGE_PASSWORD: '/api/mobile/profile/change-password',
     DEVICES: '/api/mobile/profile/devices',
     COMPANY_INFO: '/api/mobile/profile/company-info',
   },
@@ -124,10 +137,13 @@ export const ENDPOINTS = {
   // tied to any company. ValidateUserAccess compares the userId in the request
   // with the JWT, so every call carries the caller's own id.
   USER_PROFILE: {
+    GET_PROFILE: '/api/User-Profile/get-profile',        // GET ?UserId= -> { fullName, phoneNumber, address, dateOfBirth, userType, avatarUrl }
     GET_AVATAR: '/api/User-Profile/get-avatar',          // GET ?UserId=
     UPLOAD_AVATAR: '/api/User-Profile/upload-avatar',    // POST multipart UserId + Picture
-    REMOVE_AVATAR: '/api/User-Profile/remove-avatar',    // DELETE { userId }
-    UPDATE_DETAILS: '/api/User-Profile/update-profile-details', // PUT { userId, fullName }
+    REMOVE_AVATAR: '/api/User-Profile/remove-avatar',    // DELETE ?UserId= + body { userId }
+    // PUT the whole profile { userId, fullName, phoneNumber, address, dateOfBirth, userType }:
+    // a field left out is written as empty.
+    UPDATE_DETAILS: '/api/User-Profile/update-profile-details',
   },
   TWO_FACTOR: {
     STATUS: '/api/Auth/get-2FA-info',   // GET /{userId} -> content: boolean
@@ -155,7 +171,18 @@ export const ENDPOINTS = {
     APPLICATION_BY_ID: '/api/Leave/applications',    // GET /{id}, PUT /{id}, DELETE /{id}
     APPROVE: '/api/Leave/applications',              // POST /{id}/approve
     REJECT: '/api/Leave/applications',               // POST /{id}/reject
+    // HR cancels an employee's approved leave, e.g. they came back early. POST { reason }.
+    CANCEL: (id: string) => `/api/Leave/applications/${id}/cancel`,
+    // What the approver's details page reads beside the leave: the employee's balance for
+    // the year, and who else is off over the same dates.
+    ENTITLEMENTS: '/api/Leave/entitlements',         // GET ?year=&employeeId=
+    REPORT: '/api/Leave/report',                     // GET ?startDate=&endDate=...
   },
+  // The company's invitation code. [HasRight EMPLOYEE_PORTAL.VIEW]; content { code, expiresAt, isExpired }.
+  COMPANY_JOIN_CODE: '/api/CompanyJoinRequest/join-code',
+  // The mobile dashboard: the team's attendance figures for HR's Home. Needs a company but
+  // no employee record.
+  DASHBOARD: '/api/mobile/dashboard',
   WEB_REQUEST: {
     APPLICATIONS: '/api/employee-requests',
     TYPES: '/api/request-types',

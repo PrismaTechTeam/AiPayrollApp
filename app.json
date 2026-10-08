@@ -23,7 +23,7 @@
         "NSLocationWhenInUseUsageDescription": "AiPayroll needs your location to verify attendance check-in location.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "AiPayroll needs your location to verify attendance check-in location.",
         "NSFaceIDUsageDescription": "This app uses Face ID to verify your identity for attendance check-in.",
-        "NSCameraUsageDescription": "AiPayroll takes a photo to confirm it is you when you record attendance."
+        "NSCameraUsageDescription": "AiPayroll uses the camera to confirm it is you at check-in, to scan your company's invitation QR code, and to photograph documents and receipts you send to HR."
       }
     },
     "android": {
@@ -90,7 +90,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "AiPayroll takes a photo to confirm it is you when you record attendance."
+          "cameraPermission": "AiPayroll uses the camera to confirm it is you at check-in, to scan your company's invitation QR code, and to photograph documents and receipts you send to HR."
         }
       ]
     ],

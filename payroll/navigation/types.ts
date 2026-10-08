@@ -12,18 +12,35 @@
  * one place you can read the whole app's shape.
  */
 
+import type { PunchType } from '../api/services/attendanceService';
+
+/** One clocked-in person as the map draws them: plain numbers, never a null coordinate. */
+export type EmployeeMapPin = {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  checkInTime: string;
+  /** Only for someone who has clocked out since (reworked server), so the map can say so. */
+  checkOutTime?: string;
+  position?: string;
+  department?: string;
+};
+
 export type RootStackParamList = {
   // ── Auth ────────────────────────────────────────────────────────────
   Login: undefined;
   Register: undefined;
-  ForgotPassword: undefined;
+  /** Login hands over the address already typed there, so it is not typed twice. */
+  ForgotPassword: { email?: string } | undefined;
   EmailVerification: { email?: string } | undefined;
 
   // ── Tenant picker and joining ───────────────────────────────────────
   UserHome: undefined;
   /** Kept as a separate name from UserHome: both are entry points and old links use it. */
   TenantHub: undefined;
-  JoinTenant: undefined;
+  /** The invitation code arrives filled in when HR's invite QR (payrollapp://join?code=…) opened the app. */
+  JoinTenant: { code?: string } | undefined;
   MyJoinRequests: undefined;
   JoinRequestPending: { requestId?: string; companyId: string; companyName: string };
 
@@ -47,15 +64,17 @@ export type RootStackParamList = {
   /** A type may be pre-chosen when the apply form is opened from that type's own page. */
   CreateLeave: { leaveTypeId?: string } | undefined;
   LeaveHistory: { year?: number } | undefined;
-  LeaveType: { leaveTypeId: string; code?: string; description?: string; year?: number };
+  LeaveType: { leaveTypeId: string; description?: string; year?: number };
 
   // ── Attendance ──────────────────────────────────────────────────────
   Attendance: undefined;
   AttendanceCheckIn: undefined;
-  AttendanceDetails: { attendance: unknown };
   /** "Forgot to punch": the employee's own requests, reached from My Attendance. */
   PunchRequests: undefined;
-  CreatePunchRequest: undefined;
+  /** Opened from a day on My Attendance, the day ("YYYY-MM-DD") and the missing punch arrive chosen. */
+  CreatePunchRequest: { date?: string; punchType?: PunchType } | undefined;
+  /** HR's side of the same requests: everyone's, read from the web's Punch Requests queue. */
+  PunchApproval: undefined;
 
   // ── Claims ──────────────────────────────────────────────────────────
   Claims: undefined;
@@ -77,7 +96,8 @@ export type RootStackParamList = {
 
   // ── Employees ───────────────────────────────────────────────────────
   EmployeeList: undefined;
-  EmployeeMap: { employees?: unknown; employee?: unknown } | undefined;
+  /** What EmployeeList hands over: the row tapped, and everyone else clocked in with a position. */
+  EmployeeMap: { selectedEmployee?: EmployeeMapPin; employees?: EmployeeMapPin[] } | undefined;
 
   // ── Account (the current settings tree) ─────────────────────────────
   AccountSettings: undefined;
@@ -85,6 +105,8 @@ export type RootStackParamList = {
   AccountPassword: undefined;
   AccountTwoFactor: undefined;
   AccountDevices: undefined;
+  /** The company's invitation code and QR, for HR to hand to new employees. */
+  InviteEmployees: undefined;
 
   // ── Support and legal ───────────────────────────────────────────────
   // What is left of the original settings tree. The rest -- Profile,

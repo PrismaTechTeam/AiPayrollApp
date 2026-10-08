@@ -9,6 +9,10 @@
  * The data is the same work card HR reads, so a disagreement about a day is a
  * disagreement about one number both sides can see, not about two different
  * screens that were never going to match.
+ *
+ * A day with a punch missing opens the missed-punch form with that day and that
+ * punch already filled in. Fixing a day used to mean going back up, finding the
+ * request page, and typing in by hand the date the card had just shown.
  */
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
@@ -25,9 +29,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
+import { LeaveState } from '../components/leave/LeaveUi';
+import { PUNCH_REQUEST_DAYS_BACK, localIsoDate } from '../components/attendance/PunchRequestUi';
 import attendanceService, { WorkCard, WorkCardDay } from '../api/services/attendanceService';
 import { serverMessage } from '../lib/serverMessage';
-import { dayPairs, dayLook, hoursText, isOffDay, minutesText, monthTotals } from '../lib/workCard';
+import { dayPairs, dayLook, hoursText, isOffDay, minutesText, missingPunch, monthTotals } from '../lib/workCard';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -48,14 +54,20 @@ export const MyAttendanceScreen: React.FC = () => {
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [refreshing, setRefreshing] = useState(false);
   const alive = useRef(true);
+  // The month the page is asking about now. Any reply for another month is dropped:
+  // stepping back twice quickly let September's answer, arriving last, land under
+  // August's name -- every focus re-run set `alive` true again, so it never caught it.
+  const wanted = useRef('');
 
   const fetchCard = useCallback(async (m: number, y: number) => {
+    const key = `${y}-${m}`;
+    wanted.current = key;
     try {
       const card = await attendanceService.getMyWorkCard(m, y);
-      if (!alive.current) return;
+      if (!alive.current || wanted.current !== key) return;
       setLoad({ kind: 'ready', card });
     } catch (err) {
-      if (!alive.current) return;
+      if (!alive.current || wanted.current !== key) return;
       setLoad({ kind: 'failed', message: serverMessage(err, 'Could not load your attendance.') });
     }
   }, []);
@@ -76,6 +88,11 @@ export const MyAttendanceScreen: React.FC = () => {
     await fetchCard(month, year);
     if (alive.current) setRefreshing(false);
   }, [fetchCard, month, year]);
+
+  const retry = () => {
+    setLoad({ kind: 'loading' });
+    void fetchCard(month, year);
+  };
 
   const step = (by: number) => {
     const next = new Date(year, month - 1 + by, 1);
@@ -124,6 +141,26 @@ export const MyAttendanceScreen: React.FC = () => {
 
   const totals = useMemo(() => monthTotals(days), [days]);
 
+  // Which days can still be asked about. The server refuses a punch older than 60 days or in
+  // a month HR has finalised, and today is still being worked -- a clock-out that has not
+  // happened yet is not missing.
+  const askable = useMemo(() => {
+    const earliest = localIsoDate(
+      new Date(today.getFullYear(), today.getMonth(), today.getDate() - PUNCH_REQUEST_DAYS_BACK),
+    );
+    const todayIso = localIsoDate(today);
+    const finalized = load.kind === 'ready' && load.card.isFinalized;
+    return (date: string) => {
+      const day = date.slice(0, 10);
+      return !finalized && day >= earliest && day < todayIso;
+    };
+  }, [load, today]);
+
+  const askHr = (day: WorkCardDay, punchType: 'IN' | 'OUT' | null) => {
+    const date = day.date.slice(0, 10);
+    navigation.navigate('CreatePunchRequest', punchType ? { date, punchType } : { date });
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
@@ -142,7 +179,6 @@ export const MyAttendanceScreen: React.FC = () => {
           </TouchableOpacity>
           <View style={styles.headerText} pointerEvents="none">
             <Text style={styles.headerTitle}>My Attendance</Text>
-            <Text style={styles.headerSubtitle}>Your record, day by day</Text>
           </View>
         </View>
 
@@ -153,19 +189,22 @@ export const MyAttendanceScreen: React.FC = () => {
           onPress={() => navigation.navigate('PunchRequests')}
           activeOpacity={0.8}
           accessibilityRole="button"
-          accessibilityLabel="Forgot to punch? Ask HR"
+          accessibilityLabel="Missed a punch? Ask HR"
         >
-          <View style={styles.forgotIcon}>
-            <MaterialCommunityIcons name="clock-edit-outline" size={18} color={C.blue} />
-          </View>
-          <Text style={styles.forgotText}>Forgot to punch?</Text>
+          <MaterialCommunityIcons name="clock-edit-outline" size={18} color={C.blue} />
+          <Text style={styles.forgotText}>Missed a punch?</Text>
           <Text style={styles.forgotAction}>Ask HR</Text>
-          <MaterialCommunityIcons name="chevron-right" size={20} color={C.muted} />
+          <MaterialCommunityIcons name="chevron-right" size={18} color={C.muted} />
         </TouchableOpacity>
 
         {/* Month */}
         <View style={styles.monthBar}>
-          <TouchableOpacity onPress={() => step(-1)} style={styles.monthArrow} accessibilityRole="button" accessibilityLabel="Previous month">
+          <TouchableOpacity
+            onPress={() => step(-1)}
+            style={styles.monthArrow}
+            accessibilityRole="button"
+            accessibilityLabel="Previous month"
+          >
             <MaterialCommunityIcons name="chevron-left" size={24} color={C.ink} />
           </TouchableOpacity>
           <Text style={styles.monthText}>
@@ -177,6 +216,7 @@ export const MyAttendanceScreen: React.FC = () => {
             disabled={atCurrentMonth}
             accessibilityRole="button"
             accessibilityLabel="Next month"
+            accessibilityState={{ disabled: atCurrentMonth }}
           >
             <MaterialCommunityIcons name="chevron-right" size={24} color={atCurrentMonth ? C.line : C.ink} />
           </TouchableOpacity>
@@ -185,29 +225,34 @@ export const MyAttendanceScreen: React.FC = () => {
         <ScrollView
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.blue} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.blue} colors={[C.blue]} />}
         >
           {load.kind === 'loading' ? (
             <View style={styles.centre}>
               <ActivityIndicator color={C.blue} />
             </View>
           ) : load.kind === 'failed' ? (
-            <View style={styles.centre}>
-              <MaterialCommunityIcons name="cloud-off-outline" size={40} color={C.muted} />
-              <Text style={styles.emptyTitle}>Could not load this month</Text>
-              <Text style={styles.emptyBody}>{load.message}</Text>
-              <TouchableOpacity style={styles.retry} onPress={() => void onRefresh()} accessibilityRole="button">
-                <Text style={styles.retryText}>Try again</Text>
-              </TouchableOpacity>
-            </View>
+            <LeaveState
+              icon="cloud-off-outline"
+              title="Could not load this month"
+              body={load.message}
+              tone="danger"
+              onRetry={retry}
+            />
           ) : days.length === 0 ? (
-            <View style={styles.centre}>
-              <MaterialCommunityIcons name="calendar-blank-outline" size={40} color={C.muted} />
-              <Text style={styles.emptyTitle}>Nothing recorded yet</Text>
-              <Text style={styles.emptyBody}>
-                No punches and no attendance on this month so far. It fills in as you clock in and out.
-              </Text>
-            </View>
+            atCurrentMonth ? (
+              <LeaveState
+                icon="calendar-blank-outline"
+                title="Nothing recorded yet"
+                body="No punches this month so far. Days appear here as you clock in and out."
+              />
+            ) : (
+              <LeaveState
+                icon="calendar-blank-outline"
+                title={`No attendance in ${MONTHS[month - 1]}`}
+                body={`Nothing was recorded for you in ${MONTHS[month - 1]} ${year}.`}
+              />
+            )
           ) : (
             <>
               <View style={styles.totals}>
@@ -227,9 +272,17 @@ export const MyAttendanceScreen: React.FC = () => {
                 </View>
               ) : null}
 
-              {days.map((day) => (
-                <DayCard key={day.date} day={day} />
-              ))}
+              {days.map((day) => {
+                const gap = missingPunch(day);
+                const canAsk = gap.missing && askable(day.date);
+                return (
+                  <DayCard
+                    key={day.date}
+                    day={day}
+                    onAskHr={canAsk ? () => askHr(day, gap.punchType) : undefined}
+                  />
+                );
+              })}
 
               {load.card.isFinalized ? (
                 <View style={styles.finalRow}>
@@ -247,20 +300,23 @@ export const MyAttendanceScreen: React.FC = () => {
 
 const Totals: React.FC<{ label: string; value: string; tone?: string }> = ({ label, value, tone }) => (
   <View style={styles.totalsCell}>
-    <Text style={[styles.totalsValue, tone ? { color: tone } : null]}>{value}</Text>
+    <Text style={[styles.totalsValue, tone ? { color: tone } : null]} numberOfLines={1} adjustsFontSizeToFit>
+      {value}
+    </Text>
     <Text style={styles.totalsLabel}>{label}</Text>
   </View>
 );
 
-const DayCard: React.FC<{ day: WorkCardDay }> = ({ day }) => {
+/** One day. Tappable only when a punch is missing and HR can still be asked to add it. */
+const DayCard: React.FC<{ day: WorkCardDay; onAskHr?: () => void }> = ({ day, onAskHr }) => {
   const look = dayLook(day);
   const pairs = dayPairs(day);
   const off = isOffDay(day);
   const dayNumber = day.date.slice(8, 10);
   const worked = hoursText(day.workedHours);
 
-  return (
-    <View style={styles.card}>
+  const body = (
+    <>
       <View style={styles.dateBlock}>
         <Text style={styles.dateNumber}>{dayNumber}</Text>
         <Text style={styles.dateWeekday}>{day.dayOfWeek}</Text>
@@ -309,8 +365,30 @@ const DayCard: React.FC<{ day: WorkCardDay }> = ({ day }) => {
         {day.hasException && day.exceptionNotes ? (
           <Text style={styles.note}>{day.exceptionNotes}</Text>
         ) : null}
+
+        {onAskHr ? (
+          <View style={styles.askRow}>
+            <MaterialCommunityIcons name="clock-edit-outline" size={14} color={C.blue} />
+            <Text style={styles.askText}>Ask HR to add the missing punch</Text>
+            <MaterialCommunityIcons name="chevron-right" size={16} color={C.blue} />
+          </View>
+        ) : null}
       </View>
-    </View>
+    </>
+  );
+
+  if (!onAskHr) return <View style={styles.card}>{body}</View>;
+
+  return (
+    <TouchableOpacity
+      style={styles.card}
+      onPress={onAskHr}
+      activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={`${day.dayOfWeek} ${Number(dayNumber)}, ${look.label}. Ask HR to add the missing punch.`}
+    >
+      {body}
+    </TouchableOpacity>
   );
 };
 
@@ -318,25 +396,22 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F6F8FF' },
   flex: { flex: 1 },
 
-  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, justifyContent: 'center' },
-  back: { width: 40, height: 40, alignItems: 'flex-start', justifyContent: 'center' },
-  headerText: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: C.ink },
-  headerSubtitle: { fontSize: 13, color: C.body, marginTop: 2 },
+  header: { flexDirection: 'row', alignItems: 'center', minHeight: 48, paddingHorizontal: 8, marginBottom: 4 },
+  back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  headerText: { position: 'absolute', left: 60, right: 60, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 20, fontWeight: '800', color: C.ink },
 
   forgot: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginHorizontal: 20,
-    marginBottom: 10,
-    paddingLeft: 8,
-    paddingRight: 8,
-    height: 48,
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    height: 44,
     borderRadius: 14,
     backgroundColor: '#FFFFFF',
   },
-  forgotIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#E6EEFF', alignItems: 'center', justifyContent: 'center' },
   forgotText: { flex: 1, fontSize: 14, fontWeight: '700', color: C.ink },
   forgotAction: { fontSize: 13, fontWeight: '700', color: C.blue },
 
@@ -344,37 +419,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginHorizontal: 20,
-    marginBottom: 12,
-    paddingHorizontal: 6,
-    paddingVertical: 6,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingHorizontal: 4,
     borderRadius: 14,
     backgroundColor: '#FFFFFF',
   },
-  monthArrow: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
+  monthArrow: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
   monthArrowOff: { opacity: 0.5 },
   monthText: { fontSize: 16, fontWeight: '700', color: C.ink },
 
-  scroll: { paddingHorizontal: 20, paddingBottom: 40 },
+  scroll: { paddingHorizontal: 16, paddingBottom: 24 },
 
-  centre: { alignItems: 'center', justifyContent: 'center', paddingTop: 80, gap: 8 },
-  emptyTitle: { fontSize: 16, fontWeight: '700', color: C.ink, marginTop: 6 },
-  emptyBody: { fontSize: 14, color: C.body, textAlign: 'center', paddingHorizontal: 30 },
-  retry: { marginTop: 14, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, backgroundColor: C.blue },
-  retryText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
+  centre: { alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
 
   totals: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    paddingVertical: 16,
-    marginBottom: 12,
+    paddingVertical: 12,
+    marginBottom: 8,
   },
-  totalsCell: { flex: 1, alignItems: 'center' },
+  totalsCell: { flex: 1, alignItems: 'center', paddingHorizontal: 4 },
   totalsRule: { width: 1, height: 28, backgroundColor: C.line },
   totalsValue: { fontSize: 17, fontWeight: '800', color: C.ink },
-  totalsLabel: { fontSize: 12, color: C.muted, marginTop: 3 },
+  totalsLabel: { fontSize: 12, color: C.muted, marginTop: 2 },
 
   otRow: {
     flexDirection: 'row',
@@ -383,8 +453,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#EEF4FF',
     borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginBottom: 12,
+    paddingVertical: 8,
+    marginBottom: 8,
   },
   otText: { flex: 1, fontSize: 13, color: C.body },
 
@@ -392,15 +462,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 14,
-    marginBottom: 10,
-    gap: 14,
+    padding: 12,
+    marginBottom: 8,
+    gap: 12,
   },
-  dateBlock: { width: 44, alignItems: 'center' },
+  dateBlock: { width: 40, alignItems: 'center' },
   dateNumber: { fontSize: 20, fontWeight: '800', color: C.ink },
   dateWeekday: { fontSize: 11, fontWeight: '600', color: C.muted, marginTop: 1 },
 
-  cardBody: { flex: 1, gap: 6 },
+  cardBody: { flex: 1, gap: 5 },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   pill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
   pillText: { fontSize: 12, fontWeight: '700' },
@@ -413,6 +483,9 @@ const styles = StyleSheet.create({
   penalty: { fontSize: 12, color: '#B45309' },
   ot: { fontSize: 12, color: C.blue, fontWeight: '600' },
   note: { fontSize: 12, color: C.body, fontStyle: 'italic' },
+
+  askRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
+  askText: { flex: 1, fontSize: 12, fontWeight: '700', color: C.blue },
 
   finalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingTop: 8 },
   finalText: { fontSize: 12, color: C.muted },

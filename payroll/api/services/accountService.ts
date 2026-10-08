@@ -7,6 +7,7 @@
  */
 import axiosInstance from '../axiosInstance';
 import { ENDPOINTS } from '../endpoints';
+import { serverMessage } from '../../lib/serverMessage';
 
 export interface TwoFactorSetup {
   /** otpauth:// URL for the authenticator app — as a QR or as a deep link. */
@@ -19,6 +20,19 @@ export interface TwoFactorSetup {
 function secretFromTotpUrl(totpUrl: string): string {
   const match = /[?&]secret=([^&]+)/i.exec(totpUrl);
   return match ? decodeURIComponent(match[1]) : '';
+}
+
+/**
+ * Why a call to these web controllers failed, in words a person can act on.
+ *
+ * They answer with ResponseHelper.Fail(reason, title): `message` is a heading
+ * ("Verification Failed") and `errors[0]` the reason ("Invalid verification
+ * code. Please try again."). serverMessage now reads the reason first and
+ * gives a 5xx (whose errors[0] is a raw exception) the fallback, for every
+ * module; this name is kept so the account screens read as before.
+ */
+export function accountErrorMessage(err: unknown, fallback: string): string {
+  return serverMessage(err, fallback);
 }
 
 const accountService = {
@@ -44,15 +58,33 @@ const accountService = {
   },
 
   async removeAvatar(userId: string): Promise<void> {
-    await axiosInstance.delete(ENDPOINTS.USER_PROFILE.REMOVE_AVATAR, { data: { userId } });
+    // The id goes in the query as well as the body. On a DELETE, ValidateUserAccess
+    // looks only at ?UserId= (or a route value), never the body, so with the id in
+    // the body alone every removal came back 401. The body still binds the action's
+    // [FromBody] parameter.
+    await axiosInstance.delete(ENDPOINTS.USER_PROFILE.REMOVE_AVATAR, {
+      params: { UserId: userId },
+      data: { userId },
+    });
   },
 
   async updateName(userId: string, firstName: string, lastName: string): Promise<void> {
+    // update-profile-details writes every field of the profile, and a field left
+    // out is written as empty: sending only the name wiped the phone number,
+    // address, date of birth and user type kept on the web profile. So read the
+    // record first and send it back whole, with only the name changed. If the
+    // read fails, nothing is written.
+    const current = await axiosInstance.get(ENDPOINTS.USER_PROFILE.GET_PROFILE, { params: { UserId: userId } });
+    const profile = current.data?.content ?? {};
     // The server stores FullName and splits it on the first space — the same
     // shape the web sends, so a name saved on either client reads back the same.
     await axiosInstance.put(ENDPOINTS.USER_PROFILE.UPDATE_DETAILS, {
       userId,
       fullName: `${firstName.trim()} ${lastName.trim()}`.trim(),
+      phoneNumber: profile.phoneNumber ?? null,
+      address: profile.address ?? null,
+      dateOfBirth: profile.dateOfBirth ?? null,
+      userType: profile.userType ?? null,
     });
   },
 

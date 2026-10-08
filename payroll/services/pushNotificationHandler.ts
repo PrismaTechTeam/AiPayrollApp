@@ -118,31 +118,7 @@ export async function getLastNotificationResponse() {
   return Notifications.getLastNotificationResponseAsync();
 }
 
-/**
- * Parse notification data to determine navigation target
- */
-export function parseNotificationData(data: Record<string, any> | undefined): {
-  screen: string | null;
-  params: Record<string, any>;
-} {
-  if (!data) return { screen: null, params: {} };
-
-  const type = data.type as string;
-
-  switch (type) {
-    case 'leave_approved':
-    case 'leave_rejected':
-    case 'leave_request':
-      return { screen: 'LeaveDetails', params: { leaveId: data.leaveId } };
-    case 'claim_approved':
-    case 'claim_rejected':
-    case 'claim_request':
-      return { screen: 'ClaimDetails', params: { claim: { id: data.claimId } } };
-    case 'payslip_ready':
-      return { screen: 'PayslipDetails', params: { payrollRunId: data.payrollRunId } };
-    case 'attendance_reminder':
-      return { screen: 'AttendanceCheckIn', params: {} };
-    default:
-      return { screen: 'Notifications', params: {} };
-  }
-}
+// Where a tapped push goes is decided in one place, notificationTarget() and
+// pushRelatedId() in api/services/notificationService, which NotificationProvider
+// and the Notifications list both use. The parser that used to live here read the
+// wrong keys (leaveId, claimId) and had no callers.

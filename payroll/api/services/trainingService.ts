@@ -7,8 +7,8 @@
  * TRAINING_RECORD.VIEW, so an employee's token gets a 403 from it -- these are
  * the mobile equivalents on `api/mobile/training`.
  *
- * The shapes mirror EmployeeTrainingChecklistDto / EmployeeTrainingRowDto and
- * MyTrainingSessionDto on the server. The status vocabulary is defined there
+ * The shapes mirror EmployeeTrainingChecklistDto / EmployeeTrainingRowDto on
+ * the server. The status vocabulary is defined there
  * (TrainingStatus) and must not be re-invented here, so `TrainingStatus` lists
  * exactly the seven tokens the resolver emits.
  */
@@ -70,23 +70,6 @@ export interface TrainingChecklist {
   catalogueIsEmpty: boolean;
 }
 
-/** One sitting the employee attended. Retakes appear as separate entries. */
-export interface TrainingSession {
-  sessionId: string;
-  recordId: string;
-  trainingTypeId: string;
-  trainingTypeName: string;
-  heldOn: string;
-  trainer: string | null;
-  provider: string | null;
-  completedOn: string;
-  expiresOn: string | null;
-  /** False once the same training was taken again and superseded this sitting. */
-  isCurrentVersion: boolean;
-  hasCertificate: boolean;
-  fileName: string | null;
-}
-
 const EMPTY: TrainingChecklist = {
   employeeId: '',
   rows: [],
@@ -109,13 +92,6 @@ const trainingService = {
       ...content,
       rows: Array.isArray(content.rows) ? content.rows : [],
     };
-  },
-
-  /** Every sitting the employee attended, newest first. */
-  async getSessions(): Promise<TrainingSession[]> {
-    const response = await axiosInstance.get(ENDPOINTS.TRAINING.SESSIONS);
-    const content = response.data?.content;
-    return Array.isArray(content) ? content : [];
   },
 
   /**
