@@ -97,7 +97,7 @@ function AuthenticatedApp() {
     // design, and it flashed on every cold start.
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F6F8FF' }}>
-        <ActivityIndicator size="large" color="#2F6BFF" />
+        <ActivityIndicator size="large" color="#0A6CF0" />
         <Text style={{ fontSize: 15, fontWeight: '600', color: '#64748B', marginTop: 14 }}>
           Loading...
         </Text>

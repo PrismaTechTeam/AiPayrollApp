@@ -1,15 +1,15 @@
 {
   "expo": {
-    "name": "Payroll App",
+    "name": "SayangHR",
     "slug": "payrollapp",
     "owner": "prismatechteam",
     "version": "1.0.0",
     "scheme": "payrollapp",
     "orientation": "portrait",
-    "icon": "./assets/appicon.png",
+    "icon": "./assets/brand/app-icon.png",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/brand/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -28,7 +28,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/appicon.png",
+        "foregroundImage": "./assets/brand/adaptive-foreground.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.payroll.app",
@@ -66,7 +66,7 @@
       "androidCollapsedTitle": "#{unread_notifications} new notifications"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/brand/favicon.png"
     },
     "plugins": [
       "expo-secure-store",

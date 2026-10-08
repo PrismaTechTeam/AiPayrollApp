@@ -109,7 +109,7 @@ export function dayLook(day: WorkCardDay): DayLook {
     // Both of these used to fall through to `default` and read as a green "Present":
     // a day still being worked, and a day that has not happened yet. Neither is present.
     case 'IN_PROGRESS':
-      return { label: 'Clocked in', fg: '#2F6BFF', bg: '#EEF3FF' };
+      return { label: 'Clocked in', fg: '#0A6CF0', bg: '#EEF3FF' };
     case 'SCHEDULED':
       return { label: 'Upcoming', fg: '#94A3B8', bg: '#F8FAFD' };
     case 'NOT_EMPLOYED':

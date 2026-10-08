@@ -292,7 +292,7 @@ export const HelpScreen: React.FC = () => {
         <MaterialCommunityIcons name="account-tie-outline" size={20} color={C.body} />
         <Text style={styles.helpText}>
           {hr
-            ? 'Still stuck? Ask whoever manages AiPayroll for your company.'
+            ? 'Still stuck? Ask whoever manages SayangHR for your company.'
             : 'Still stuck? Your HR team holds your records and can help.'}
         </Text>
       </View>

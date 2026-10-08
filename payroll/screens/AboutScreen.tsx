@@ -19,11 +19,11 @@
  * of the features listed here is a button.
  */
 import React from 'react';
-import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
-import { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
+import { AUTH_COLORS as C, SAYANGHR_MARK } from '../components/auth/AuthBackdrop';
 import { AccountPage, Card, MenuRow, SectionLabel } from '../components/account/AccountUi';
 import { useDialog } from '../components/ui/AppDialog';
 import type { IconName } from '../components/auth/PrimaryButton';
@@ -78,11 +78,11 @@ export const AboutScreen: React.FC = () => {
       <Card>
         <View style={styles.identity}>
           <View style={styles.logo}>
-            <MaterialCommunityIcons name="briefcase-check-outline" size={24} color={C.ink} />
+            <Image source={SAYANGHR_MARK} style={styles.logoMark} resizeMode="contain" accessibilityLabel="SayangHR" />
           </View>
           <View style={styles.flex}>
             <Text style={styles.name}>
-              <Text style={styles.nameAccent}>Ai</Text>Payroll
+              Sayang<Text style={styles.nameAccent}>HR</Text>
             </Text>
             <Text style={styles.version} selectable>
               Version {version} (build {build})
@@ -129,7 +129,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   name: { fontSize: 18, fontWeight: '700', color: C.ink, letterSpacing: -0.3 },
-  nameAccent: { color: C.blue },
+  nameAccent: { color: C.coral },
+  logoMark: { width: 34, height: 34 },
   version: { fontSize: 13, color: C.body, marginTop: 1 },
 
   featureRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 5 },

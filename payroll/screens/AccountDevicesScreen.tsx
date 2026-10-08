@@ -91,7 +91,7 @@ export const AccountDevicesScreen: React.FC = () => {
   const remove = async (device: SignedInDevice) => {
     const ok = await dialog.confirm({
       title: 'Stop notifications?',
-      message: `${describeDevice(device)} stops getting AiPayroll notifications. They start again the next time the app is opened on it.`,
+      message: `${describeDevice(device)} stops getting SayangHR notifications. They start again the next time the app is opened on it.`,
       confirmText: 'Stop',
       destructive: true,
     });
@@ -134,7 +134,7 @@ export const AccountDevicesScreen: React.FC = () => {
           <View style={styles.empty}>
             <MaterialCommunityIcons name="bell-off-outline" size={32} color={C.muted} />
             <Text style={styles.emptyTitle}>No devices get notifications</Text>
-            <Text style={styles.emptyBody}>A phone appears here once it allows AiPayroll notifications.</Text>
+            <Text style={styles.emptyBody}>A phone appears here once it allows SayangHR notifications.</Text>
           </View>
         </Card>
       ) : (

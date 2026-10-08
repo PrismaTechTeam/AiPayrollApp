@@ -57,7 +57,7 @@ export const AccountProfileScreen: React.FC = () => {
       const text = err instanceof Error ? err.message : '';
       await dialog.notify(
         /permission/i.test(text)
-          ? { title: 'Photos access needed', message: 'Allow photo access for AiPayroll in your phone settings, then try again.', tone: 'warning' }
+          ? { title: 'Photos access needed', message: 'Allow photo access for SayangHR in your phone settings, then try again.', tone: 'warning' }
           : { title: 'Could not open your photos', message: 'Please try again.', tone: 'danger' },
       );
       return;

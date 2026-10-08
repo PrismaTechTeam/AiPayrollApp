@@ -31,7 +31,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { usePayrollAuth } from '../context/PayrollAuthContext';
 import companyService, { JoinRequest } from '../api/services/companyService';
 import type { TenantInfo } from '../api/services/authService';
-import AuthBackdrop, { AUTH_COLORS as C } from '../components/auth/AuthBackdrop';
+import AuthBackdrop, { AUTH_COLORS as C, SAYANGHR_LOGO } from '../components/auth/AuthBackdrop';
 import PrimaryButton from '../components/auth/PrimaryButton';
 import { AccountPage, Card, MenuRow } from '../components/account/AccountUi';
 import { DocumentState } from '../components/documents/DocumentUi';
@@ -303,9 +303,7 @@ export const UserHomeScreen: React.FC = () => {
 
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <View style={styles.header}>
-          <Text style={styles.brand}>
-            <Text style={styles.brandAccent}>Ai</Text>Payroll
-          </Text>
+          <Image source={SAYANGHR_LOGO} style={styles.brandLogo} resizeMode="contain" accessibilityLabel="SayangHR" />
           <TouchableOpacity
             style={styles.accountButton}
             onPress={() => go('AccountSettings')}
@@ -348,8 +346,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   scroll: { paddingHorizontal: 20, paddingBottom: 16 },
-  brand: { fontSize: 20, fontWeight: '700', color: C.ink, letterSpacing: -0.4 },
-  brandAccent: { color: C.blue },
+  brandLogo: { width: 134, height: 31 },
   accountButton: {
     width: 44,
     height: 44,

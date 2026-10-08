@@ -38,8 +38,8 @@ const SECTIONS: Section[] = [
     n: '',
     title: 'Introduction',
     body: [
-      'This Privacy Policy describes how the AiPayroll app collects, uses and shares your personal information when you use it.',
-      'Your employer decides what is recorded about you and why. AiPayroll processes that information on their behalf, which makes your employer the data controller and the first place to raise any question about your records.',
+      'This Privacy Policy describes how the SayangHR app collects, uses and shares your personal information when you use it.',
+      'Your employer decides what is recorded about you and why. SayangHR processes that information on their behalf, which makes your employer the data controller and the first place to raise any question about your records.',
     ],
   },
   {

@@ -10,6 +10,7 @@
  */
 import React, { forwardRef, useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Image,
   View,
   Text,
   TextInput,
@@ -25,20 +26,25 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 /** Shared palette for the signed-out screens. */
 export const AUTH_COLORS = {
-  ink: '#0F1B2D',
+  ink: '#0F2557',     // SayangHR navy
   body: '#64748B',
   muted: '#94A3B8',
-  blue: '#2F6BFF',
-  blueDeep: '#1D5DF0',
+  blue: '#0A6CF0',    // SayangHR blue
+  blueDeep: '#0857C4',
   blueLight: '#4C93FF',
   blueSoft: '#E6EEFF',
   line: '#E4EBF5',
   field: '#F8FAFD',
   page: '#F6F8FF',
+  coral: '#F2496A',   // SayangHR coral: the "HR" in the logo, accents only
   danger: '#DC2626',
   dangerBg: '#FEF2F2',
   dangerLine: '#FECACA',
 } as const;
+
+/** SayangHR logo (people + heart + wordmark) and the mark alone. */
+export const SAYANGHR_LOGO = require('../../../assets/brand/sayanghr-logo.png');
+export const SAYANGHR_MARK = require('../../../assets/brand/sayanghr-mark.png');
 
 /**
  * One look for every service tile and row icon (Home, All services): a navy line icon on the
@@ -105,12 +111,7 @@ export const AuthHeader: React.FC<{ title: string; subtitle?: string; onBack?: (
     </View>
   ) : (
     <View style={[styles.header, styles.headerCentred]}>
-      <View style={styles.logoTile}>
-        <MaterialCommunityIcons name="briefcase-account-outline" size={24} color="#FFFFFF" />
-      </View>
-      <Text style={styles.wordmark}>
-        <Text style={styles.wordmarkAccent}>Ai</Text>Payroll
-      </Text>
+      <Image source={SAYANGHR_LOGO} style={styles.logoImage} resizeMode="contain" accessibilityLabel="SayangHR" />
       <Text style={[styles.title, styles.titleCentred]} accessibilityRole="header">
         {title}
       </Text>
@@ -317,6 +318,8 @@ const styles = StyleSheet.create({
   headerCentred: { alignItems: 'center', marginBottom: 20 },
   headerTop: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44, marginBottom: 14 },
   back: { width: 44, height: 44, marginLeft: -10, justifyContent: 'center', alignItems: 'center' },
+  // 894×207 artwork
+  logoImage: { width: 172, height: 40 },
   logoTile: {
     width: 48,
     height: 48,

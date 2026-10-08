@@ -115,7 +115,7 @@ export const LoginScreen: React.FC = () => {
           >
             {/* HR accounts are made on the web, and "the email you registered with"
                 sent HR to Create account, which then said the email was taken. */}
-            <AuthHeader title="Welcome back" subtitle="Same email and password as AiPayroll on the web." />
+            <AuthHeader title="Welcome back" subtitle="Same email and password as SayangHR on the web." />
 
             <AuthCard onLayout={keep.onCardLayout}>
               {error ? (

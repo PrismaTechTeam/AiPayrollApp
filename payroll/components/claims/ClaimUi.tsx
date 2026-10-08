@@ -196,7 +196,7 @@ export function allowancePeriod(a: Allowance): string {
  * the description -- so keying on the name gave one type three colours across
  * three screens.
  */
-const FALLBACK_TINTS = ['#2F6BFF', '#7C3AED', '#0EA5E9', '#16A34A', '#EA580C', '#DB2777', '#0891B2'];
+const FALLBACK_TINTS = ['#0A6CF0', '#7C3AED', '#0EA5E9', '#16A34A', '#EA580C', '#DB2777', '#0891B2'];
 
 export function claimTint(claimTypeId: string | null | undefined): string {
   const key = claimTypeId ?? '';

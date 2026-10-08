@@ -25,7 +25,7 @@ type AnyError = {
 // both; someone who signs in on the web with Google has no password yet, and the
 // reset link is what sets one.
 const WRONG_LOGIN =
-  'Email or password is incorrect. It is the same login as the AiPayroll website. If you sign in there with Google, use Forgot password to set one.';
+  'Email or password is incorrect. It is the same login as the SayangHR website. If you sign in there with Google, use Forgot password to set one.';
 const BAD_CONFIG =
   "This build's sign-in configuration is invalid. Please update the app or contact support.";
 const OFFLINE = 'Could not reach the sign-in service. Check your internet connection and try again.';

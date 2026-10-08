@@ -282,7 +282,7 @@ export function dateRangeText(start: string | null | undefined, end: string | nu
  * Picked by code so a type keeps the same colour between screens and between
  * app launches, instead of shuffling every render.
  */
-const FALLBACK_TINTS = ['#2F6BFF', '#7C3AED', '#0EA5E9', '#16A34A', '#EA580C', '#DB2777', '#0891B2'];
+const FALLBACK_TINTS = ['#0A6CF0', '#7C3AED', '#0EA5E9', '#16A34A', '#EA580C', '#DB2777', '#0891B2'];
 
 export function leaveTint(item: { color?: string | null; code?: string | null }): string {
   const raw = (item.color ?? '').trim();
