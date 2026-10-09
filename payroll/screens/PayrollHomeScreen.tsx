@@ -6,8 +6,9 @@
  * What it shows follows two separate facts, never a role name:
  *  - an employee record in this company  -> "My work": requests, leave, payslip, documents,
  *    claims, attendance (and Punch in the bottom bar);
- *  - approval rights from the server     -> "To decide": one row per right with its count, the
- *    newest items "Waiting for you", and, with an attendance right, the team today.
+ *  - approval rights from the server     -> "To decide": one coloured tile per right with its
+ *    count, the newest items "Waiting for you" (Reject / Approve right on the row), and, with an
+ *    attendance right, the team today.
  * HR who are also employees get both. An HR account with no employee record (a company owner,
  * often) used to get three small tiles and half a screen of nothing: it could not see who was
  * waiting, for what, or for how long without opening each list.
@@ -22,7 +23,9 @@ import {
   TouchableOpacity,
   StatusBar,
   RefreshControl,
+  ActivityIndicator,
   useWindowDimensions,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -42,10 +45,23 @@ import attendanceService, { type TodayAttendance } from '../api/services/attenda
 import notificationService from '../api/services/notificationService';
 import dashboardService, { type TeamSnapshot } from '../api/services/dashboardService';
 import { AUTH_COLORS as C, SERVICE_TILE } from '../components/auth/AuthBackdrop';
-import { APPROVAL_AVATAR_BG } from '../components/ui/ApprovalCard';
+import { APPROVAL_AVATAR_BG, avatarTone } from '../components/ui/ApprovalCard';
 import type { IconName } from '../components/auth/PrimaryButton';
 import { Busy, DocumentState } from '../components/documents/DocumentUi';
-import { annualEntitlement, dateRangeText, dayNumber, goTo, leaveLength, shortLeaveName } from '../components/leave/LeaveUi';
+import {
+  annualEntitlement,
+  approveConfirmText,
+  dateRangeText,
+  dayNumber,
+  decisionFailure,
+  decisionOutcome,
+  goTo,
+  leaveLength,
+  rejectPrompt,
+  shortLeaveName,
+} from '../components/leave/LeaveUi';
+import { useDialog } from '../components/ui/AppDialog';
+import { serverMessage } from '../lib/serverMessage';
 import { dayMonth, initials, waitingDays } from '../components/requests/RequestUi';
 import { money } from '../components/claims/ClaimUi';
 import { clockText } from '../components/attendance/PunchRequestUi';
@@ -58,6 +74,10 @@ const MYT_OFFSET_MS = 8 * 60 * 60 * 1000;
 
 const PAD = 16;
 const GAP = 10;
+/** Inside a white section card (To decide, Waiting for you). */
+const SECTION_PAD = 12;
+/** The Approve pill's green: approval reads as go, and blue stays for navigation. */
+const APPROVE_GREEN = '#15803D';
 /**
  * The wash behind every icon, the same as All services' (SERVICE_TILE), so a service looks the
  * same on both pages. Blue itself is kept for buttons and the active tab.
@@ -67,6 +87,28 @@ const ICON_TINT = SERVICE_TILE.tint;
 const SKELETON = '#EEF2F7';
 /** The amber of a Pending pill: there is something for the reader to do. */
 const ATTENTION = '#B45309';
+
+/**
+ * One colour per kind of decision, on the owner's 2026-10-08 design: a pale tile, a deeper wash
+ * behind the icon, and the count in the strong shade, so Leave, Requests, Claims and Punch
+ * requests are told apart at a glance instead of by reading four identical rows.
+ */
+interface Accent {
+  bg: string;
+  wash: string;
+  tint: string;
+  count: string;
+}
+const ACCENTS: Record<'leave' | 'requests' | 'claims' | 'dept' | 'punch', Accent> = {
+  leave: { bg: '#FFF5EE', wash: '#FFE6D5', tint: '#F97316', count: '#EA580C' },
+  requests: { bg: '#F0F5FF', wash: '#DCE7FF', tint: '#2F6BFF', count: '#1E3A6E' },
+  claims: { bg: '#EEFAF2', wash: '#D3F2DF', tint: '#15803D', count: '#15803D' },
+  dept: { bg: '#ECF8F8', wash: '#CDEFEF', tint: '#0F766E', count: '#0F766E' },
+  punch: { bg: '#F4F1FF', wash: '#E4DEFF', tint: '#6D28D9', count: '#6D28D9' },
+};
+
+/** Below this width the Reject / Approve pair goes under the text: beside it, the dates wrapped to three lines. */
+const INLINE_DECISION_MIN_WIDTH = 430;
 
 /** The clock in Malaysia: the payroll's day, whatever zone the phone is set to. */
 function mytNow(): Date {
@@ -81,12 +123,12 @@ function getGreeting(): string {
 }
 
 /**
- * "Thursday 8 October". Written out rather than toLocaleDateString, which follows the phone:
+ * "Thursday, 8 October 2026". Written out rather than toLocaleDateString, which follows the phone:
  * an Android phone set to English (US) printed "Thursday, October 8" against "8 Oct" everywhere else.
  */
 function todayText(): string {
   const t = mytNow();
-  return `${WEEKDAYS[t.getUTCDay()]} ${t.getUTCDate()} ${MONTHS[t.getUTCMonth()]}`;
+  return `${WEEKDAYS[t.getUTCDay()]}, ${t.getUTCDate()} ${MONTHS[t.getUTCMonth()]} ${t.getUTCFullYear()}`;
 }
 
 /**
@@ -150,7 +192,21 @@ interface Tile {
   attention?: boolean;
   icon: IconName;
   screen: keyof RootStackParamList;
+  accent: Accent;
 }
+
+/**
+ * My work in the same coloured tiles as To decide (owner, 2026-10-08: the employee home should
+ * look like the HR one), a colour per service so the six read apart without their labels.
+ */
+const MINE_ACCENTS = {
+  requests: ACCENTS.requests,
+  leave: ACCENTS.leave,
+  payslip: ACCENTS.claims,
+  documents: ACCENTS.dept,
+  claims: ACCENTS.punch,
+  attendance: { bg: '#FFF1F4', wash: '#FFE0E7', tint: '#E11D48', count: '#E11D48' },
+} as const;
 
 // ── To decide ─────────────────────────────────────────────────────────
 
@@ -169,6 +225,9 @@ interface Waiting {
   /** "Annual Leave · 14 – 15 Sep 2026 · 2 days", "Mileage · RM 120.00", "Salary letter". */
   what: string;
   createdAt: string;
+  /** The record itself, for the confirm text when it is decided from Home. */
+  leave?: LeaveApplication;
+  claim?: ClaimApplication;
 }
 
 interface Queue {
@@ -198,6 +257,7 @@ function fromLeave(l: LeaveApplication): Waiting {
     icon: 'calendar-blank-outline',
     what: joined(l.leaveTypeDescription || 'Leave', dateRangeText(l.startDate, l.endDate), leaveLength(l)),
     createdAt: l.createdAt,
+    leave: l,
   };
 }
 
@@ -224,6 +284,7 @@ function fromClaim(c: ClaimApplication): Waiting {
     icon: 'receipt-text-outline',
     what: joined(c.claimTypeName || 'Claim', money(c.amount)),
     createdAt: c.createdAt,
+    claim: c,
   };
 }
 
@@ -282,6 +343,13 @@ export const PayrollHomeScreen: React.FC = () => {
   const [queues, setQueues] = useState<Record<QueueKey, Queue>>(NO_QUEUES);
   const [team, setTeam] = useState<TeamState>('loading');
   const [refreshing, setRefreshing] = useState(false);
+  // The item being decided from the Waiting list, and which button: only that one spins.
+  const [acting, setActing] = useState<{ key: string; kind: 'approve' | 'reject' } | null>(null);
+  // Taken before a dialog opens: a second tap lands before any state update does.
+  const actingRef = useRef(false);
+  // The tile grid's real width, measured, so it stays right inside any wrapper (an iPad column).
+  const [gridWidth, setGridWidth] = useState<number | null>(null);
+  const dialog = useDialog();
 
   // Another company's numbers must never sit on this company's rows, not even while the new
   // ones load. The switcher is a modal, so Home does not lose focus when it is used; the loaders
@@ -450,6 +518,79 @@ export const PayrollHomeScreen: React.FC = () => {
     else goTo(navigation, 'ClaimDetails', { claimId: w.id, canApprove: true });
   };
 
+  /**
+   * Approve or reject straight from Home. Every decision is live customer data, so it asks
+   * exactly what the item's own list asks (a confirm with the facts, or a required reason), and
+   * the queues are re-read afterwards: the row leaves, and a leave that only moved to the next
+   * step says so in the toast.
+   */
+  const decide = async (w: Waiting, kind: 'approve' | 'reject') => {
+    if (actingRef.current) return;
+    actingRef.current = true;
+    try {
+      let reason: string | null = null;
+      if (kind === 'approve') {
+        let message: string;
+        if (w.leave) {
+          const waitingOn = (w.leave.currentApproverName ?? '').trim();
+          const me = (user?.name ?? '').trim().toLowerCase();
+          const mine = !!me && waitingOn.split(',').some((n) => n.trim().toLowerCase() === me);
+          message = approveConfirmText(w.leave, canApproveLeave && waitingOn && !mine ? waitingOn : null);
+        } else if (w.claim) {
+          message = `${money(w.claim.amount)} to ${w.name}. Approving sends it through to payroll.`;
+        } else {
+          message = `${w.name} will be told straight away.`;
+        }
+        const noun = w.kind === 'request' ? `${w.what} request` : w.kind;
+        const ok = await dialog.confirm({ title: `Approve this ${noun}?`, message, confirmText: 'Approve' });
+        if (!ok) return;
+      } else if (w.kind === 'leave') {
+        reason = await rejectPrompt(dialog);
+        if (!reason) return;
+      } else {
+        reason = await dialog.prompt({
+          title: `Reject this ${w.kind}`,
+          message: `${w.name} sees this, so say what would make it approvable.`,
+          placeholder: 'Reason for rejection',
+          confirmText: 'Reject',
+          required: true,
+          multiline: true,
+          maxLength: 1000,
+          destructive: true,
+        });
+        if (!reason) return;
+      }
+
+      setActing({ key: w.key, kind });
+      try {
+        let done = kind === 'approve' ? `Approved – ${w.name}` : `Rejected – ${w.name}`;
+        if (w.kind === 'leave') {
+          const result = kind === 'approve' ? await leaveService.approveLeave(w.id) : await leaveService.rejectLeave(w.id, reason ?? '');
+          done = decisionOutcome(kind, w.name, result);
+        } else if (w.kind === 'request') {
+          if (kind === 'approve') await requestService.approveRequest(w.id);
+          else await requestService.rejectRequest(w.id, reason ?? '');
+        } else if (kind === 'approve') {
+          await claimService.approveClaim(w.id);
+        } else {
+          await claimService.rejectClaim(w.id, reason ?? '');
+        }
+        dialog.toast(done, 'success');
+      } catch (err) {
+        await dialog.notify({
+          title: kind === 'approve' ? 'Could not approve' : 'Could not reject',
+          message: w.kind === 'leave' ? decisionFailure(err, linked) : serverMessage(err, 'Please try again.'),
+          tone: 'danger',
+        });
+      }
+      // Decided or refused (usually someone else got there first): show what is waiting now.
+      await loadApprovals();
+    } finally {
+      actingRef.current = false;
+      setActing(null);
+    }
+  };
+
   // One row per right, so a missing right leaves no hole the way a missing tile did.
   const decideRows: DecideRow[] = [];
   if (canApproveLeave) decideRows.push({ key: 'leave', label: 'Leave', icon: 'calendar-check-outline', screen: 'Leaves' });
@@ -480,9 +621,9 @@ export const PayrollHomeScreen: React.FC = () => {
 
   const myTiles: Tile[] = linked
     ? [
-        { key: 'm-req', title: 'My Requests', short: 'Requests', note: pendingNote(mine.requests), icon: 'text-box-outline', screen: 'MyRequests' },
-        { key: 'm-leave', title: 'My Leaves', short: 'Leave', note: leaveNote, icon: 'calendar-clock-outline', screen: 'MyLeaves' },
-        { key: 'm-slip', title: 'My Payslip', short: 'Payslip', note: mine.payslip ?? '', icon: 'wallet-outline', screen: 'MyPayslip' },
+        { key: 'm-req', title: 'My Requests', short: 'Requests', note: pendingNote(mine.requests), icon: 'text-box-outline', screen: 'MyRequests', accent: MINE_ACCENTS.requests },
+        { key: 'm-leave', title: 'My Leaves', short: 'Leave', note: leaveNote, icon: 'calendar-clock-outline', screen: 'MyLeaves', accent: MINE_ACCENTS.leave },
+        { key: 'm-slip', title: 'My Payslip', short: 'Payslip', note: mine.payslip ?? '', icon: 'wallet-outline', screen: 'MyPayslip', accent: MINE_ACCENTS.payslip },
         {
           key: 'm-docs',
           title: 'My Documents',
@@ -491,14 +632,17 @@ export const PayrollHomeScreen: React.FC = () => {
           attention: (mine.docs ?? 0) > 0,
           icon: 'file-document-outline',
           screen: 'MyDocuments',
+          accent: MINE_ACCENTS.documents,
         },
-        { key: 'm-claim', title: 'My Claims', short: 'Claims', note: pendingNote(mine.claims), icon: 'receipt-text-outline', screen: 'Claims' },
+        { key: 'm-claim', title: 'My Claims', short: 'Claims', note: pendingNote(mine.claims), icon: 'receipt-text-outline', screen: 'Claims', accent: MINE_ACCENTS.claims },
         // The record, not the clock -- punching is the raised button in the bottom bar.
-        { key: 'm-att', title: 'My Attendance', short: 'Attendance', note: mine.punch ?? '', icon: 'clock-check-outline', screen: 'Attendance' },
+        { key: 'm-att', title: 'My Attendance', short: 'Attendance', note: mine.punch ?? '', icon: 'clock-check-outline', screen: 'Attendance', accent: MINE_ACCENTS.attendance },
       ]
     : [];
 
-  const tileWidth = (cols: number) => Math.floor((width - PAD * 2 - GAP * (cols - 1)) / cols);
+  // Inside a white section card, so from the measured grid width (the window's until measured).
+  const tileWidth = (cols: number) =>
+    Math.floor(((gridWidth ?? width - PAD * 2 - SECTION_PAD * 2) - GAP * (cols - 1)) / cols);
   const mineCols = compactMine ? 3 : 2;
 
   const firstName = user?.firstName || user?.name?.split(' ')[0] || '';
@@ -523,68 +667,127 @@ export const PayrollHomeScreen: React.FC = () => {
     </View>
   );
 
-  const countView = (count: Count) => {
-    if (count === null) return <View style={styles.skeletonCount} />;
-    if (count === 'failed') return <Text style={styles.failedText} maxFontSizeMultiplier={1.25}>Couldn't load</Text>;
-    return (
-      <Text style={[styles.count, count > 0 && styles.countAttention]} maxFontSizeMultiplier={1.25}>
-        {count}
-      </Text>
-    );
-  };
-
   const countLabel = (count: Count) =>
     count === null ? 'loading' : count === 'failed' ? 'could not load' : count > 0 ? `${count} waiting` : 'nothing waiting';
 
   // ── Sections ──
 
+  // Two tiles a row, sized from the grid's measured width (window width until it is measured).
+  const decideTileWidth = Math.floor(((gridWidth ?? width - PAD * 2 - SECTION_PAD * 2) - GAP) / 2);
+  const onGridLayout = (e: LayoutChangeEvent) => {
+    const w = Math.round(e.nativeEvent.layout.width);
+    if (w > 0 && w !== gridWidth) setGridWidth(w);
+  };
+
   const decideSection = (first: boolean) =>
     decides ? (
-      <React.Fragment key="decide">
-        {heading('To decide', first, first ? viewAll : null)}
-        <View style={styles.card}>
-          {decideRows.map((r, i) => (
-            <TouchableOpacity
-              key={r.key}
-              style={[styles.decideRow, i > 0 && styles.rowDivider]}
-              onPress={() => go(r.screen)}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel={`${r.label}, ${countLabel(queues[r.key].count)}`}
-            >
-              <View style={styles.rowIcon}>
-                <MaterialCommunityIcons name={r.icon} size={20} color={ICON_TINT} />
-              </View>
-              <Text style={styles.decideLabel} numberOfLines={1} maxFontSizeMultiplier={1.25}>
-                {r.label}
-              </Text>
-              {countView(queues[r.key].count)}
-              <MaterialCommunityIcons name="chevron-right" size={20} color={C.muted} />
-            </TouchableOpacity>
-          ))}
+      <View key="decide" style={[styles.section, !first && styles.sectionNext]}>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionHeadTitle} maxFontSizeMultiplier={1.25}>To decide</Text>
+          {first ? viewAll : null}
         </View>
-      </React.Fragment>
+        <View style={styles.decideGrid} onLayout={onGridLayout}>
+          {decideRows.map((r, i) => {
+            const a = ACCENTS[r.key];
+            const count = queues[r.key].count;
+            // An odd one out takes the whole row, rather than half a row and a hole beside it.
+            const alone = i === decideRows.length - 1 && decideRows.length % 2 === 1;
+            return (
+              <TouchableOpacity
+                key={r.key}
+                style={[styles.decideTile, { width: alone ? decideTileWidth * 2 + GAP : decideTileWidth, backgroundColor: a.bg }]}
+                onPress={() => go(r.screen)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={`${r.label}, ${countLabel(count)}`}
+              >
+                <View style={styles.decideTop}>
+                  <View style={[styles.decideIcon, { backgroundColor: a.wash }]}>
+                    <MaterialCommunityIcons name={r.icon} size={24} color={a.tint} />
+                  </View>
+                  <View style={styles.decideCountBox}>
+                    {count === null ? (
+                      <View style={styles.skeletonCount} />
+                    ) : count === 'failed' ? (
+                      <Text style={styles.failedText} maxFontSizeMultiplier={1.25}>Couldn't load</Text>
+                    ) : (
+                      <Text style={[styles.decideCount, { color: a.count }]} maxFontSizeMultiplier={1.2}>{count}</Text>
+                    )}
+                    <MaterialCommunityIcons name="chevron-right" size={20} color={C.muted} />
+                  </View>
+                </View>
+                <Text style={styles.decideLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} maxFontSizeMultiplier={1.25}>
+                  {r.label}
+                </Text>
+                <Text style={styles.decideSub} numberOfLines={1} maxFontSizeMultiplier={1.25}>
+                  Pending approval
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
     ) : null;
 
   const waitingSection = (first: boolean) => {
     if (!decides) return null;
     let content: React.ReactNode = null;
     if (waiting.length > 0) {
+      const inline = (gridWidth ?? width - PAD * 2 - SECTION_PAD * 2) + SECTION_PAD * 2 >= INLINE_DECISION_MIN_WIDTH;
       content = (
-        <View style={styles.card}>
+        <View style={styles.waitList}>
           {waiting.map((w, i) => {
             const applied = appliedText(w.createdAt);
+            const tone = avatarTone(w.name);
+            const busy = acting?.key === w.key ? acting.kind : null;
+            const off = acting !== null;
+            const buttons = (
+              <View style={[styles.pillPair, !inline && styles.pillPairBelow]}>
+                <TouchableOpacity
+                  style={[styles.pill, styles.pillReject, off && !busy && styles.pillOff]}
+                  onPress={() => { void decide(w, 'reject'); }}
+                  disabled={off}
+                  activeOpacity={0.8}
+                  hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Reject ${w.name}'s ${w.kind}`}
+                  accessibilityState={{ disabled: off, busy: busy === 'reject' }}
+                >
+                  {busy === 'reject' ? (
+                    <ActivityIndicator size="small" color={C.danger} />
+                  ) : (
+                    <Text style={[styles.pillText, { color: C.danger }]} maxFontSizeMultiplier={1.2}>Reject</Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.pill, styles.pillApprove, off && !busy && styles.pillOff]}
+                  onPress={() => { void decide(w, 'approve'); }}
+                  disabled={off}
+                  activeOpacity={0.8}
+                  hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Approve ${w.name}'s ${w.kind}`}
+                  accessibilityState={{ disabled: off, busy: busy === 'approve' }}
+                >
+                  {busy === 'approve' ? (
+                    <ActivityIndicator size="small" color={APPROVE_GREEN} />
+                  ) : (
+                    <Text style={[styles.pillText, { color: APPROVE_GREEN }]} maxFontSizeMultiplier={1.2}>Approve</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            );
             return (
               <TouchableOpacity
                 key={w.key}
-                style={[styles.waitRow, i > 0 && styles.rowDivider]}
+                style={[styles.waitRow, !inline && styles.waitRowStacked, i > 0 && styles.rowDivider]}
                 onPress={() => openWaiting(w)}
                 activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel={joined(w.name, w.what, applied)}
               >
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText} maxFontSizeMultiplier={1.2}>{initials(w.name)}</Text>
+                <View style={[styles.avatar, { backgroundColor: tone.bg }]}>
+                  <Text style={[styles.avatarText, { color: tone.fg }]} maxFontSizeMultiplier={1.2}>{initials(w.name)}</Text>
                 </View>
                 <View style={styles.flex}>
                   <View style={styles.nameLine}>
@@ -609,7 +812,9 @@ export const PayrollHomeScreen: React.FC = () => {
                       {applied}
                     </Text>
                   ) : null}
+                  {inline ? null : buttons}
                 </View>
+                {inline ? buttons : null}
                 <MaterialCommunityIcons name="chevron-right" size={20} color={C.muted} />
               </TouchableOpacity>
             );
@@ -618,7 +823,7 @@ export const PayrollHomeScreen: React.FC = () => {
       );
     } else if (queuesLoading) {
       content = (
-        <View style={styles.card}>
+        <View style={styles.waitList}>
           {[0, 1].map((i) => (
             <View key={i} style={[styles.waitRow, i > 0 && styles.rowDivider]}>
               <View style={[styles.avatar, styles.skeletonFill]} />
@@ -632,7 +837,7 @@ export const PayrollHomeScreen: React.FC = () => {
       );
     } else if (nothingWaiting) {
       content = (
-        <View style={[styles.card, styles.emptyRow]}>
+        <View style={[styles.waitList, styles.emptyRow]}>
           <MaterialCommunityIcons name="check-circle-outline" size={20} color={C.body} />
           <Text style={styles.emptyText} maxFontSizeMultiplier={1.25}>Nothing is waiting for you</Text>
         </View>
@@ -641,10 +846,12 @@ export const PayrollHomeScreen: React.FC = () => {
     // Failed with nothing to list: the retry row at the top already says so.
     if (!content) return null;
     return (
-      <React.Fragment key="waiting">
-        {heading('Waiting for you', first)}
+      <View key="waiting" style={[styles.section, !first && styles.sectionNext]}>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionHeadTitle} maxFontSizeMultiplier={1.25}>Waiting for you</Text>
+        </View>
         {content}
-      </React.Fragment>
+      </View>
     );
   };
 
@@ -723,19 +930,19 @@ export const PayrollHomeScreen: React.FC = () => {
     const compact = cols === 3;
     const w = tileWidth(cols);
     return (
-      <View style={styles.grid}>
+      <View style={styles.grid} onLayout={onGridLayout}>
         {tiles.map((t) => (
           <TouchableOpacity
             key={t.key}
-            style={[styles.tile, compact && styles.tileCompact, { width: w }]}
+            style={[styles.tile, compact && styles.tileCompact, { width: w, backgroundColor: t.accent.bg }]}
             onPress={() => go(t.screen)}
             activeOpacity={0.8}
             accessibilityRole="button"
             accessibilityLabel={t.note ? `${t.title}, ${t.note}` : t.title}
           >
             <View style={styles.tileTop}>
-              <View style={[styles.tileIcon, compact && styles.tileIconCompact]}>
-                <MaterialCommunityIcons name={t.icon} size={compact ? 18 : 20} color={ICON_TINT} />
+              <View style={[styles.tileIcon, compact && styles.tileIconCompact, { backgroundColor: t.accent.wash }]}>
+                <MaterialCommunityIcons name={t.icon} size={compact ? 20 : 22} color={t.accent.tint} />
               </View>
               {compact ? null : <MaterialCommunityIcons name="chevron-right" size={18} color={C.muted} />}
             </View>
@@ -768,10 +975,13 @@ export const PayrollHomeScreen: React.FC = () => {
 
   const mineSection = (first: boolean) =>
     linked ? (
-      <React.Fragment key="mine">
-        {heading(compactMine ? 'My work' : 'Quick access', first, first ? viewAll : null)}
+      <View key="mine" style={[styles.section, !first && styles.sectionNext]}>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionHeadTitle} maxFontSizeMultiplier={1.25}>{compactMine ? 'My work' : 'Quick access'}</Text>
+          {first ? viewAll : null}
+        </View>
         {renderGrid(myTiles, mineCols)}
-      </React.Fragment>
+      </View>
     ) : null;
 
   // Activity is the person's own history, so it needs an employee record behind it.
@@ -844,6 +1054,9 @@ export const PayrollHomeScreen: React.FC = () => {
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
       <View style={[styles.header, { paddingTop: insets.top + 4 }]}>
+        {/* Two soft discs in the top-right corner: the wave in the owner's design, drawn without an image. */}
+        <View pointerEvents="none" style={[styles.decorBig, { top: insets.top + 30 }]} />
+        <View pointerEvents="none" style={[styles.decorSmall, { top: insets.top + 70 }]} />
         {/* No wordmark: it took ~95pt of this row and cut the company name to "PRISMA TECHNOLOGY SO…". */}
         <View style={styles.topBar}>
           <View style={styles.switcherSlot}>
@@ -860,7 +1073,7 @@ export const PayrollHomeScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
         <Text style={styles.greeting} numberOfLines={1} maxFontSizeMultiplier={1.25}>
-          {firstName ? `${getGreeting()}, ${firstName}` : getGreeting()}
+          {firstName ? `${getGreeting()}, ${firstName} 👋` : `${getGreeting()} 👋`}
         </Text>
         <Text style={styles.date} maxFontSizeMultiplier={1.25}>{todayText()}</Text>
       </View>
@@ -905,13 +1118,15 @@ const styles = StyleSheet.create({
 
   // A soft blue band, no picture: the old hero spent ~250pt of the first screen on a
   // greeting and an illustration, and pushed the tiles below the fold on every phone.
-  header: { backgroundColor: '#E8F0FE', paddingHorizontal: PAD, paddingBottom: 24 },
+  header: { backgroundColor: '#EEF4FF', paddingHorizontal: PAD, paddingBottom: 30, overflow: 'hidden' },
+  decorBig: { position: 'absolute', right: -70, width: 220, height: 220, borderRadius: 110, backgroundColor: '#DCE8FD', opacity: 0.8 },
+  decorSmall: { position: 'absolute', right: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: '#C9DCFB', opacity: 0.55 },
   topBar: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48 },
   switcherSlot: { flex: 1, minWidth: 0, alignItems: 'flex-start' },
   iconButton: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center', marginRight: -8 },
-  dot: { position: 'absolute', top: 10, right: 11, width: 9, height: 9, borderRadius: 5, backgroundColor: '#EF4444', borderWidth: 1.5, borderColor: '#E8F0FE' },
-  greeting: { fontSize: 20, fontWeight: '700', color: C.ink, marginTop: 6 },
-  date: { fontSize: 13, color: C.body, marginTop: 2 },
+  dot: { position: 'absolute', top: 10, right: 11, width: 9, height: 9, borderRadius: 5, backgroundColor: '#EF4444', borderWidth: 1.5, borderColor: '#EEF4FF' },
+  greeting: { fontSize: 26, fontWeight: '800', color: C.ink, marginTop: 14, letterSpacing: -0.3 },
+  date: { fontSize: 14, color: C.body, marginTop: 4 },
 
   // The content sheet rides up over the band with rounded shoulders.
   sheet: { flex: 1, marginTop: -14 },
@@ -940,19 +1155,39 @@ const styles = StyleSheet.create({
   rowDivider: { borderTopWidth: 1, borderTopColor: C.line },
   rowIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: ICON_WASH, justifyContent: 'center', alignItems: 'center' },
 
+  // A white section card with its heading inside: To decide, Waiting for you.
+  section: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: SECTION_PAD, borderWidth: 1, borderColor: C.line, ...cardShadow },
+  sectionNext: { marginTop: 14 },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 36, paddingHorizontal: 4, marginBottom: 8 },
+  sectionHeadTitle: { fontSize: 18, fontWeight: '800', color: C.ink },
+
   // To decide
-  decideRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60, paddingHorizontal: 14 },
-  decideLabel: { flex: 1, fontSize: 15, fontWeight: '700', color: C.ink },
-  count: { fontSize: 17, fontWeight: '700', color: C.muted, minWidth: 20, textAlign: 'right' },
-  countAttention: { color: ATTENTION },
+  decideGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP },
+  decideTile: { borderRadius: 16, padding: 14, minHeight: 118 },
+  decideTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  decideIcon: { width: 46, height: 46, borderRadius: 13, justifyContent: 'center', alignItems: 'center' },
+  decideCountBox: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  decideCount: { fontSize: 28, fontWeight: '800' },
+  decideLabel: { fontSize: 16, fontWeight: '700', color: C.ink },
+  decideSub: { fontSize: 13, color: C.muted, marginTop: 2 },
   failedText: { fontSize: 12, fontWeight: '600', color: C.danger },
-  skeletonCount: { width: 48, height: 10, borderRadius: 5, backgroundColor: SKELETON },
+  skeletonCount: { width: 32, height: 14, borderRadius: 7, backgroundColor: SKELETON },
 
   // Waiting for you
-  waitRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64, paddingHorizontal: 14, paddingVertical: 10 },
-  // The approval cards' initials wash, so a person looks the same here and on the list.
-  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: APPROVAL_AVATAR_BG, justifyContent: 'center', alignItems: 'center' },
-  avatarText: { fontSize: 13, fontWeight: '700', color: C.ink },
+  waitList: { borderRadius: 14, borderWidth: 1, borderColor: C.line, backgroundColor: '#FFFFFF', overflow: 'hidden' },
+  waitRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64, paddingHorizontal: 12, paddingVertical: 12 },
+  // Buttons under the text make the row tall; centred, the avatar slid down beside the buttons.
+  waitRowStacked: { alignItems: 'flex-start' },
+  // One wash per person (avatarTone), set on the row.
+  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: APPROVAL_AVATAR_BG, justifyContent: 'center', alignItems: 'center' },
+  avatarText: { fontSize: 16, fontWeight: '700', color: C.ink },
+  pillPair: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  pillPairBelow: { marginTop: 8 },
+  pill: { minWidth: 72, height: 32, paddingHorizontal: 12, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  pillReject: { backgroundColor: '#FDECEC' },
+  pillApprove: { backgroundColor: '#E6F6EC' },
+  pillOff: { opacity: 0.45 },
+  pillText: { fontSize: 13, fontWeight: '700' },
   nameLine: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
   waitName: { flexShrink: 1, fontSize: 14, fontWeight: '700', color: C.ink },
   waitCode: { flexShrink: 0, maxWidth: '40%', fontSize: 12, color: C.muted },
@@ -981,20 +1216,14 @@ const styles = StyleSheet.create({
   // Widths are computed from the window, never percentages: 48.5% plus a 10pt gap did not fit
   // two tiles on a 360dp Android phone, and the grid fell apart into one half-width column.
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP },
-  tile: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: C.line,
-    ...cardShadow,
-  },
-  tileCompact: { padding: 10 },
+  // Pastel per service (accent.bg, set on the tile), no border: the section card is the frame.
+  tile: { borderRadius: 16, padding: 14 },
+  tileCompact: { padding: 12 },
   tileTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  tileIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: ICON_WASH, justifyContent: 'center', alignItems: 'center' },
-  tileIconCompact: { width: 30, height: 30, borderRadius: 9 },
-  tileTitle: { fontSize: 14, fontWeight: '700', color: C.ink },
-  tileTitleCompact: { fontSize: 13 },
+  tileIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: ICON_WASH, justifyContent: 'center', alignItems: 'center' },
+  tileIconCompact: { width: 38, height: 38, borderRadius: 11 },
+  tileTitle: { fontSize: 15, fontWeight: '700', color: C.ink },
+  tileTitleCompact: { fontSize: 14 },
   noteBox: { minHeight: 18, marginTop: 2, justifyContent: 'center' },
   noteBoxCompact: { minHeight: 34, marginTop: 2 },
   tileNote: { fontSize: 12, lineHeight: 16, color: C.body },

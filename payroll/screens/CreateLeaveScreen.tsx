@@ -1,10 +1,12 @@
 ﻿/**
  * Apply for Leave.
  *
- * The form asks for as little as the chosen leave type allows and no more. A
- * half-day switch appears only where the type permits half days; the hourly
- * controls only where it permits hours; the attachment card only where it wants
- * evidence. A type that uses none of them gets three cards and a button.
+ * The form asks for as little as the chosen leave type allows and no more. Once a
+ * type is chosen, "How long" offers Full day, Half day and Hours — only the ones
+ * the type permits (owner, 2026-10-09: the half-day and hourly switches used to
+ * appear only after both dates were picked, so nobody found them). Hours means one
+ * day and a From / To. The attachment card appears only where the type wants
+ * evidence. The reason is required: the approver decides on it.
  *
  * Two things it deliberately does not do for itself. It does not count the days
  * — weekends, public holidays and the employee's own shift roster decide that,
@@ -81,6 +83,9 @@ const HALVES = [
   { key: 'AM', label: 'Morning' },
   { key: 'PM', label: 'Afternoon' },
 ];
+
+type Duration = 'full' | 'half' | 'hours';
+const DURATION_LABEL: Record<Duration, string> = { full: 'Full day', half: 'Half day', hours: 'Hours' };
 
 const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -288,7 +293,14 @@ export const CreateLeaveScreen: React.FC = () => {
 
   const singleDay = startDate !== null && startDate === endDate;
   const canHalfDay = type?.allowHalfDay === true && !hourly;
-  const canHourly = type?.allowHourly === true && singleDay;
+  // Hours is one day by definition: choosing it pins the last day to the first.
+  const canHourly = type?.allowHourly === true;
+  const duration: Duration = hourly ? 'hours' : halfStart || halfEnd ? 'half' : 'full';
+  const durations: Duration[] = [
+    'full',
+    ...(type?.allowHalfDay ? (['half'] as Duration[]) : []),
+    ...(canHourly ? (['hours'] as Duration[]) : []),
+  ];
   const wantsAttachment = type?.requireAttachment === true;
 
   // A type that forbids what was switched on has to clear it, or the form would
@@ -395,7 +407,9 @@ export const CreateLeaveScreen: React.FC = () => {
         ? 'Choose the last day'
         : hourly && (!startTime || !endTime)
           ? 'Add the hours you will be away'
-          : null;
+          : !reason.trim()
+            ? 'Add a reason'
+            : null;
 
   // A preview that failed to arrive does not block anything: the server checks
   // the same rules again on submit and will say so then. Blocking on a network
@@ -417,6 +431,27 @@ export const CreateLeaveScreen: React.FC = () => {
   const turnOnHalfStart = (next: boolean) => {
     setHalfStart(next);
     if (next) setStartPeriod(singleDay ? 'AM' : 'PM');
+  };
+
+  const chooseDuration = (next: string) => {
+    if (next === 'hours') {
+      setHourly(true);
+      setHalfStart(false);
+      setHalfEnd(false);
+      if (startDate) setEndDate(startDate);
+    } else if (next === 'half') {
+      setHourly(false);
+      setStartTime(null);
+      setEndTime(null);
+      turnOnHalfStart(true);
+    } else {
+      setHourly(false);
+      setStartTime(null);
+      setEndTime(null);
+      setHalfStart(false);
+      setHalfEnd(false);
+    }
+    setSubmitError(null);
   };
 
   const chooseType = (item: MyLeaveEntitlement) => {
@@ -448,7 +483,7 @@ export const CreateLeaveScreen: React.FC = () => {
       setStartDate(next);
       // A range that runs backwards is a slip, not a request; the second date
       // moves with the first instead of being refused.
-      if (!endDate || endDate < next) setEndDate(next);
+      if (hourly || !endDate || endDate < next) setEndDate(next);
     } else if (which === 'end') {
       setEndDate(toYmd(value));
     } else if (which === 'startTime') {
@@ -645,6 +680,31 @@ export const CreateLeaveScreen: React.FC = () => {
 
                 {/* When, and what it comes to */}
                 <FormCard>
+                  {type && durations.length > 1 ? (
+                    <>
+                      <FieldLabel>How long</FieldLabel>
+                      <Segmented
+                        options={durations.map((d) => ({ key: d, label: DURATION_LABEL[d] }))}
+                        value={duration}
+                        onChange={chooseDuration}
+                      />
+                      <View style={styles.gap} />
+                    </>
+                  ) : null}
+
+                  {hourly ? (
+                    <>
+                      <FieldLabel>Day</FieldLabel>
+                      <SelectField
+                        icon="calendar"
+                        value={prettyDay(startDate)}
+                        placeholder="Select date"
+                        onPress={() => openPicker('start')}
+                        invalid={dateError !== null}
+                        label="Day"
+                      />
+                    </>
+                  ) : (
                   <View style={styles.pair}>
                     <View style={styles.pairHalf}>
                       <FieldLabel>First day</FieldLabel>
@@ -672,15 +732,8 @@ export const CreateLeaveScreen: React.FC = () => {
                       />
                     </View>
                   </View>
+                  )}
                   <FieldError message={dateError ?? issues.endDate ?? null} />
-
-                  {/* Only where the type says so. */}
-                  {canHourly ? (
-                    <>
-                      <View style={styles.rule} />
-                      <SwitchRow label="Just a few hours" value={hourly} onChange={setHourly} />
-                    </>
-                  ) : null}
 
                   {hourly ? (
                     <View style={styles.pair}>
@@ -712,17 +765,22 @@ export const CreateLeaveScreen: React.FC = () => {
                   ) : null}
                   <FieldError message={issues.time ?? null} />
 
-                  {canHalfDay && startDate ? (
+                  {canHalfDay && startDate && duration === 'half' ? (
                     <>
                       <View style={styles.rule} />
-                      <SwitchRow
-                        label={singleDay ? 'Half day only' : 'First day is a half day'}
-                        value={halfStart}
-                        onChange={turnOnHalfStart}
-                      />
-                      {halfStart ? (
-                        <Segmented options={HALVES} value={startPeriod} onChange={setStartPeriod} />
-                      ) : null}
+                      {singleDay ? (
+                        <>
+                          <FieldLabel>Which half</FieldLabel>
+                          <Segmented options={HALVES} value={startPeriod} onChange={setStartPeriod} />
+                        </>
+                      ) : (
+                        <>
+                          <SwitchRow label="First day is a half day" value={halfStart} onChange={turnOnHalfStart} />
+                          {halfStart ? (
+                            <Segmented options={HALVES} value={startPeriod} onChange={setStartPeriod} />
+                          ) : null}
+                        </>
+                      )}
 
                       {!singleDay ? (
                         <>
@@ -791,7 +849,7 @@ export const CreateLeaveScreen: React.FC = () => {
 
                 {/* Why */}
                 <FormCard>
-                  <FieldLabel>Reason (optional)</FieldLabel>
+                  <FieldLabel>Reason</FieldLabel>
                   <View style={[styles.textAreaWrap, reasonFocused && styles.textAreaFocused]}>
                     <TextInput
                       style={styles.textArea}
@@ -799,12 +857,12 @@ export const CreateLeaveScreen: React.FC = () => {
                       onChangeText={setReason}
                       onFocus={onReasonFocus}
                       onBlur={() => setReasonFocused(false)}
-                      placeholder="Say why, so your approver does not have to ask."
+                      placeholder="Why are you taking this leave? Your approver decides on it."
                       placeholderTextColor={C.muted}
                       multiline
                       maxLength={REASON_MAX}
                       textAlignVertical="top"
-                      accessibilityLabel="Reason, optional"
+                      accessibilityLabel="Reason, required"
                     />
                   </View>
                   {reason.length >= REASON_COUNT_FROM ? (
@@ -920,6 +978,7 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 16, gap: 10 },
 
   rule: { height: 1, backgroundColor: C.line, marginTop: 12, marginBottom: 2 },
+  gap: { height: 12 },
   pair: { flexDirection: 'row', gap: 10 },
   pairHalf: { flex: 1 },
 

@@ -2,11 +2,11 @@
  * Email Verification Screen
  * Says where the verification link went and lets the person carry on.
  *
- * Register no longer stops here — it signs the new account straight in, because
- * nothing checks verification and this page's only exit used to be "Back to Sign
- * In". It stays for the payrollapp://verify-email link, and now has a real way
- * forward: "Continue" signs in with the Firebase session this phone already holds,
- * when that session is for the address in the link.
+ * Where Register ends, and where Login sends a new account that has not verified
+ * (required from 2026-10-08, lib/emailVerification). Also opened by the
+ * payrollapp://verify-email link. "Continue" signs in with the Firebase session
+ * this phone already holds, when that session is for the address shown and the
+ * link has been tapped.
  * Same pieces as LoginScreen; results show inline instead of in dialogs.
  */
 
@@ -17,6 +17,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { onAuthStateChanged, sendEmailVerification, type User } from 'firebase/auth';
 import { getFirebaseAuth } from '../lib/firebase';
+import { needsEmailVerification } from '../lib/emailVerification';
 import { describeAuthError } from '../lib/firebaseErrors';
 import { usePayrollAuth, setKeepSignedIn, getDeviceId } from '../context/PayrollAuthContext';
 import AuthBackdrop, { AUTH_COLORS as C, AuthCard, AuthHeader, AuthNotice } from '../components/auth/AuthBackdrop';
@@ -92,7 +93,14 @@ export const EmailVerificationScreen: React.FC = () => {
     setContinuing(true);
     setNotice(null);
     try {
-      const idToken = await current.getIdToken();
+      // Read again from Firebase: the link was tapped in the mail app, not here.
+      await current.reload();
+      if (needsEmailVerification(current)) {
+        setNotice({ text: 'Not verified yet. Tap the link in the email first, then Continue.', tone: 'error' });
+        return;
+      }
+      // Forced, so the server sees email_verified = true in the token.
+      const idToken = await current.getIdToken(true);
       await setKeepSignedIn(true);
       // Success swaps the navigator to the signed-in screens by itself.
       await loginWithFirebaseToken(idToken, await getDeviceId());

@@ -13,6 +13,7 @@ import { tokenManager, tenantIdFromToken } from '../api/tokenManager';
 import { registerForPushNotifications, unregisterPushToken } from '../services/pushNotificationHandler';
 import { getFirebaseAuth, isFirebaseConfigured } from '../lib/firebase';
 import { SIGN_IN_UNAVAILABLE } from '../lib/firebaseErrors';
+import { EmailNotVerifiedError, needsEmailVerification } from '../lib/emailVerification';
 import companyService from '../api/services/companyService';
 
 export interface PayrollUser {
@@ -400,8 +401,16 @@ export const PayrollAuthProvider = ({ children }: { children: ReactNode }) => {
     let loginStep = 'firebase_signin';
     try {
       const credential = await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
+      // A new account must have tapped its verification link first. Reloaded so a link tapped
+      // a minute ago counts; the Firebase session is kept so the verify page can resend it.
+      loginStep = 'email_verified';
+      await credential.user.reload().catch(() => {});
+      if (needsEmailVerification(credential.user)) {
+        throw new EmailNotVerifiedError(credential.user.email ?? email.trim());
+      }
       loginStep = 'get_id_token';
-      const firebaseIdToken = await credential.user.getIdToken();
+      // Forced, so the token's email_verified claim (which the server checks) is the current one.
+      const firebaseIdToken = await credential.user.getIdToken(true);
       const deviceId = await getDeviceId();
       loginStep = 'backend_login';
       await loginWithFirebaseToken(firebaseIdToken, deviceId);

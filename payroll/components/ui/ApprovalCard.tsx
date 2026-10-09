@@ -30,6 +30,26 @@ export const APPROVAL_CARD = {
 /** The wash behind an approval card's initials. Neutral: blue is kept for buttons and the active tab. */
 export const APPROVAL_AVATAR_BG = '#EEF3FB';
 
+/**
+ * Initials discs take a colour per person (from the name, so it never changes), on the owner's
+ * 2026-10-08 design: in a queue of grey discs the rows ran together. Home's Waiting list uses
+ * the same tones, so a person looks the same on Home and on the list.
+ */
+const AVATAR_TONES = [
+  { bg: '#EAF1FF', fg: '#2F6BFF' },
+  { bg: '#F1EDFF', fg: '#6D28D9' },
+  { bg: '#FFF1E6', fg: '#EA580C' },
+  { bg: '#E8F7EE', fg: '#15803D' },
+  { bg: '#E6F6F6', fg: '#0F766E' },
+] as const;
+
+export function avatarTone(name?: string | null): { bg: string; fg: string } {
+  const s = name ?? '';
+  let h = 0;
+  for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return AVATAR_TONES[h % AVATAR_TONES.length];
+}
+
 /** Two letters for an avatar disc: a face is not available on these screens, a name always is. */
 export function personInitials(name?: string | null): string {
   const letters = (name ?? '')
@@ -53,10 +73,12 @@ export const ApprovalPerson: React.FC<{
   code?: string | null;
   own?: boolean;
   right?: React.ReactNode;
-}> = ({ name, code, own = false, right }) => (
+}> = ({ name, code, own = false, right }) => {
+  const tone = avatarTone(name);
+  return (
   <View style={styles.person}>
-    <View style={[styles.avatar, own && styles.avatarOwn]}>
-      <Text style={styles.avatarText} maxFontSizeMultiplier={1.2}>{personInitials(name)}</Text>
+    <View style={[styles.avatar, { backgroundColor: tone.bg }, own && styles.avatarOwn]}>
+      <Text style={[styles.avatarText, { color: own ? C.ink : tone.fg }]} maxFontSizeMultiplier={1.2}>{personInitials(name)}</Text>
     </View>
     <View style={styles.personText}>
       <Text style={styles.name} numberOfLines={1}>
@@ -67,7 +89,8 @@ export const ApprovalPerson: React.FC<{
     </View>
     {right ?? null}
   </View>
-);
+  );
+};
 
 export interface DecisionButtonsProps {
   onReject: () => void;
@@ -110,7 +133,7 @@ export const DecisionButtons: React.FC<DecisionButtonsProps> = ({
           <ActivityIndicator size="small" color={C.danger} />
         ) : (
           <>
-            <MaterialCommunityIcons name="close" size={16} color={C.danger} />
+            <MaterialCommunityIcons name="close" size={18} color={C.danger} />
             <Text style={[styles.decideText, { color: C.danger }]} maxFontSizeMultiplier={1.3}>Reject</Text>
           </>
         )}
@@ -128,7 +151,7 @@ export const DecisionButtons: React.FC<DecisionButtonsProps> = ({
           <ActivityIndicator size="small" color="#FFFFFF" />
         ) : (
           <>
-            <MaterialCommunityIcons name="check" size={16} color="#FFFFFF" />
+            <MaterialCommunityIcons name="check" size={18} color="#FFFFFF" />
             <Text style={[styles.decideText, { color: '#FFFFFF' }]} maxFontSizeMultiplier={1.3}>Approve</Text>
           </>
         )}
@@ -146,7 +169,7 @@ export const DangerOutlineButton: React.FC<{
   disabled?: boolean;
 }> = ({ label, icon, onPress, busy = false, disabled = false }) => (
   <TouchableOpacity
-    style={[styles.decideBtn, styles.decideReject, disabled && !busy && styles.decideOff]}
+    style={[styles.decideBtn, styles.outlineDanger, disabled && !busy && styles.decideOff]}
     onPress={onPress}
     disabled={disabled || busy}
     activeOpacity={0.8}
@@ -166,20 +189,23 @@ export const DangerOutlineButton: React.FC<{
 );
 
 const styles = StyleSheet.create({
-  person: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: APPROVAL_AVATAR_BG, alignItems: 'center', justifyContent: 'center' },
+  person: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: APPROVAL_AVATAR_BG, alignItems: 'center', justifyContent: 'center' },
   // The viewer's own item reads as theirs at a glance, before the "(you)".
   avatarOwn: { backgroundColor: '#EEF2F7' },
-  avatarText: { fontSize: 14, fontWeight: '700', color: C.ink },
+  avatarText: { fontSize: 16, fontWeight: '700', color: C.ink },
   personText: { flex: 1, minWidth: 0 },
-  name: { fontSize: 15, fontWeight: '700', color: C.ink },
+  name: { fontSize: 17, fontWeight: '700', color: C.ink },
   you: { fontSize: 13, fontWeight: '600', color: C.muted },
-  code: { fontSize: 12, color: C.muted, marginTop: 1 },
+  code: { fontSize: 13, color: C.muted, marginTop: 2 },
 
   decide: { flexDirection: 'row', gap: 10 },
-  decideBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44, borderRadius: 12 },
-  decideReject: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: C.danger },
+  decideBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 48, borderRadius: 12 },
+  // A soft red fill, no outline (2026-10-08 design): the red outline looked like an error box.
+  decideReject: { backgroundColor: '#FDECEC' },
+  // Withdraw / cancel keep the outline: they undo the reader's own item, not decide someone else's.
+  outlineDanger: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: C.danger },
   decideApprove: { backgroundColor: C.blue },
   decideOff: { opacity: 0.5 },
-  decideText: { fontSize: 14, fontWeight: '700' },
+  decideText: { fontSize: 15, fontWeight: '700' },
 });

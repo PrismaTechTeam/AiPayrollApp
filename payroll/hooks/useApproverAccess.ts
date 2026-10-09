@@ -43,6 +43,8 @@ export const APPROVAL_RIGHTS = {
   // and on team-today (Employee List, Employee Map).
   teamPunchReport: 'ATTENDANCE_PUNCH_REPORT.VIEW',
   teamWorkCard: 'ATTENDANCE_WORK_CARD.VIEW',
+  // Approving or rejecting a punch request (POST punches/adjust/{id}/approve|reject).
+  teamWorkCardEdit: 'ATTENDANCE_WORK_CARD.EDIT',
   // The company's invitation code (GET /api/CompanyJoinRequest/join-code).
   employeePortal: 'EMPLOYEE_PORTAL.VIEW',
 } as const;
@@ -65,10 +67,12 @@ export interface ApproverAccess {
   team: boolean;
   /**
    * May read everyone's forgotten-punch requests (Punch Approval): ATTENDANCE_WORK_CARD.VIEW, the
-   * right the web's Attendance > Daily > Punch Requests page and its endpoint check. Read-only
-   * on the phone: deciding them (ATTENDANCE_WORK_CARD.EDIT) stays on the web for now.
+   * right the web's Attendance > Daily > Punch Requests page and its endpoint check. Deciding
+   * them is `punchDecide`.
    */
   punchApprovals: boolean;
+  /** May approve or reject them: ATTENDANCE_WORK_CARD.EDIT, the right the server checks. */
+  punchDecide: boolean;
   /** May browse decided claims (Claim Approval's Approved, Rejected and All tabs). */
   claimsView: boolean;
   /** May see and share the company's invitation code (Invite employees). */
@@ -174,6 +178,7 @@ function fromRights(rights: string[]) {
     requestTypeDelete: has(APPROVAL_RIGHTS.requestTypeDelete),
     team: has(APPROVAL_RIGHTS.teamPunchReport) || has(APPROVAL_RIGHTS.teamWorkCard),
     punchApprovals: has(APPROVAL_RIGHTS.teamWorkCard),
+    punchDecide: has(APPROVAL_RIGHTS.teamWorkCard) && has(APPROVAL_RIGHTS.teamWorkCardEdit),
     claimsView: has(APPROVAL_RIGHTS.claimsView),
     employeePortal: has(APPROVAL_RIGHTS.employeePortal),
     // Any approval right at all makes this person HR here, whether or not the
@@ -196,6 +201,7 @@ function fromRoleName(role: string | null) {
     // attendance is somebody else's data, shown only on the server's word.
     team: false,
     punchApprovals: false,
+    punchDecide: false,
     claimsView: owner,
     employeePortal: owner,
     any: owner,

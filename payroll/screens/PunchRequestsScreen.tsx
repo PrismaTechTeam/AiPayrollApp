@@ -227,9 +227,9 @@ type TeamLoad =
  * the ones waiting.
  *
  * Reading needs ATTENDANCE_WORK_CARD.VIEW. Deciding needs ATTENDANCE_WORK_CARD.EDIT,
- * which useApproverAccess reports as `punchDecide`. Until that flag exists the
- * buttons stay hidden and the queue is read-only: a button the server would refuse
- * with 403 is a control that does nothing.
+ * which useApproverAccess reports as `punchDecide`. Without it the buttons stay
+ * hidden and the queue is read-only: a button the server would refuse with 403 is a
+ * control that does nothing.
  *
  * Nobody decides their own request. The reworked server refuses it; today's does
  * not, so the buttons are withheld here for HR's own requests either way.
@@ -240,9 +240,8 @@ export const PunchApprovalScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { user } = usePayrollAuth();
   const access = useApproverAccess();
-  // Optional on purpose: the flag is added to useApproverAccess separately, and its
-  // absence must read as "cannot decide", never as "can".
-  const canDecide = (access as typeof access & { punchDecide?: boolean }).punchDecide === true;
+  // From the server's rights only: the role-name guess never grants it.
+  const canDecide = access.ready && access.punchDecide;
   const myEmployeeId = user?.employeeId ?? null;
 
   const [filter, setFilter] = useState<Filter>('PENDING');

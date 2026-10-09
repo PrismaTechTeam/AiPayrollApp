@@ -39,6 +39,7 @@ import AuthBackdrop, {
 } from '../components/auth/AuthBackdrop';
 import PrimaryButton from '../components/auth/PrimaryButton';
 import { describeAuthError, authErrorCode, looksLikeEmail } from '../lib/firebaseErrors';
+import { isEmailNotVerified } from '../lib/emailVerification';
 
 type FieldErrors = { email?: string; password?: string };
 
@@ -79,6 +80,11 @@ export const LoginScreen: React.FC = () => {
       // On success the navigator swaps to the signed-in screens by itself.
       await login(trimmed, password);
     } catch (err) {
+      // A new account that has not tapped its link: the verify page resends it and signs in after.
+      if (isEmailNotVerified(err)) {
+        navigation.navigate('EmailVerification', { email: err.email });
+        return;
+      }
       const message = describeAuthError(err, 'We could not sign you in. Please try again.');
       if (authErrorCode(err) === 'auth/invalid-email') {
         setFieldErrors({ email: message });

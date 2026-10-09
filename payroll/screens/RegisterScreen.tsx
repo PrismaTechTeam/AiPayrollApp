@@ -1,14 +1,12 @@
 /**
  * Register Screen
- * Creates the account in Firebase first, then syncs it to the backend, then signs
- * the person straight in.
+ * Creates the account in Firebase first, then syncs it to the backend, sends the
+ * verification link, and ends on "Check your inbox".
  *
- * It used to end on a "verify your email" page whose only exit was "Back to Sign
- * In": nothing anywhere checks verification, so the new person retyped what they
- * had just typed, and Android's back button returned them to the filled form,
- * where a second tap said the account already existed. Now the next page is the
- * real next step — joining their company — and the verification mail still goes
- * out in the background.
+ * From 2026-10-08 a new account must verify its address before it is signed in
+ * (lib/emailVerification): signing straight in let anyone type any address and
+ * be inside. That page keeps the Firebase session, so its "Continue" signs in
+ * once the link is tapped — nobody retypes what they have just typed.
  *
  * Same building blocks as LoginScreen, and the same rule for errors: a field's
  * problem under that field (the person is usually typing at the bottom, with the
@@ -29,6 +27,7 @@ import authService from '../api/services/authService';
 import { API_CONFIG } from '../api/config';
 import { getFirebaseAuth, isFirebaseConfigured } from '../lib/firebase';
 import { usePayrollAuth, setKeepSignedIn, getDeviceId } from '../context/PayrollAuthContext';
+import { needsEmailVerification } from '../lib/emailVerification';
 import AuthBackdrop, {
   AUTH_COLORS as C,
   AuthCard,
@@ -131,9 +130,14 @@ export const RegisterScreen: React.FC = () => {
       return;
     }
     setError(null);
+    await firebaseUser.reload().catch(() => {});
+    if (needsEmailVerification(firebaseUser)) {
+      navigation.navigate('EmailVerification', { email: firebaseUser.email ?? undefined });
+      return;
+    }
     setLoading(true);
     try {
-      const idToken = await firebaseUser.getIdToken();
+      const idToken = await firebaseUser.getIdToken(true);
       // A previous person on this phone may have unticked "Keep me signed in".
       await setKeepSignedIn(true);
       await loginWithFirebaseToken(idToken, await getDeviceId());
@@ -204,16 +208,15 @@ export const RegisterScreen: React.FC = () => {
       }
       accountExists = true;
 
-      // A courtesy, not a gate: nothing checks verification, so a mail that
-      // fails to go out must not hold up the sign-in.
-      sendEmailVerification(userCredential.user).catch((mailErr: unknown) => {
+      // A gate since 2026-10-08 (lib/emailVerification): the account is not signed in until the
+      // link is tapped. A mail that fails to go out is resent from the next page.
+      step = 'verification_mail';
+      await sendEmailVerification(userCredential.user).catch((mailErr: unknown) => {
         if (__DEV__) console.warn('[Register] Verification email not sent:', mailErr);
       });
-
-      step = 'sign_in';
       await setKeepSignedIn(true);
-      // Success swaps the navigator to Home, where joining a company starts.
-      await loginWithFirebaseToken(firebaseIdToken, deviceId);
+      // The Firebase session stays, so "Continue" there signs in once the link is tapped.
+      navigation.navigate('EmailVerification', { email: emailTrimmed });
     } catch (err: unknown) {
       if (__DEV__) {
         const e = err as { message?: string; response?: { data?: unknown } } | null;

@@ -19,7 +19,7 @@
  * applications that had waited longest. The other tabs page as you scroll.
  */
 
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -187,6 +187,12 @@ export const LeavesScreen: React.FC<LeavesScreenProps> = ({ navigation: navProp 
 
   const [activeTab, setActiveTab] = useState<FilterKey>(STATUSES.PENDING);
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
+  // The Pending tab's badge. Known from the last time that tab was read, and kept while another
+  // tab is open, so the badge does not vanish the moment HR looks at Approved.
+  const [pendingCount, setPendingCount] = useState<number | null>(null);
+  useEffect(() => {
+    if (load.kind === 'ready' && load.tab === STATUSES.PENDING) setPendingCount(load.total);
+  }, [load]);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreFailed, setMoreFailed] = useState(false);
@@ -445,11 +451,10 @@ export const LeavesScreen: React.FC<LeavesScreenProps> = ({ navigation: navProp 
     const steps = item.totalApprovalSteps ?? 0;
     const waitingOn = pending ? (item.currentApproverName ?? '').trim() : '';
     const urgent = pending ? startNote(item) : null;
-    const meta = [
-      `Applied ${appliedShort(item.createdAt)}`,
-      waitedText,
-      waitingOn ? `with ${waitingOn}${steps > 1 ? ` (step ${item.currentApprovalStep} of ${steps})` : ''}` : null,
-    ].filter(Boolean).join(' · ');
+    // "Dates passed" is the loudest fact on the card, so it is a pill beside the name; a leave
+    // that has started (or starts today) keeps it at the front of the meta line, in red.
+    const passed = urgent === 'Dates passed';
+    const withText = waitingOn ? `with ${waitingOn}${steps > 1 ? ` (step ${item.currentApprovalStep} of ${steps})` : ''}` : null;
 
     // Nobody decides their own leave; the server refuses it, so the buttons
     // would only ever fail. Nor does HR without an employee record once the
@@ -471,7 +476,15 @@ export const LeavesScreen: React.FC<LeavesScreenProps> = ({ navigation: navProp 
             name={name}
             code={code}
             own={own}
-            right={showStatus ? <LeaveStatusPill status={item.status} /> : null}
+            right={
+              showStatus ? (
+                <LeaveStatusPill status={item.status} />
+              ) : passed ? (
+                <View style={styles.passedPill}>
+                  <Text style={styles.passedText} maxFontSizeMultiplier={1.2}>Dates passed</Text>
+                </View>
+              ) : null
+            }
           />
 
           <View style={styles.typeRow}>
@@ -481,13 +494,24 @@ export const LeavesScreen: React.FC<LeavesScreenProps> = ({ navigation: navProp 
               <MaterialCommunityIcons name="paperclip" size={14} color={C.muted} accessibilityLabel="Has a file" />
             ) : null}
           </View>
-          <Text style={styles.dates}>{dates}</Text>
+          <View style={styles.infoRow}>
+            <MaterialCommunityIcons name="calendar-blank-outline" size={18} color={C.body} style={styles.infoIcon} />
+            <Text style={styles.dates}>{dates}</Text>
+          </View>
 
-          {item.reason ? <Text style={styles.reason} numberOfLines={2}>{item.reason}</Text> : null}
+          {item.reason ? (
+            <View style={styles.infoRow}>
+              <MaterialCommunityIcons name="text-box-outline" size={18} color={C.body} style={styles.infoIcon} />
+              <Text style={styles.reason} numberOfLines={2}>{item.reason}</Text>
+            </View>
+          ) : null}
 
           <Text style={styles.meta} numberOfLines={2}>
-            {urgent ? <Text style={styles.metaUrgent}>{`${urgent} · `}</Text> : null}
-            {meta}
+            {urgent && !passed ? <Text style={styles.metaUrgent}>{`${urgent}  ·  `}</Text> : null}
+            {`Applied ${appliedShort(item.createdAt)}`}
+            {/* How long it has waited is the approver's to-do, so it reads in red. */}
+            {waitedText ? <Text style={styles.metaWaiting}>{`  ·  ${waitedText}`}</Text> : null}
+            {withText ? `  ·  ${withText}` : null}
           </Text>
         </TouchableOpacity>
 
@@ -542,19 +566,29 @@ export const LeavesScreen: React.FC<LeavesScreenProps> = ({ navigation: navProp 
           data={FILTERS}
           keyExtractor={(f) => f.key}
           showsHorizontalScrollIndicator={false}
-          style={styles.chipStrip}
-          contentContainerStyle={styles.chipRow}
+          style={styles.tabStrip}
+          contentContainerStyle={styles.tabRow}
           renderItem={({ item }) => {
             const active = activeTab === item.key;
+            const badge = item.key === STATUSES.PENDING && pendingCount ? pendingCount : null;
             return (
               <TouchableOpacity
                 onPress={() => setActiveTab(item.key)}
-                style={[styles.chip, active && styles.chipActive]}
+                style={styles.tab}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: active }}
+                accessibilityLabel={badge ? `${item.label}, ${badge} waiting` : item.label}
                 hitSlop={{ top: 6, bottom: 6 }}
               >
-                <Text style={[styles.chipText, active && styles.chipTextActive]}>{item.label}</Text>
+                <View style={styles.tabInner}>
+                  <Text style={[styles.tabText, active && styles.tabTextActive]} maxFontSizeMultiplier={1.25}>{item.label}</Text>
+                  {badge ? (
+                    <View style={styles.tabBadge}>
+                      <Text style={styles.tabBadgeText} maxFontSizeMultiplier={1.2}>{badge > 99 ? '99+' : badge}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={[styles.tabLine, active && styles.tabLineActive]} />
               </TouchableOpacity>
             );
           }}
@@ -612,40 +646,43 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F6F8FF' },
   flex: { flex: 1 },
 
-  chipStrip: { flexGrow: 0 },
-  chipRow: { paddingHorizontal: 16, paddingVertical: 6, gap: 8, alignItems: 'center' },
-  chip: {
-    minHeight: 34,
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-    borderRadius: 17,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: C.line,
-  },
-  chipActive: { backgroundColor: C.blue, borderColor: C.blue },
-  chipText: { fontSize: 13, fontWeight: '600', color: C.body },
-  chipTextActive: { color: '#FFFFFF' },
+  // Underlined tabs on one line (2026-10-08 design): the pill chips ran off the screen at "Canc…".
+  // Still a horizontal list, so a large text size scrolls instead of squeezing.
+  tabStrip: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: C.line, marginHorizontal: 16 },
+  tabRow: { flexGrow: 1, justifyContent: 'space-between' },
+  tab: { paddingTop: 8, alignItems: 'stretch' },
+  tabInner: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 4, minHeight: 32 },
+  tabText: { fontSize: 14, fontWeight: '600', color: C.body },
+  tabTextActive: { color: C.blue, fontWeight: '700' },
+  tabBadge: { minWidth: 20, height: 20, paddingHorizontal: 5, borderRadius: 10, backgroundColor: '#E3ECFF', alignItems: 'center', justifyContent: 'center' },
+  tabBadgeText: { fontSize: 12, fontWeight: '700', color: C.blue },
+  tabLine: { height: 3, borderRadius: 2, marginTop: 6, backgroundColor: 'transparent' },
+  tabLineActive: { backgroundColor: C.blue },
 
   centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  list: { paddingHorizontal: 16, paddingTop: 4, gap: 10 },
-  // Lets the empty state centre itself in the page instead of hugging the chips.
+  list: { paddingHorizontal: 16, paddingTop: 14, gap: 14 },
+  // Lets the empty state centre itself in the page instead of hugging the tabs.
   listEmpty: { flexGrow: 1 },
 
-  card: { ...LEAVE_CARD, padding: 14 },
+  card: { ...LEAVE_CARD, borderRadius: 18, padding: 16 },
 
   // Row 2 onwards, at the same spacing as Request and Claim Approval.
-  typeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  type: { flexShrink: 1, fontSize: 14, fontWeight: '600', color: C.ink },
-  dates: { fontSize: 13, color: C.body, marginTop: 2 },
+  typeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  type: { flexShrink: 1, fontSize: 16, fontWeight: '700', color: C.ink },
+  infoRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 6 },
+  infoIcon: { marginTop: 1, marginRight: 10 },
+  dates: { flex: 1, fontSize: 15, lineHeight: 21, color: C.body },
+  reason: { flex: 1, fontSize: 15, lineHeight: 21, color: C.body },
 
-  reason: { fontSize: 13, lineHeight: 18, color: C.body, marginTop: 6 },
+  passedPill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: '#FDECEC', alignSelf: 'flex-start' },
+  passedText: { fontSize: 12, fontWeight: '700', color: C.danger },
 
-  meta: { fontSize: 12, color: C.muted, marginTop: 8 },
-  metaUrgent: { fontWeight: '600', color: C.danger },
+  meta: { fontSize: 13, lineHeight: 19, color: C.muted, marginTop: 10 },
+  metaUrgent: { fontWeight: '700', color: C.danger },
+  metaWaiting: { color: C.danger },
 
-  actions: { marginTop: 12 },
+  actions: { marginTop: 14 },
   webOnly: { fontSize: 12, color: C.muted, marginTop: 10 },
 
   footer: { minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingVertical: 8 },
